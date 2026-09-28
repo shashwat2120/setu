@@ -1,0 +1,126 @@
+.role-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 18px;
+}
+@media (max-width: 900px) {
+  .role-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+@media (max-width: 520px) {
+  .role-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.tally-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 1px;
+}
+@media (max-width: 700px) {
+  .tally-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+.photobreak {
+  display: grid;
+  grid-template-columns: 1.1fr 0.9fr;
+  gap: 18px;
+  align-items: end;
+}
+@media (max-width: 760px) {
+  .photobreak {
+    grid-template-columns: 1fr;
+  }
+}
+
+.memo-grid {
+  display: grid;
+  grid-template-columns: 120px 1fr;
+  gap: 32px;
+  align-items: start;
+}
+@media (max-width: 700px) {
+  .memo-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.nav-mobile-toggle {
+  display: none;
+}
+@media (max-width: 760px) {
+  .nav-tabs {
+    display: none;
+  }
+  .nav-mobile-toggle {
+    display: flex !important;
+  }
+  .nav-cta {
+    display: none;
+  }
+}
+.nav-mobile-menu {
+  animation: nav-menu-in 0.15s ease-out;
+}
+@keyframes nav-menu-in {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.pin-note {
+  position: absolute;
+  right: 6%;
+  bottom: -40px;
+  background: #fcf3c7;
+  color: #3a3320;
+  padding: 20px 22px;
+  max-width: 280px;
+  border-radius: 1px;
+  box-shadow: 0 10px 24px var(--shadow-ink);
+  transform: rotate(-2.5deg);
+}
+@media (max-width: 700px) {
+  .pin-note {
+    position: static;
+    transform: none;
+    margin-top: 16px;
+    max-width: none;
+  }
+}
+
+section {
+  padding-block: 88px;
+}
+
+.spine-node {
+  transform: scale(0.94);
+  opacity: 0.45;
+  transition: opacity 0.3s, transform 0.3s;
+}
+.spine-node.is-active {
+  opacity: 1;
+  transform: scale(1);
+}
+
+@keyframes stamp-idle {
+  0%,
+  100% {
+    transform: rotate(-8deg) scale(1);
+  }
+  50% {
+    transform: rotate(-8deg) scale(1.035);
+  }
+}
+.stamp-idle {
+  animation: stamp-idle 3.2s ease-in-out infinite;
+}

@@ -1,0 +1,190 @@
+spring:
+  application:
+    name: setu-backend
+
+  datasource:
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:setu}
+    username: ${DB_USER:setu}
+    password: ${DB_PASSWORD:setu_dev_password}
+
+  flyway:
+    # See infra/db/README.md — migrations live outside the backend module so
+    # the schema is portable and reviewable independent of the Spring Boot app.
+    # Note: spring-modulith-starter-jpa does NOT bundle its own migration for
+    # the event_publication table (confirmed by inspecting the jar) — it's
+    # provided here instead, in infra/db/migrations/V50, discovered as a real
+    # gap during Day 2 runtime verification.
+    locations: filesystem:../infra/db/migrations
+
+  jpa:
+    # Flyway is the *only* source of schema truth. Hibernate must never
+    # create or alter tables — "validate" fails fast if an entity's mapping
+    # ever drifts from what a migration actually created.
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+    properties:
+      hibernate:
+        jdbc:
+          time_zone: UTC
+
+  data:
+    redis:
+      # Day 14: AI endpoint rate limiting only — never a source of truth.
+      # Port matches infra/docker/.env's REDIS_PORT (6380 by default on this
+      # machine, since 6379 is already taken by an unrelated project's own
+      # Redis — see that .env file's own comment).
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      timeout: 2s
+      client-type: jedis
+      repositories:
+        enabled: false
+
+  ai:
+    # Day 16 §ai-perf: which configured ChatModel auto-configuration wins (Spring AI's own
+    # switch — see GoogleGenAiChatAutoConfiguration/OllamaChatAutoConfiguration, both
+    # @ConditionalOnProperty(name = "spring.ai.model.chat", havingValue = <theirs>,
+    # matchIfMissing = true) — with both starters now on the classpath this MUST be set
+    # explicitly or both would try to activate).
+    #
+    # Defaults to "ollama" here deliberately — this file is shared by the real running
+    # application AND every backend test (there is no test-scope application.yml in this
+    # project; a same-named src/test/resources/application.yml was tried and reverted
+    # because Maven's test classpath ordering makes it REPLACE this whole file for tests
+    # rather than merge with it, silently deleting datasource/redis/kafka config). Flipping
+    # the bare default to Gemini would have made the ENTIRE existing test suite require a
+    # live GEMINI_API_KEY just to run `mvn test`.
+    #
+    # For an actual demo/dev run (never for `mvn test`), export AI_PROVIDER=google-genai
+    # before starting the app/bridge — see docs/demo-script.md step 0 — since Ollama
+    # measured ~150s/response on this dev machine and Gemini is the fast path for a live
+    # demo. AiChatService additionally holds a real runtime fallback FROM whichever is
+    # primary TO Ollama on provider failure, independent of this switch (see
+    # AiChatConfig#fallbackChatClient) — Gemini failing never takes the AI Advisor down.
+    model:
+      chat: ${AI_PROVIDER:ollama}
+    google:
+      genai:
+        # Gemini Developer API (api-key only) — vertex-ai stays unset/false, so no GCP
+        # project/location/service-account is ever required.
+        api-key: ${GEMINI_API_KEY:}
+        chat:
+          options:
+            model: ${GEMINI_MODEL:gemini-2.5-flash}
+    ollama:
+      base-url: ${OLLAMA_BASE_URL:http://localhost:11434}
+      init:
+        # Never auto-pull a model at startup — this app assumes Ollama and
+        # the configured model are already provisioned (see docs/ai-setup.md
+        # equivalent in the Day 14 report); a missing model should fail the
+        # chat call with a controlled error, not trigger a multi-GB download.
+        pull-model-strategy: never
+      chat:
+        options:
+          model: ${OLLAMA_MODEL:llama3.2:3b}
+          temperature: ${OLLAMA_TEMPERATURE:0.2}
+
+  kafka:
+    # Day 15: the outbox publisher's producer only — no consumer group config
+    # (see OutboxPublisher's own javadoc for why no consumer exists yet).
+    # Port matches infra/docker/.env's KAFKA_PORT (9093 by default on this
+    # machine, since 9092 is already taken by an unrelated project's own
+    # Kafka/Redpanda — same pattern as DB_PORT/REDIS_PORT).
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+      properties:
+        # Short, explicit timeouts: a Kafka outage must fail a publish attempt
+        # within a few seconds, not block the scheduled poller (and every test
+        # context that loads it) for the client library's multi-minute defaults.
+        max.block.ms: 5000
+        request.timeout.ms: 5000
+        delivery.timeout.ms: 6000
+
+server:
+  port: ${SERVER_PORT:8080}
+
+logging:
+  pattern:
+    # Day 15 §7: correlation id (see CorrelationIdFilter) in every log line, when present — blank outside an HTTP
+    # request (e.g. the OutboxPublisher's own scheduled thread, which has no request to tie it to).
+    console: "%d{HH:mm:ss.SSS} %-5level [%thread] %logger{36} [%X{correlationId}] - %msg%n"
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health, info, modulith
+
+app:
+  # The origin the frontend is actually served from — used only to build the password-reset link
+  # (${app.frontend-base-url}/reset-password?token=...). Never hard-code localhost in a link a real email sends.
+  frontend-base-url: ${FRONTEND_BASE_URL:http://localhost:5180}
+  email:
+    brevo:
+      # Never committed — real value only via the BREVO_API_KEY env var. Blank means "not configured":
+      # BrevoEmailService then logs a warning and reports failure instead of sending, rather than throwing.
+      api-key: ${BREVO_API_KEY:}
+      from-address: ${MAIL_FROM_ADDRESS:no-reply@setu.local}
+      from-name: ${MAIL_FROM_NAME:Setu College}
+    preview:
+      # Off by default — never true in production. Opt in only via the gitignored backend/.env.local's
+      # EMAIL_PREVIEW_ENABLED for a local demo/review run where the reviewer's own inbox isn't reachable
+      # (e.g. Gmail blocked on a locked-down network): BrevoEmailService then ALSO writes the exact rendered
+      # reset email to a local file, in addition to (never instead of) the real Brevo send.
+      enabled: ${EMAIL_PREVIEW_ENABLED:false}
+      dir: ${EMAIL_PREVIEW_DIR:target/demo-email-outbox}
+  demo-data:
+    # Never true by default — only opted into for a local demo/review run (see DemoDataSeeder's own javadoc).
+    # Never enabled in the test suite and never enabled in a real deployment.
+    enabled: ${DEMO_DATA_ENABLED:false}
+    # Blank by default (every seeded address stays @demo.setu.local — see DemoDataSeeder#demoEmail's own
+    # javadoc). Set only via the gitignored backend/.env.local's DEMO_EMAIL_BASE for a local demo/review run
+    # that needs forgot-password to deliver to a real inbox.
+    email-base: ${DEMO_EMAIL_BASE:}
+  outbox:
+    poll-interval-ms: ${OUTBOX_POLL_INTERVAL_MS:2000}
+    batch-size: ${OUTBOX_BATCH_SIZE:100}
+    topic-prefix: ${OUTBOX_TOPIC_PREFIX:setu.}
+    send-timeout-seconds: ${OUTBOX_SEND_TIMEOUT_SECONDS:5}
+  ai:
+    # 60s default: a local small model doing tool-calling round trips genuinely takes 20-40s on typical dev
+    # hardware (measured on this machine) — 30s was cutting real, successful calls off as false timeouts.
+    request-timeout-seconds: ${AI_REQUEST_TIMEOUT_SECONDS:60}
+    rate-limit:
+      max-requests: ${AI_RATE_LIMIT_MAX_REQUESTS:20}
+      window-seconds: ${AI_RATE_LIMIT_WINDOW_SECONDS:60}
+  security:
+    jwt:
+      # DEV-ONLY default (Base64 of "dev-only-secret-do-not-use-in-production-replace-me")
+      # — every real deployment MUST override this via JWT_SECRET with a
+      # random >=256-bit value. See JwtProperties.
+      secret: ${JWT_SECRET:ZGV2LW9ubHktc2VjcmV0LWRvLW5vdC11c2UtaW4tcHJvZHVjdGlvbi1yZXBsYWNlLW1l}
+      issuer: ${JWT_ISSUER:setu}
+      audience: ${JWT_AUDIENCE:setu-api}
+      access-token-ttl-minutes: 15
+      refresh-token-ttl-days: 30
+    argon2:
+      # Benchmarked on dev hardware, not copied from a table — see
+      # Argon2BenchmarkTests' javadoc for the measured run and reasoning.
+      memory-kib: 65536
+      iterations: 2
+      parallelism: 1
+      salt-length: 16
+      hash-length: 32
+      max-failed-attempts: 5
+      lockout-minutes: 15
+    webauthn:
+      rp-id: ${WEBAUTHN_RP_ID:localhost}
+      rp-name: Setu
+      # Day 16 §frontend: this list is also SecurityConfig's CORS allow-list (not just WebAuthn's own relying-party
+      # check) — :5180 added because that's the actual port this project's vite.config.ts configures, not Vite's
+      # own default :5173.
+      allowed-origins: ${WEBAUTHN_ALLOWED_ORIGINS:http://localhost:5173,http://localhost:3000,http://localhost:5180}
+      challenge-ttl-seconds: 300
+    password-reset:
+      # MUST be false once the notification module can actually deliver the
+      # reset token by email — see PasswordAuthController's javadoc.
+      expose-token-for-dev: false

@@ -1,0 +1,17 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "setu-frontend-v2",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "--prefix",
+        "C:\\Users\\ShashwatMishra\\Documents\\setu\\frontend",
+        "run",
+        "dev"
+      ],
+      "port": 5180,
+      "autoPort": true
+    }
+  ]
+}

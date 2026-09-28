@@ -1,0 +1,352 @@
+package com.setu.aiexplain.application;
+
+import com.setu.assessment.application.GradeService;
+import com.setu.assessment.application.AssessmentService;
+import com.setu.assessment.domain.Assessment;
+import com.setu.assessment.domain.Grade;
+import com.setu.attendance.application.AttendanceRecordService;
+import com.setu.career.application.ApplicationService;
+import com.setu.enrollment.application.EnrollmentService;
+import com.setu.institution.application.PolicyDocumentService;
+import com.setu.learning.application.AssignmentService;
+import com.setu.learning.application.CourseModuleService;
+import com.setu.learning.application.LearningProgressService;
+import com.setu.learning.application.LessonService;
+import com.setu.learning.domain.Assignment;
+import com.setu.learning.domain.CourseModule;
+import com.setu.learning.domain.Lesson;
+import com.setu.learning.domain.LearningProgress;
+import com.setu.learning.domain.LearningProgressState;
+import com.setu.risk.application.RiskCalculationService;
+import com.setu.risk.domain.RiskFactor;
+import com.setu.risk.domain.RiskScore;
+import org.springframework.ai.tool.annotation.Tool;
+import org.springframework.ai.tool.annotation.ToolParam;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.stereotype.Component;
+
+import java.math.BigDecimal;
+import java.math.RoundingMode;
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.List;
+import java.util.Objects;
+import java.util.Set;
+import java.util.UUID;
+
+/**
+ * Day 14 §AI: the seven controlled tools (canonical spec §10 / TRD §6),
+ * each backed ENTIRELY by existing, already-verified application services
+ * — never a repository, never raw SQL, never a datasource of ai-explain's
+ * own. Every tool resolves its target student via {@link
+ * AiAccessSupport#resolveTargetStudent} and (except {@link
+ * #searchCollegePolicy}, which is tenant-scoped rather than student-
+ * scoped, and {@link #getSkillGap}, which delegates entirely to {@link
+ * ApplicationService#previewEligibility}'s own self/admin-only check)
+ * authorizes it via {@link AiAccessSupport} BEFORE touching any data — the
+ * model supplies only WHICH student a question is about; it never decides
+ * whether the caller may see the answer.
+ * <p>
+ * Every returned record is a plain structured DTO — Spring AI serializes
+ * these back to the model as the tool result; nothing here returns free
+ * text the model could mistake for its own reasoning.
+ */
+@Component
+public class AiToolService {
+
+    private final AiAccessSupport accessSupport;
+    private final EnrollmentService enrollmentService;
+    private final AttendanceRecordService attendanceRecordService;
+    private final GradeService gradeService;
+    private final RiskCalculationService riskCalculationService;
+    private final AssignmentService assignmentService;
+    private final AssessmentService assessmentService;
+    private final ApplicationService applicationService;
+    private final CourseModuleService courseModuleService;
+    private final LessonService lessonService;
+    private final LearningProgressService learningProgressService;
+    private final PolicyDocumentService policyDocumentService;
+    private final AiToolInvocationRecorder invocationRecorder;
+
+    public AiToolService(AiAccessSupport accessSupport, EnrollmentService enrollmentService,
+                          AttendanceRecordService attendanceRecordService, GradeService gradeService,
+                          RiskCalculationService riskCalculationService, AssignmentService assignmentService,
+                          AssessmentService assessmentService, ApplicationService applicationService,
+                          CourseModuleService courseModuleService, LessonService lessonService,
+                          LearningProgressService learningProgressService, PolicyDocumentService policyDocumentService,
+                          AiToolInvocationRecorder invocationRecorder) {
+        this.invocationRecorder = invocationRecorder;
+        this.accessSupport = accessSupport;
+        this.enrollmentService = enrollmentService;
+        this.attendanceRecordService = attendanceRecordService;
+        this.gradeService = gradeService;
+        this.riskCalculationService = riskCalculationService;
+        this.assignmentService = assignmentService;
+        this.assessmentService = assessmentService;
+        this.applicationService = applicationService;
+        this.courseModuleService = courseModuleService;
+        this.lessonService = lessonService;
+        this.learningProgressService = learningProgressService;
+        this.policyDocumentService = policyDocumentService;
+    }
+
+    public record ToolError(String reason) {
+    }
+
+    // ---- 1. getStudentAttendance ----------------------------------------------------------
+
+    public record AttendanceResult(double percentage, long presentOrLate, long total) {
+    }
+
+    @Tool(description = "Get a student's overall attendance percentage across all their currently enrolled sections. "
+        + "Omit studentId to get the current user's own attendance.")
+    public Object getStudentAttendance(
+        @ToolParam(description = "Student profile UUID, or omit for the caller's own attendance", required = false) String studentId) {
+        invocationRecorder.record("getStudentAttendance");
+        var target = accessSupport.resolveTargetStudent(studentId);
+        if (target.isEmpty()) {
+            return new ToolError("student not found");
+        }
+        var t = target.get();
+        try {
+            accessSupport.assertView(t.tenantId(), t.studentId(), t.ownerUserId(), "VIEW_ATTENDANCE");
+        } catch (AccessDeniedException e) {
+            return new ToolError("not authorized to view this student's attendance");
+        }
+        long presentOrLate = 0;
+        long total = 0;
+        for (var ref : enrollmentService.listActiveEnrollmentRefsForStudent(t.studentId())) {
+            var pct = attendanceRecordService.percentageForEnrollmentUnchecked(ref.enrollmentId());
+            presentOrLate += pct.presentOrLate();
+            total += pct.total();
+        }
+        double percentage = total == 0 ? 100.0 : (presentOrLate * 100.0) / total;
+        return new AttendanceResult(round1(percentage), presentOrLate, total);
+    }
+
+    // ---- 2. getAcademicProgress -------------------------------------------------------------
+
+    public record ComponentGrade(UUID componentId, String gradeCode, BigDecimal gradePoint) {
+    }
+
+    public record RiskSummary(String band, String ruleVersion, Instant calculatedAt, List<String> topFactorCodes) {
+    }
+
+    public record AcademicProgressResult(BigDecimal averageGradePoint, List<ComponentGrade> grades, RiskSummary risk) {
+    }
+
+    @Tool(description = "Get a student's current academic progress: published grades per assessment component, "
+        + "and their current Student Success risk assessment (band + top factors) if one has been calculated. "
+        + "Omit studentId for the caller's own progress.")
+    public Object getAcademicProgress(
+        @ToolParam(description = "Student profile UUID, or omit for the caller's own progress", required = false) String studentId) {
+        invocationRecorder.record("getAcademicProgress");
+        var target = accessSupport.resolveTargetStudent(studentId);
+        if (target.isEmpty()) {
+            return new ToolError("student not found");
+        }
+        var t = target.get();
+
+        // Grades and risk are two INDEPENDENTLY governed permissions (VIEW_ACADEMIC_STATUS vs. VIEW_RISK_SCORE —
+        // a guardian may legitimately be granted one without the other, matching authorization-matrix.md's
+        // separate rows for each). Each half is authorized on its own; the tool only refuses outright if BOTH
+        // are denied, never gating the whole response on just one of the two.
+        boolean canViewGrades = true;
+        List<ComponentGrade> componentGrades = List.of();
+        BigDecimal average = null;
+        try {
+            accessSupport.assertView(t.tenantId(), t.studentId(), t.ownerUserId(), "VIEW_ACADEMIC_STATUS");
+            List<Grade> grades = new ArrayList<>();
+            for (var ref : enrollmentService.listActiveEnrollmentRefsForStudent(t.studentId())) {
+                grades.addAll(gradeService.findCurrentForEnrollment(ref.enrollmentId()));
+            }
+            componentGrades = grades.stream()
+                .map(g -> new ComponentGrade(g.componentId(), g.gradeCode(), g.gradePoint())).toList();
+            List<BigDecimal> points = grades.stream().map(Grade::gradePoint).filter(Objects::nonNull).toList();
+            average = points.isEmpty() ? null
+                : points.stream().reduce(BigDecimal.ZERO, BigDecimal::add).divide(BigDecimal.valueOf(points.size()), 2, RoundingMode.HALF_UP);
+        } catch (AccessDeniedException e) {
+            canViewGrades = false;
+        }
+
+        RiskSummary risk = null;
+        boolean canViewRisk = true;
+        try {
+            var current = riskCalculationService.getCurrent(t.studentId());
+            if (current.isPresent()) {
+                RiskScore score = current.get();
+                List<String> topFactors = riskCalculationService.factorsFor(score.id()).stream()
+                    .sorted(Comparator.comparing(RiskFactor::contribution).reversed())
+                    .limit(3).map(RiskFactor::factorCode).toList();
+                risk = new RiskSummary(score.band().name(), score.ruleVersion(), score.calculatedAt(), topFactors);
+            }
+        } catch (AccessDeniedException e) {
+            canViewRisk = false;
+        }
+
+        if (!canViewGrades && !canViewRisk) {
+            return new ToolError("not authorized to view this student's academic progress");
+        }
+        return new AcademicProgressResult(average, componentGrades, risk);
+    }
+
+    // ---- 3. getAssessmentResults ------------------------------------------------------------
+
+    @Tool(description = "Get a student's current published grade for every assessment component they have a result for. "
+        + "Omit studentId for the caller's own results.")
+    public Object getAssessmentResults(
+        @ToolParam(description = "Student profile UUID, or omit for the caller's own results", required = false) String studentId) {
+        invocationRecorder.record("getAssessmentResults");
+        var target = accessSupport.resolveTargetStudent(studentId);
+        if (target.isEmpty()) {
+            return new ToolError("student not found");
+        }
+        var t = target.get();
+        try {
+            accessSupport.assertView(t.tenantId(), t.studentId(), t.ownerUserId(), "VIEW_GRADES");
+        } catch (AccessDeniedException e) {
+            return new ToolError("not authorized to view this student's grades");
+        }
+        List<ComponentGrade> results = new ArrayList<>();
+        for (var ref : enrollmentService.listActiveEnrollmentRefsForStudent(t.studentId())) {
+            for (Grade g : gradeService.findCurrentForEnrollment(ref.enrollmentId())) {
+                results.add(new ComponentGrade(g.componentId(), g.gradeCode(), g.gradePoint()));
+            }
+        }
+        return results;
+    }
+
+    // ---- 4. getUpcomingDeadlines ------------------------------------------------------------
+
+    public record Deadline(String type, UUID id, String title, Instant dueAt) {
+    }
+
+    private static final int MAX_DEADLINES = 10;
+
+    @Tool(description = "Get a student's upcoming assignment and assessment deadlines across all their currently "
+        + "enrolled sections, soonest first. Omit studentId for the caller's own deadlines.")
+    public Object getUpcomingDeadlines(
+        @ToolParam(description = "Student profile UUID, or omit for the caller's own deadlines", required = false) String studentId) {
+        invocationRecorder.record("getUpcomingDeadlines");
+        var target = accessSupport.resolveTargetStudent(studentId);
+        if (target.isEmpty()) {
+            return new ToolError("student not found");
+        }
+        var t = target.get();
+        try {
+            accessSupport.assertView(t.tenantId(), t.studentId(), t.ownerUserId(), "VIEW_SCHEDULE");
+        } catch (AccessDeniedException e) {
+            return new ToolError("not authorized to view this student's schedule");
+        }
+        Instant now = Instant.now();
+        List<Deadline> deadlines = new ArrayList<>();
+        for (var ref : enrollmentService.listActiveEnrollmentRefsForStudent(t.studentId())) {
+            for (Assignment a : assignmentService.listPublishedForSection(ref.sectionId())) {
+                if (a.dueAt() != null && a.dueAt().isAfter(now)) {
+                    deadlines.add(new Deadline("ASSIGNMENT", a.id(), a.title(), a.dueAt()));
+                }
+            }
+            for (Assessment a : assessmentService.listVisibleForSection(ref.sectionId())) {
+                if (a.startsAt() != null && a.startsAt().isAfter(now)) {
+                    deadlines.add(new Deadline("ASSESSMENT", a.id(), a.title(), a.startsAt()));
+                }
+            }
+        }
+        return deadlines.stream().sorted(Comparator.comparing(Deadline::dueAt)).limit(MAX_DEADLINES).toList();
+    }
+
+    // ---- 5. getSkillGap -----------------------------------------------------------------------
+
+    public record SkillGapResult(boolean eligible, List<UUID> missingOrInsufficientSkillIds) {
+    }
+
+    @Tool(description = "Compare a student's current skill profile against a specific job's required skills and "
+        + "return which skills are missing or below the required proficiency. Requires jobId. Omit studentId for "
+        + "the caller's own skill gap (career data has no advisor/guardian access — self or admin only).")
+    public Object getSkillGap(
+        @ToolParam(description = "Job UUID to check eligibility against") String jobId,
+        @ToolParam(description = "Student profile UUID, or omit for the caller's own skill gap", required = false) String studentId) {
+        invocationRecorder.record("getSkillGap");
+        UUID job;
+        try {
+            job = UUID.fromString(jobId.trim());
+        } catch (Exception e) {
+            return new ToolError("invalid jobId");
+        }
+        var target = accessSupport.resolveTargetStudent(studentId);
+        if (target.isEmpty()) {
+            return new ToolError("student not found");
+        }
+        try {
+            var result = applicationService.previewEligibility(job, target.get().studentId());
+            if (result.isEmpty()) {
+                return new ToolError("job not found");
+            }
+            return new SkillGapResult(result.get().eligible(), result.get().missingOrInsufficientSkillIds());
+        } catch (AccessDeniedException e) {
+            return new ToolError("not authorized to view this student's skill profile");
+        }
+    }
+
+    // ---- 6. searchCollegePolicy ---------------------------------------------------------------
+
+    public record PolicySearchResult(UUID documentId, String title, String content) {
+    }
+
+    @Tool(description = "Search this college's own policy documents (e.g. attendance policy, grading policy) for "
+        + "text relevant to the given query. Always scoped to the caller's own tenant — never accepts a tenant as "
+        + "input.")
+    public Object searchCollegePolicy(@ToolParam(description = "Free-text search query, e.g. 'attendance policy'") String query) {
+        invocationRecorder.record("searchCollegePolicy");
+        return policyDocumentService.search(query).stream()
+            .map(r -> new PolicySearchResult(r.documentId(), r.title(), r.content()))
+            .toList();
+    }
+
+    // ---- 7. recommendLearningResources ---------------------------------------------------------
+
+    public record LearningResource(UUID lessonId, String title, String type, UUID moduleId, UUID sectionId) {
+    }
+
+    private static final int MAX_RESOURCES = 5;
+
+    @Tool(description = "Recommend existing learning resources (lessons) the student has not yet completed, drawn "
+        + "only from lessons that actually exist in their enrolled sections — never an invented course or lesson. "
+        + "Omit studentId for the caller's own recommendations.")
+    public Object recommendLearningResources(
+        @ToolParam(description = "Student profile UUID, or omit for the caller's own recommendations", required = false) String studentId) {
+        invocationRecorder.record("recommendLearningResources");
+        var target = accessSupport.resolveTargetStudent(studentId);
+        if (target.isEmpty()) {
+            return new ToolError("student not found");
+        }
+        var t = target.get();
+        try {
+            accessSupport.assertView(t.tenantId(), t.studentId(), t.ownerUserId(), "VIEW_LEARNING_DATA");
+        } catch (AccessDeniedException e) {
+            return new ToolError("not authorized to view this student's learning data");
+        }
+        Set<UUID> completedLessonIds = learningProgressService.listForStudent(t.studentId()).stream()
+            .filter(p -> p.state() == LearningProgressState.COMPLETED)
+            .map(LearningProgress::lessonId)
+            .collect(java.util.stream.Collectors.toSet());
+
+        List<LearningResource> recommendations = new ArrayList<>();
+        for (var ref : enrollmentService.listActiveEnrollmentRefsForStudent(t.studentId())) {
+            for (CourseModule module : courseModuleService.listActiveForSection(ref.sectionId())) {
+                for (Lesson lesson : lessonService.listByModuleId(module.id())) {
+                    if (!completedLessonIds.contains(lesson.id())) {
+                        recommendations.add(new LearningResource(lesson.id(), lesson.title(), lesson.type().name(),
+                            module.id(), ref.sectionId()));
+                    }
+                }
+            }
+        }
+        return recommendations.stream().limit(MAX_RESOURCES).toList();
+    }
+
+    private static double round1(double value) {
+        return Math.round(value * 10.0) / 10.0;
+    }
+}

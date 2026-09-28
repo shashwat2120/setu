@@ -1,0 +1,308 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+	<modelVersion>4.0.0</modelVersion>
+	<parent>
+		<groupId>org.springframework.boot</groupId>
+		<artifactId>spring-boot-starter-parent</artifactId>
+		<version>4.1.1</version>
+		<relativePath/> <!-- lookup parent from repository -->
+	</parent>
+	<groupId>com.setu</groupId>
+	<artifactId>backend</artifactId>
+	<version>0.0.1-SNAPSHOT</version>
+	<name>backend</name>
+	<description/>
+	<url/>
+	<licenses>
+		<license/>
+	</licenses>
+	<developers>
+		<developer/>
+	</developers>
+	<scm>
+		<connection/>
+		<developerConnection/>
+		<tag/>
+		<url/>
+	</scm>
+	<properties>
+		<java.version>21</java.version>
+		<spring-modulith.version>2.1.1</spring-modulith.version>
+		<webauthn4j.version>0.31.10.RELEASE</webauthn4j.version>
+		<jjwt.version>0.13.0</jjwt.version>
+		<spring-ai.version>2.0.1</spring-ai.version>
+		<jedis.version>8.0.1</jedis.version>
+		<springdoc.version>3.1.1</springdoc.version>
+	</properties>
+	<dependencies>
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-actuator</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-data-jpa</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-flyway</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-security</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>org.bouncycastle</groupId>
+			<artifactId>bcprov-jdk18on</artifactId>
+			<version>1.86</version>
+		</dependency>
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-validation</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-webmvc</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>com.fasterxml.jackson.core</groupId>
+			<artifactId>jackson-databind</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>com.fasterxml.jackson.datatype</groupId>
+			<artifactId>jackson-datatype-jsr310</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-websocket</artifactId>
+		</dependency>
+		<!-- Day 16 §ai-perf: two configured chat providers now, selected at startup by
+		     spring.ai.model.chat (see AiChatConfig + application.yml) — Ollama (local,
+		     ~150s/response on this dev machine, always available as a fallback) and
+		     Google GenAI/Gemini (cloud, API-key based, the default for demo speed).
+		     Both stay on the classpath simultaneously; AiChatService holds a real
+		     runtime fallback path from whichever is primary to Ollama specifically.
+		     reactor-netty-http (pulled in transitively for WebClient/streaming
+		     support) is excluded for the same reason lettuce-core is excluded
+		     below: its Netty NIO selector setup fails on this dev machine (a
+		     Windows-specific Netty issue, confirmed unrelated to Ollama or Redis
+		     themselves). Excluding it makes Spring's RestClient auto-configuration
+		     fall back to the JDK's own java.net.http.HttpClient, which has no such
+		     dependency on Netty. -->
+		<dependency>
+			<groupId>org.springframework.ai</groupId>
+			<artifactId>spring-ai-starter-model-ollama</artifactId>
+			<exclusions>
+				<exclusion>
+					<groupId>io.projectreactor.netty</groupId>
+					<artifactId>reactor-netty-http</artifactId>
+				</exclusion>
+			</exclusions>
+		</dependency>
+		<!-- Google GenAI (Gemini Developer API, api-key based — never Vertex AI, no GCP
+		     project needed). Its SDK (com.google.genai:google-genai) shades a blocking
+		     OkHttp client (confirmed via its jar contents), not Netty/NIO, so it does
+		     not hit this machine's Windows Selector defect the way reactor-netty and
+		     the JDK's own java.net.http.HttpClient do. -->
+		<dependency>
+			<groupId>org.springframework.ai</groupId>
+			<artifactId>spring-ai-starter-model-google-genai</artifactId>
+		</dependency>
+		<!-- Forces Spring's RestClientAutoConfiguration to pick HttpClient5's classic
+		     (plain-blocking-socket) connection manager instead of the JDK's own
+		     java.net.http.HttpClient — the JDK client is ALSO NIO-Selector-based
+		     internally and hits the exact same Windows Selector failure as
+		     reactor-netty did (see the exclusion above and lettuce-core's exclusion
+		     further up); HttpClient5's classic API never opens a Selector at all. -->
+		<dependency>
+			<groupId>org.apache.httpcomponents.client5</groupId>
+			<artifactId>httpclient5</artifactId>
+		</dependency>
+		<!-- Day 15: the outbox publisher's Kafka producer — see
+		     com.setu.shared.governance.OutboxPublisher. No consumer exists yet
+		     (matches the audit finding: no @KafkaListener anywhere in this
+		     codebase before Day 15), so spring-kafka's consumer-side machinery is
+		     present but unused for now, not wired up speculatively. -->
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-kafka</artifactId>
+		</dependency>
+		<!-- Day 15 §9: the smallest production-appropriate API documentation —
+		     auto-generates an OpenAPI 3 spec from the 39 existing @RestController
+		     classes' own request/response DTOs and security scheme, plus a
+		     browsable UI at /swagger-ui.html. No hand-written per-endpoint
+		     annotations added beyond the one global security-scheme + server
+		     config in OpenApiConfig — the DTOs' own field names/types already
+		     document the shape; this is discovery, not a rewrite. -->
+		<dependency>
+			<groupId>org.springdoc</groupId>
+			<artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
+			<version>${springdoc.version}</version>
+		</dependency>
+		<!-- Day 14: AI endpoint rate limiting only (never a source of truth) — first
+		     real use of Redis in this codebase; see application.yml for connection
+		     config. Lettuce (the starter's default client) is excluded: its Netty
+		     event-loop setup fails to open its internal loopback wakeup socket on
+		     this dev machine (a known Netty-on-Windows issue, confirmed unrelated
+		     to Redis itself — plain TCP/redis-cli connects to the same port fine).
+		     Jedis uses plain blocking java.net sockets and has no such issue. -->
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-data-redis</artifactId>
+			<exclusions>
+				<exclusion>
+					<groupId>io.lettuce</groupId>
+					<artifactId>lettuce-core</artifactId>
+				</exclusion>
+			</exclusions>
+		</dependency>
+		<dependency>
+			<groupId>redis.clients</groupId>
+			<artifactId>jedis</artifactId>
+			<version>${jedis.version}</version>
+		</dependency>
+		<dependency>
+			<groupId>org.flywaydb</groupId>
+			<artifactId>flyway-database-postgresql</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>org.springframework.modulith</groupId>
+			<artifactId>spring-modulith-observability-api</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>org.springframework.modulith</groupId>
+			<artifactId>spring-modulith-starter-core</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>org.springframework.modulith</groupId>
+			<artifactId>spring-modulith-starter-jpa</artifactId>
+		</dependency>
+
+		<dependency>
+			<groupId>org.postgresql</groupId>
+			<artifactId>postgresql</artifactId>
+			<scope>runtime</scope>
+		</dependency>
+		<!-- WebAuthn/passkey ceremony verification (RP ID hash, origin, signature,
+		     sign-counter checks) — Day 3 authentication (canonical spec's locked
+		     passkey stack). We orchestrate challenge issuance/expiry/persistence
+		     ourselves against identity.webauthn_challenges; webauthn4j only
+		     verifies the cryptographic ceremony itself. -->
+		<dependency>
+			<groupId>com.webauthn4j</groupId>
+			<artifactId>webauthn4j-core</artifactId>
+			<version>${webauthn4j.version}</version>
+		</dependency>
+		<!-- Access-token issuance/validation (issuer/audience/expiry/jti) — Day 3. -->
+		<dependency>
+			<groupId>io.jsonwebtoken</groupId>
+			<artifactId>jjwt-api</artifactId>
+			<version>${jjwt.version}</version>
+		</dependency>
+		<dependency>
+			<groupId>io.jsonwebtoken</groupId>
+			<artifactId>jjwt-impl</artifactId>
+			<version>${jjwt.version}</version>
+			<scope>runtime</scope>
+		</dependency>
+		<dependency>
+			<groupId>io.jsonwebtoken</groupId>
+			<artifactId>jjwt-jackson</artifactId>
+			<version>${jjwt.version}</version>
+			<scope>runtime</scope>
+		</dependency>
+		<dependency>
+			<groupId>org.springframework.modulith</groupId>
+			<artifactId>spring-modulith-actuator</artifactId>
+			<scope>runtime</scope>
+		</dependency>
+		<dependency>
+			<groupId>org.springframework.modulith</groupId>
+			<artifactId>spring-modulith-observability-core</artifactId>
+			<scope>runtime</scope>
+		</dependency>
+		<dependency>
+			<groupId>org.springframework.modulith</groupId>
+			<artifactId>spring-modulith-runtime</artifactId>
+			<scope>runtime</scope>
+		</dependency>
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-actuator-test</artifactId>
+			<scope>test</scope>
+		</dependency>
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-data-jpa-test</artifactId>
+			<scope>test</scope>
+		</dependency>
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-flyway-test</artifactId>
+			<scope>test</scope>
+		</dependency>
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-security-test</artifactId>
+			<scope>test</scope>
+		</dependency>
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-validation-test</artifactId>
+			<scope>test</scope>
+		</dependency>
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-webmvc-test</artifactId>
+			<scope>test</scope>
+		</dependency>
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-websocket-test</artifactId>
+			<scope>test</scope>
+		</dependency>
+		<dependency>
+			<groupId>org.springframework.modulith</groupId>
+			<artifactId>spring-modulith-starter-test</artifactId>
+			<scope>test</scope>
+		</dependency>
+		<!-- Generates valid (and deliberately-broken) mock WebAuthn ceremonies for
+		     tests, without a real browser/authenticator — the standard way to
+		     unit test passkey flows; used by webauthn4j's own test suite. -->
+		<dependency>
+			<groupId>com.webauthn4j</groupId>
+			<artifactId>webauthn4j-test</artifactId>
+			<version>${webauthn4j.version}</version>
+			<scope>test</scope>
+		</dependency>
+	</dependencies>
+	<dependencyManagement>
+		<dependencies>
+			<dependency>
+				<groupId>org.springframework.modulith</groupId>
+				<artifactId>spring-modulith-bom</artifactId>
+				<version>${spring-modulith.version}</version>
+				<type>pom</type>
+				<scope>import</scope>
+			</dependency>
+			<dependency>
+				<groupId>org.springframework.ai</groupId>
+				<artifactId>spring-ai-bom</artifactId>
+				<version>${spring-ai.version}</version>
+				<type>pom</type>
+				<scope>import</scope>
+			</dependency>
+		</dependencies>
+	</dependencyManagement>
+
+	<build>
+		<plugins>
+			<plugin>
+				<groupId>org.springframework.boot</groupId>
+				<artifactId>spring-boot-maven-plugin</artifactId>
+			</plugin>
+		</plugins>
+	</build>
+
+</project>
