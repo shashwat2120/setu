@@ -38,7 +38,10 @@ class DemoDataSeederQuizContentTests {
             group by a.id, a.title, a.total_marks
             """);
 
-        assertThat(rows).as("the three seeded quizzes").hasSize(3);
+        // The demo data can be seeded more than once in a full test run (the alias test seeds a second copy), so check every copy,
+        // and that all three quizzes are present, instead of assuming exactly one row each.
+        assertThat(rows).extracting(r -> r.get("title")).as("the seeded quizzes")
+            .contains("Midterm Quiz", "Data Structures Midterm", "Reading Response Quiz");
         for (Map<String, Object> row : rows) {
             long questions = ((Number) row.get("questions")).longValue();
             long keyed = ((Number) row.get("keyed_choice")).longValue() + ((Number) row.get("keyed_short")).longValue();
