@@ -6,6 +6,7 @@ import { useApiQuery } from '../../api/useApiQuery';
 import type { LearningAssignmentResponse, AssignmentSubmissionResponse } from '../../api/types';
 import { PageHeader } from '../../components/ui/PageHeader';
 import { DataTable, type Column } from '../../components/ui/DataTable';
+import { StudentName } from '../../components/ui/StudentName';
 import { StatusBadge } from '../../components/ui/StatusBadge';
 import { ConfirmActionButton } from '../../components/ui/ConfirmActionButton';
 import { FacultySectionSelect, useFacultySectionOptions } from '../../components/ui/FacultySectionSelect';
@@ -49,7 +50,7 @@ function GradeCell({ submission, onGraded }: { submission: AssignmentSubmissionR
 function Submissions({ assignmentId }: { assignmentId: string }) {
   const submissions = useApiQuery<AssignmentSubmissionResponse[]>(`/learning/submissions?assignmentId=${assignmentId}`);
   const columns: Column<AssignmentSubmissionResponse>[] = [
-    { key: 'student', header: 'Student ID', render: (s) => <span className="mono" style={{ fontSize: 12 }}>{s.studentId}</span> },
+    { key: 'student', header: 'Student', render: (s) => <StudentName studentId={s.studentId} /> },
     { key: 'attempt', header: 'Attempt', render: (s) => s.attemptNo },
     { key: 'status', header: 'Status', render: (s) => <StatusBadge value={s.status} /> },
     { key: 'submittedAt', header: 'Submitted', render: (s) => (s.submittedAt ? new Date(s.submittedAt).toLocaleString() : '—') },

@@ -1,0 +1,51 @@
+package com.setu.shared.seed;
+
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.test.context.TestPropertySource;
+
+import java.util.List;
+import java.util.Map;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+/**
+ * The seeded quizzes must be usable: a student who starts an attempt must find real questions, and every question must carry the
+ * answer key the grader reads ({@code correctOption} for choice questions, {@code correctAnswer} for short answers). Before this, every
+ * seeded assessment had zero questions, so the student's quiz screen was empty.
+ */
+@SpringBootTest
+@AutoConfigureMockMvc
+@TestPropertySource(properties = "app.demo-data.enabled=true")
+class DemoDataSeederQuizContentTests {
+
+    @Autowired
+    JdbcTemplate jdbc;
+
+    @Test
+    void everySeededAssessmentHasThreeAutoGradableQuestionsWorthItsMarks() {
+        List<Map<String, Object>> rows = jdbc.queryForList("""
+            select a.title as title, a.total_marks as total_marks, count(q.id) as questions, coalesce(sum(q.points), 0) as points,
+                   count(q.id) filter (where q.type in ('MCQ_SINGLE', 'TRUE_FALSE') and q.metadata_json::text like '%correctOption%') as keyed_choice,
+                   count(q.id) filter (where q.type = 'SHORT_ANSWER' and q.metadata_json::text like '%correctAnswer%') as keyed_short
+            from assessment.assessments a
+            join assessment.assessment_components c on c.assessment_id = a.id
+            left join assessment.questions q on q.component_id = c.id
+            where a.title in ('Midterm Quiz', 'Data Structures Midterm', 'Reading Response Quiz')
+            group by a.id, a.title, a.total_marks
+            """);
+
+        assertThat(rows).as("the three seeded quizzes").hasSize(3);
+        for (Map<String, Object> row : rows) {
+            long questions = ((Number) row.get("questions")).longValue();
+            long keyed = ((Number) row.get("keyed_choice")).longValue() + ((Number) row.get("keyed_short")).longValue();
+            assertThat(questions).as("%s has questions", row.get("title")).isEqualTo(3);
+            assertThat(keyed).as("%s: every question has an answer key the grader can read", row.get("title")).isEqualTo(questions);
+            assertThat(((Number) row.get("points")).doubleValue()).as("%s: question points add up to the quiz's marks", row.get("title"))
+                .isEqualTo(((Number) row.get("total_marks")).doubleValue());
+        }
+    }
+}

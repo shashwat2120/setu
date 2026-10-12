@@ -106,6 +106,17 @@ trend, and learning-progress completion. The seeded students deliberately
 span LOW/MEDIUM/HIGH bands with real, differentiated underlying data — not
 placeholder numbers.
 
+**Taking a quiz, end to end.** Log in as `student.average@demo.setu.local`, open **My Courses → CS101**, and under *Assessments* start the
+**Midterm Quiz**. It has three real questions: a multiple-choice one (the options are in the question text; answer with the letter),
+a true/false pair of buttons, and a short answer. Save each answer, then **Submit attempt**. Log in as `faculty.rao@demo.setu.local`,
+open **Assessments**, choose the section, and press **Attempts** on the quiz: the submission shows the student's name and an **Evaluate**
+button. Evaluating auto-grades every question that has an answer key and shows the score (for example "Score 70: 3 questions graded
+automatically"); the student then sees "EVALUATED — score 70". Answer keys are never sent to students.
+
+**Registering for a section.** `student.strong` is already in both seeded sections, so *Register for a section* is empty for them. Log in as
+`student.learning.risk@demo.setu.local` instead: CS201-A is offered with an **Enroll** button, and enrolling runs the full chain of checks
+("Enrollment confirmed").
+
 ## 4. Advisor alert → intervention
 
 As faculty or admin, Student Success → a MEDIUM/HIGH student → a proposed

@@ -26,6 +26,7 @@ import java.util.UUID;
  * for the specific, whitelisted key(s) each {@link QuestionType}'s
  * deterministic rule needs (never deserialized into executable logic).
  */
+@org.springframework.modulith.NamedInterface
 @Service
 public class QuestionService {
 
@@ -149,5 +150,14 @@ public class QuestionService {
         return listForComponent(question.get().componentId()).stream()
             .filter(q -> q.id().equals(questionId))
             .findFirst();
+    }
+
+    /** Demo-data helper: plain-UUID unwrap of {@link #create}; any refusal is a seed bug. */
+    @Transactional
+    public UUID createForSeed(UUID componentId, QuestionType type, String prompt, java.math.BigDecimal points, String metadataJson) {
+        return switch (create(componentId, type, prompt, points, null, null, metadataJson)) {
+            case CreateResult.Success s -> s.questionId();
+            default -> throw new IllegalStateException("seed question refused: " + prompt);
+        };
     }
 }

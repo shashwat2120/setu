@@ -4,6 +4,7 @@ import { tenantForRole } from '../../auth/types';
 import { useApiQuery } from '../../api/useApiQuery';
 import type { FacultyAssignmentResponse } from '../../api/types';
 import { PageHeader } from '../../components/ui/PageHeader';
+import { SectionLabel } from '../../components/ui/SectionLabel';
 import { Skeleton, EmptyState, ErrorState } from '../../components/ui/EmptyState';
 
 export default function FacultyDashboard() {
@@ -38,7 +39,7 @@ export default function FacultyDashboard() {
             {activeAssignments.map((a) => (
               <li key={a.id}>
                 <Link to="/app/faculty/sections" style={{ fontWeight: 600 }}>
-                  Section {a.sectionId.slice(0, 8)}… — {a.role}
+                  <SectionLabel sectionId={a.sectionId} /> — {a.role}
                 </Link>
               </li>
             ))}

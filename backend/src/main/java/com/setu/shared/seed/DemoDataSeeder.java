@@ -1,6 +1,8 @@
 package com.setu.shared.seed;
 
 import com.setu.assessment.application.AssessmentComponentService;
+import com.setu.assessment.application.QuestionService;
+import com.setu.assessment.domain.QuestionType;
 import com.setu.assessment.application.AssessmentService;
 import com.setu.assessment.application.GradeService;
 import com.setu.attendance.application.AttendanceRecordService;
@@ -162,6 +164,7 @@ public class DemoDataSeeder implements ApplicationRunner {
 
     private final AssessmentService assessmentService;
     private final AssessmentComponentService assessmentComponentService;
+    private final QuestionService questionService;
     private final GradeService gradeService;
 
     private final RiskCalculationService riskCalculationService;
@@ -240,7 +243,7 @@ public class DemoDataSeeder implements ApplicationRunner {
                            CourseModuleService courseModuleService, LessonService lessonService,
                            AssignmentService assignmentService, AssignmentSubmissionService assignmentSubmissionService,
                            LearningProgressService learningProgressService, AssessmentService assessmentService,
-                           AssessmentComponentService assessmentComponentService, GradeService gradeService,
+                           AssessmentComponentService assessmentComponentService, QuestionService questionService, GradeService gradeService,
                            RiskCalculationService riskCalculationService, RecommendationService recommendationService,
                            InterventionService interventionService, FeeStructureService feeStructureService,
                            FeeComponentService feeComponentService, StudentChargeService studentChargeService,
@@ -291,6 +294,7 @@ public class DemoDataSeeder implements ApplicationRunner {
         this.learningProgressService = learningProgressService;
         this.assessmentService = assessmentService;
         this.assessmentComponentService = assessmentComponentService;
+        this.questionService = questionService;
         this.gradeService = gradeService;
         this.riskCalculationService = riskCalculationService;
         this.recommendationService = recommendationService;
@@ -495,6 +499,33 @@ public class DemoDataSeeder implements ApplicationRunner {
         }
     }
 
+    /**
+     * Real questions for a seeded quiz, added while the assessment is still a DRAFT (questions cannot be added later). Three questions
+     * per quiz, one of each auto-gradable kind, worth 40 + 30 + 30 points. A multiple-choice question carries its options in the
+     * prompt and is answered by letter, because students never receive the answer key (the grader reads {@code correctOption},
+     * {@code correctAnswer}).
+     */
+    private void seedQuizQuestions(UUID componentId, String topic) {
+        String[][] questions = switch (topic) {
+            case "PYTHON" -> new String[][]{
+                {"MCQ_SINGLE", "40", "Which keyword defines a function in Python?  A) func   B) def   C) function   D) lambda only", "{\"correctOption\":\"B\"}"},
+                {"TRUE_FALSE", "30", "In Python, the characters of a string can be changed in place after the string is created.", "{\"correctOption\":\"False\"}"},
+                {"SHORT_ANSWER", "30", "Which built-in function returns the number of items in a list?", "{\"correctAnswer\":\"len\"}"}};
+            case "DATA_STRUCTURES" -> new String[][]{
+                {"MCQ_SINGLE", "40", "What is the time complexity of binary search on a sorted array?  A) O(n)   B) O(log n)   C) O(n log n)   D) O(1)", "{\"correctOption\":\"B\"}"},
+                {"TRUE_FALSE", "30", "A stack removes the most recently added item first.", "{\"correctOption\":\"True\"}"},
+                {"SHORT_ANSWER", "30", "Which data structure serves items in first-in, first-out order?", "{\"correctAnswer\":\"queue\"}"}};
+            case "READING" -> new String[][]{
+                {"MCQ_SINGLE", "40", "What does a close reading examine first?  A) the author's biography   B) the words and structure on the page   C) the publisher   D) the length of the text", "{\"correctOption\":\"B\"}"},
+                {"TRUE_FALSE", "30", "A thesis statement should be supported by evidence from the text.", "{\"correctOption\":\"True\"}"},
+                {"SHORT_ANSWER", "30", "Which figure of speech compares two unlike things using the word like or as?", "{\"correctAnswer\":\"simile\"}"}};
+            default -> throw new IllegalArgumentException("unknown quiz topic: " + topic);
+        };
+        for (String[] question : questions) {
+            questionService.createForSeed(componentId, QuestionType.valueOf(question[0]), question[2], new BigDecimal(question[1]), question[3]);
+        }
+    }
+
     /** Attaches one example document/link to a seeded lesson; any refusal is a seed bug and fails loudly (see addForSeed). */
     private void attachResource(UUID lessonId, com.setu.learning.domain.LessonResourceType type, String url, String title) {
         lessonResourceService.addForSeed(lessonId, url, type, title);
@@ -637,6 +668,7 @@ public class DemoDataSeeder implements ApplicationRunner {
             60, Instant.now().minusSeconds(3600), Instant.now().plusSeconds(3600));
         UUID componentId = assessmentComponentService.createForSeed(assessmentId, "MAIN", new BigDecimal("100"),
             new BigDecimal("100"), 1);
+        seedQuizQuestions(componentId, "PYTHON");
         assessmentService.schedule(assessmentId);
         assessmentService.open(assessmentId);
 
@@ -765,6 +797,7 @@ public class DemoDataSeeder implements ApplicationRunner {
             new BigDecimal("100"), 60, Instant.now().minusSeconds(3600), Instant.now().plusSeconds(3600));
         UUID componentId = assessmentComponentService.createForSeed(assessmentId, "MAIN", new BigDecimal("100"),
             new BigDecimal("100"), 1);
+        seedQuizQuestions(componentId, "DATA_STRUCTURES");
         assessmentService.schedule(assessmentId);
         assessmentService.open(assessmentId);
         gradeService.publishOrCorrect(assessmentId, componentId, strong.studentId(), new BigDecimal("91"), "A", new BigDecimal("3.7"));
@@ -1025,6 +1058,7 @@ public class DemoDataSeeder implements ApplicationRunner {
             new BigDecimal("100"), 45, Instant.now().minusSeconds(3600), Instant.now().plusSeconds(3600));
         UUID componentId = assessmentComponentService.createForSeed(assessmentId, "MAIN", new BigDecimal("100"),
             new BigDecimal("100"), 1);
+        seedQuizQuestions(componentId, "READING");
         assessmentService.schedule(assessmentId);
         assessmentService.open(assessmentId);
         gradeService.publishOrCorrect(assessmentId, componentId, student.studentId(), new BigDecimal("82"), "B+", new BigDecimal("3.4"));

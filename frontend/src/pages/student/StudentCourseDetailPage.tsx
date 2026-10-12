@@ -165,18 +165,30 @@ function AssignmentRow({ assignment }: { assignment: LearningAssignmentResponse 
   );
 }
 
+/** The exact shape the grader reads: choice questions send {selected}, text questions send {text}. */
+function answerPayload(type: string, answer: string): string {
+  const value = answer.trim();
+  return JSON.stringify(type === 'MCQ_SINGLE' || type === 'TRUE_FALSE' ? { selected: value } : { text: value });
+}
+
 function QuestionAnswer({ question, attemptId }: { question: QuestionResponse; attemptId: string }) {
   const existing = useApiQuery<AssessmentResponseRecord[]>(`/assessment/responses?attemptId=${attemptId}`);
   const mine = existing.data?.find((r) => r.questionId === question.id);
   const [answer, setAnswer] = useState('');
   const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const isTrueFalse = question.type === 'TRUE_FALSE';
+  const isChoice = question.type === 'MCQ_SINGLE';
 
   const save = async () => {
     setSaving(true);
+    setError(null);
     try {
-      await apiFetch('/assessment/responses', { method: 'POST', body: { attemptId, questionId: question.id, answerJson: JSON.stringify(answer) } });
+      await apiFetch('/assessment/responses', { method: 'POST', body: { attemptId, questionId: question.id, answerJson: answerPayload(question.type, answer) } });
       setAnswer('');
       existing.refetch();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not save this answer.');
     } finally {
       setSaving(false);
     }
@@ -190,14 +202,23 @@ function QuestionAnswer({ question, attemptId }: { question: QuestionResponse; a
           Answered {mine.isCorrect === true ? '✓ correct' : mine.isCorrect === false ? '✗ incorrect' : '(pending evaluation)'}
         </p>
       ) : (
-        <div style={{ display: 'flex', gap: 8 }}>
-          <input aria-label="Your answer" placeholder="Your answer" value={answer} onChange={(e) => setAnswer(e.target.value)}
-            style={{ ...inputStyle, flex: 1 }} />
-          <button type="button" className="btn btn-primary" style={{ padding: '8px 14px', fontSize: 13 }} disabled={saving || !answer} onClick={save}>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+          {isTrueFalse ? (
+            ['True', 'False'].map((v) => (
+              <label key={v} style={{ display: 'inline-flex', gap: 6, alignItems: 'center', fontSize: 14 }}>
+                <input type="radio" name={`q-${question.id}`} value={v} checked={answer === v} onChange={() => setAnswer(v)} /> {v}
+              </label>
+            ))
+          ) : (
+            <input aria-label="Your answer" placeholder={isChoice ? 'Your option, e.g. B' : 'Your answer'} value={answer}
+              maxLength={isChoice ? 8 : undefined} onChange={(e) => setAnswer(e.target.value)} style={{ ...inputStyle, flex: 1, minWidth: 160 }} />
+          )}
+          <button type="button" className="btn btn-primary" style={{ padding: '8px 14px', fontSize: 13 }} disabled={saving || !answer.trim()} onClick={save}>
             {saving ? 'Saving…' : 'Save answer'}
           </button>
         </div>
       )}
+      {error && <p role="alert" style={{ fontSize: 12, color: 'var(--flag)', marginTop: 6 }}>{error}</p>}
     </div>
   );
 }

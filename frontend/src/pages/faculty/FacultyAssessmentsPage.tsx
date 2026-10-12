@@ -3,12 +3,13 @@ import { useAuth } from '../../auth/AuthContext';
 import { tenantForRole } from '../../auth/types';
 import { apiFetch } from '../../api/client';
 import { useApiQuery } from '../../api/useApiQuery';
-import type { AssessmentResponse, AssessmentComponentResponse, QuestionResponse } from '../../api/types';
+import type { AssessmentAttemptResponse, AssessmentResponse, AssessmentComponentResponse, QuestionResponse } from '../../api/types';
 import { PageHeader } from '../../components/ui/PageHeader';
 import { DataTable, type Column } from '../../components/ui/DataTable';
 import { StatusBadge } from '../../components/ui/StatusBadge';
 import { ConfirmActionButton } from '../../components/ui/ConfirmActionButton';
 import { FacultySectionSelect, useFacultySectionOptions } from '../../components/ui/FacultySectionSelect';
+import { StudentName } from '../../components/ui/StudentName';
 import { useState as useFormState } from 'react';
 
 const NEXT_ACTION: Record<string, { label: string; endpoint: string } | undefined> = {
@@ -19,6 +20,14 @@ const NEXT_ACTION: Record<string, { label: string; endpoint: string } | undefine
 };
 
 const QUESTION_TYPES = ['MCQ_SINGLE', 'TRUE_FALSE', 'SHORT_ANSWER', 'ESSAY'] as const;
+
+/** The answer key each question type is graded against (what the grader reads). Students never receive it. */
+const KEY_HINT: Record<string, string> = {
+  MCQ_SINGLE: '{"correctOption":"B"}',
+  TRUE_FALSE: '{"correctOption":"True"}',
+  SHORT_ANSWER: '{"correctAnswer":"queue"}',
+  ESSAY: 'No key: a person marks it',
+};
 
 function ComponentQuestions({ componentId, isDraft }: { componentId: string; isDraft: boolean }) {
   const questions = useApiQuery<QuestionResponse[]>(`/assessment/questions?componentId=${componentId}`);
@@ -83,13 +92,16 @@ function ComponentQuestions({ componentId, isDraft }: { componentId: string; isD
             <input id={`q-points-${componentId}`} type="number" min="0" step="0.5" value={points} onChange={(e) => setPoints(e.target.value)} style={{ fontSize: 12, padding: '5px 8px' }} />
           </div>
           <div className="form-field" style={{ marginBottom: 0, flex: 1, minWidth: 160 }}>
-            <label htmlFor={`q-meta-${componentId}`} style={{ fontSize: 11 }}>Answer key (JSON, e.g. options/correct answer)</label>
+            <label htmlFor={`q-meta-${componentId}`} style={{ fontSize: 11 }}>Answer key (JSON)</label>
             <input id={`q-meta-${componentId}`} value={metadataJson} onChange={(e) => setMetadataJson(e.target.value)}
-              placeholder='{"options":["A","B"],"correctIndex":0}' style={{ fontSize: 12, padding: '5px 8px' }} />
+              placeholder={KEY_HINT[type]} style={{ fontSize: 12, padding: '5px 8px' }} />
           </div>
           <button type="submit" className="btn btn-primary" style={{ padding: '6px 12px', fontSize: 12 }} disabled={busy || !prompt}>
             {busy ? 'Adding…' : 'Add question'}
           </button>
+          <p style={{ flexBasis: '100%', fontSize: 11, color: 'var(--ink-soft)', margin: '4px 0 0' }}>
+            For multiple choice, write the options (A, B, C…) into the prompt: students answer with the letter. The key is never shown to students.
+          </p>
         </form>
       )}
       {message && <p role="status" style={{ fontSize: 11, color: 'var(--flag)', marginTop: 8 }}>{message}</p>}
@@ -162,6 +174,44 @@ function AssessmentComponents({ assessmentId, isDraft }: { assessmentId: string;
   );
 }
 
+/** Attempts at one assessment, with the Evaluate action that auto-grades the questions that have an answer key. */
+function AssessmentAttempts({ assessmentId }: { assessmentId: string }) {
+  const attempts = useApiQuery<AssessmentAttemptResponse[]>(`/assessment/attempts?assessmentId=${assessmentId}`);
+  const [message, setMessage] = useState('');
+  const [busyId, setBusyId] = useState<string | null>(null);
+
+  const evaluate = async (attemptId: string) => {
+    setBusyId(attemptId); setMessage('');
+    try {
+      const r = await apiFetch<{ totalScore: number; autoGradedCount: number; manualPendingCount: number }>(`/assessment/attempts/${attemptId}/evaluate`, { method: 'POST' });
+      setMessage(`Score ${r.totalScore}: ${r.autoGradedCount} question(s) graded automatically, ${r.manualPendingCount} waiting for a person to mark.`);
+      attempts.refetch();
+    } catch (e) { setMessage(e instanceof Error ? e.message : 'Could not evaluate this attempt.'); }
+    finally { setBusyId(null); }
+  };
+
+  const columns: Column<AssessmentAttemptResponse>[] = [
+    { key: 'student', header: 'Student', render: (t) => <StudentName studentId={t.studentId} /> },
+    { key: 'attempt', header: 'Attempt', render: (t) => t.attemptNo },
+    { key: 'status', header: 'Status', render: (t) => <StatusBadge value={t.status} /> },
+    { key: 'score', header: 'Score', render: (t) => (t.score === null ? '—' : t.score) },
+    { key: 'actions', header: '', render: (t) => (t.status === 'SUBMITTED' ? (
+      <button type="button" className="btn btn-ghost" style={{ padding: '6px 10px', fontSize: 12 }} disabled={busyId === t.id} onClick={() => evaluate(t.id)}>
+        {busyId === t.id ? 'Evaluating…' : 'Evaluate'}
+      </button>
+    ) : null) },
+  ];
+
+  return (
+    <div style={{ padding: '4px 0 16px' }}>
+      <h3 style={{ fontSize: 15, margin: '16px 0 8px' }}>Attempts</h3>
+      {message && <p role="status" style={{ fontSize: 13, marginBottom: 8 }}>{message}</p>}
+      <DataTable columns={columns} rows={attempts.data} loading={attempts.loading} error={attempts.error} onRetry={attempts.refetch}
+        emptyTitle="No attempts yet" emptyDescription="No student has started this assessment." rowKey={(t) => t.id} />
+    </div>
+  );
+}
+
 export default function FacultyAssessmentsPage() {
   const { user } = useAuth();
   const tenantId = tenantForRole(user, 'FACULTY');
@@ -169,6 +219,7 @@ export default function FacultyAssessmentsPage() {
   const { sections, loading: sectionsLoading } = useFacultySectionOptions(tenantId, facultyId);
   const [sectionId, setSectionId] = useState('');
   const [expanded, setExpanded] = useState<string | null>(null);
+  const [attemptsFor, setAttemptsFor] = useState<string | null>(null);
   const [assessmentTitle, setAssessmentTitle] = useFormState('');
   const [assessmentType, setAssessmentType] = useFormState('QUIZ');
   const [marks, setMarks] = useFormState('100');
@@ -215,6 +266,12 @@ export default function FacultyAssessmentsPage() {
               onClick={() => setExpanded(expanded === a.id ? null : a.id)}>
               Components
             </button>
+            {(a.status === 'OPEN' || a.status === 'CLOSED' || a.status === 'PUBLISHED') && (
+              <button type="button" className="btn btn-ghost" style={{ padding: '6px 10px', fontSize: 12 }}
+                onClick={() => setAttemptsFor(attemptsFor === a.id ? null : a.id)}>
+                Attempts
+              </button>
+            )}
             {next && <ConfirmActionButton label={next.label} confirmMessage={`${next.label} "${a.title}"?`} onConfirm={() => transition(a.id, next.endpoint)} />}
             {canVoid && <ConfirmActionButton label="Void" variant="danger" confirmMessage={`Void "${a.title}"? This cannot be undone.`} onConfirm={() => transition(a.id, 'void')} />}
           </div>
@@ -250,6 +307,7 @@ export default function FacultyAssessmentsPage() {
             <AssessmentComponents assessmentId={expanded}
               isDraft={assessments.data?.find((a) => a.id === expanded)?.status === 'DRAFT'} />
           )}
+          {attemptsFor && <AssessmentAttempts assessmentId={attemptsFor} />}
         </>
       )}
     </div>
