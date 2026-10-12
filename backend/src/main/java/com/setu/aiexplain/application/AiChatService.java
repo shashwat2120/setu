@@ -125,7 +125,9 @@ public class AiChatService {
         this.fallbackIsRedundant = "ollama".equals(activeProvider);
         this.primaryCanStream = "google-genai".equals(activeProvider);
         this.timeoutSeconds = timeoutSeconds;
-        this.primaryTimeoutSeconds = Math.min(primaryTimeoutSeconds, timeoutSeconds);
+        // The shorter budget exists so a hung remote primary hands over to the local fallback quickly. When the primary IS the local
+        // model there is nothing to hand over to, and a small local model doing tool calls genuinely needs the full request timeout.
+        this.primaryTimeoutSeconds = this.fallbackIsRedundant ? timeoutSeconds : Math.min(primaryTimeoutSeconds, timeoutSeconds);
     }
 
     public sealed interface ChatResult {

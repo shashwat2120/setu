@@ -152,6 +152,26 @@ class AiChatFallbackTests {
     }
 
     @Test
+    void whenThePrimaryIsOllamaItselfThePrimaryBudgetDoesNotCutItOff() {
+        var s = day13Fixtures.provisionEnrolledScenario("AIFB6");
+        TestAuthentication.authenticateAs(s.student().userId());
+        try {
+            // There is no fallback to hand over to, so the 1s primary budget must not apply: a 2.5s answer within the 30s request
+            // timeout still succeeds. (Regression: a 25s cap made every slow-but-working local Ollama answer fail.)
+            var service = new AiChatService(scriptedClient(2_500, "local answer"), scriptedClient(0, "unused fallback"),
+                aiToolService, invocationRecorder, rateLimiter, tenantContext, authorizationContext, auditLogWriter,
+                new AiConversationMemory(6, 30, 100), "ollama", "gemini-test", ollamaModel, 30L, 1L);
+
+            var result = service.chat("Hello");
+
+            assertThat(result).isInstanceOf(AiChatService.ChatResult.Success.class);
+            assertThat(((AiChatService.ChatResult.Success) result).answer()).isEqualTo("local answer");
+        } finally {
+            TestAuthentication.clear();
+        }
+    }
+
+    @Test
     void aSlowButAnsweringPrimaryWithinItsBudgetIsStillUsed() {
         var s = day13Fixtures.provisionEnrolledScenario("AIFB5");
         TestAuthentication.authenticateAs(s.student().userId());
