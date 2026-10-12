@@ -34,6 +34,8 @@ export async function completeStepUp(): Promise<void> {
   const finish = await apiFetch<{ accessToken: string }>('/auth/step-up/finish', {
     method: 'POST',
     body: { challengeId: options.challengeId, authenticationResponseJson: JSON.stringify(assertionToJson(credential)) },
+    // The server answers 401 when the passkey is rejected. That must show an error, not sign the person out of the whole app.
+    unauthorizedKeepsSession: true,
   });
   setAccessToken(finish.accessToken);
 }

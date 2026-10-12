@@ -70,12 +70,17 @@ export interface ApiFetchOptions {
   body?: unknown;
   /** Skip the automatic refresh-and-retry on 401 — used only by auth endpoints themselves to avoid loops. */
   skipAuthRetry?: boolean;
+  /**
+   * A 401 from this endpoint is a normal answer, not proof that the session ended (for example the server rejecting a passkey
+   * assertion during step-up). No refresh-and-retry and no sign-out: the caller gets the error and the person stays signed in.
+   */
+  unauthorizedKeepsSession?: boolean;
   /** Extra request headers — e.g. the Idempotency-Key a payment initiation must send. Never used for auth (that's always the in-memory bearer token). */
   headers?: Record<string, string>;
 }
 
 export async function apiFetch<T>(path: string, options: ApiFetchOptions = {}): Promise<T> {
-  const { method = 'GET', body, skipAuthRetry, headers } = options;
+  const { method = 'GET', body, skipAuthRetry, unauthorizedKeepsSession, headers } = options;
 
   const doFetch = async (): Promise<Response> =>
     fetch(path, {
@@ -91,7 +96,7 @@ export async function apiFetch<T>(path: string, options: ApiFetchOptions = {}): 
 
   let response = await doFetch();
 
-  if (response.status === 401 && !skipAuthRetry) {
+  if (response.status === 401 && !skipAuthRetry && !unauthorizedKeepsSession) {
     const refreshed = await refreshAccessToken();
     if (refreshed) {
       response = await doFetch();
@@ -110,7 +115,7 @@ export async function apiFetch<T>(path: string, options: ApiFetchOptions = {}): 
 
   if (!response.ok) {
     const envelope = (json ?? {}) as ErrorEnvelope;
-    if (response.status === 401) {
+    if (response.status === 401 && !unauthorizedKeepsSession) {
       onUnauthorized?.();
     }
     throw new ApiError(
