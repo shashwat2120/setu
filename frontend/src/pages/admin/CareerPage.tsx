@@ -2,36 +2,11 @@ import { useMemo, useState } from 'react';
 import { useAuth } from '../../auth/AuthContext';
 import { tenantForRole } from '../../auth/types';
 import { useApiQuery } from '../../api/useApiQuery';
-import type { JobResponse, ApplicationResponse, SkillResponse, StudentResponse, PageResponse, PlacementRecordResponse } from '../../api/types';
+import type { JobResponse, SkillResponse, StudentResponse, PageResponse, PlacementRecordResponse } from '../../api/types';
 import { PageHeader } from '../../components/ui/PageHeader';
 import { DataTable, type Column } from '../../components/ui/DataTable';
 import { StatusBadge } from '../../components/ui/StatusBadge';
 import { SearchInput } from '../../components/ui/SearchInput';
-
-function JobApplications({ jobId, studentNameFor }: { jobId: string; studentNameFor: (id: string) => string }) {
-  const applications = useApiQuery<ApplicationResponse[]>(`/career/applications/by-job?jobId=${jobId}`);
-
-  const columns: Column<ApplicationResponse>[] = [
-    { key: 'student', header: 'Student', render: (a) => studentNameFor(a.studentId) },
-    { key: 'status', header: 'Status', render: (a) => <StatusBadge value={a.status} /> },
-    { key: 'appliedAt', header: 'Applied', render: (a) => new Date(a.appliedAt).toLocaleDateString() },
-  ];
-
-  return (
-    <div style={{ padding: '4px 0 16px' }}>
-      <DataTable
-        columns={columns}
-        rows={applications.data}
-        loading={applications.loading}
-        error={applications.error}
-        onRetry={applications.refetch}
-        emptyTitle="No applications"
-        emptyDescription="No students have applied to this job yet."
-        rowKey={(a) => a.id}
-      />
-    </div>
-  );
-}
 
 function StudentPlacements({ studentId }: { studentId: string }) {
   const records = useApiQuery<PlacementRecordResponse[]>(`/career/placement-records?studentId=${studentId}`);
@@ -59,7 +34,6 @@ function StudentPlacements({ studentId }: { studentId: string }) {
 export default function CareerPage() {
   const { user } = useAuth();
   const tenantId = tenantForRole(user, 'COLLEGE_ADMIN');
-  const [expandedJob, setExpandedJob] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [selectedStudent, setSelectedStudent] = useState<{ id: string; name: string } | null>(null);
 
@@ -68,11 +42,6 @@ export default function CareerPage() {
   const students = useApiQuery<PageResponse<StudentResponse>>(
     tenantId ? `/directory/students?tenantId=${tenantId}&size=500` : null,
   );
-  const studentNameFor = (studentId: string) =>
-    students.data?.content.find((s) => s.id === studentId)?.fullName
-    ?? students.data?.content.find((s) => s.id === studentId)?.email
-    ?? studentId;
-
   const filteredStudents = useMemo(() => {
     if (!students.data || !search.trim()) return [];
     const q = search.toLowerCase();
@@ -83,18 +52,6 @@ export default function CareerPage() {
     { key: 'title', header: 'Title', render: (j) => j.title },
     { key: 'employer', header: 'Employer', render: (j) => j.employer },
     { key: 'status', header: 'Status', render: (j) => <StatusBadge value={j.status} /> },
-    {
-      key: 'actions',
-      header: 'Actions',
-      render: (j) => (
-        <div style={{ display: 'flex', gap: 8 }}>
-          <button type="button" className="btn btn-ghost" style={{ padding: '6px 10px', fontSize: 12 }}
-            onClick={() => setExpandedJob(expandedJob === j.id ? null : j.id)}>
-            Applications
-          </button>
-        </div>
-      ),
-    },
   ];
 
   const skillColumns: Column<SkillResponse>[] = [
@@ -104,7 +61,7 @@ export default function CareerPage() {
 
   return (
     <div>
-      <PageHeader title="Career" subtitle="A read-only view of job listings, applications, skills, and placement records." />
+      <PageHeader title="Career" subtitle="A read-only view of job listings, the skills catalog, and placement records." />
 
       <h2 style={{ fontSize: 18, marginBottom: 12 }}>Jobs</h2>
       <DataTable
@@ -117,7 +74,6 @@ export default function CareerPage() {
         emptyDescription="No job listings have been posted yet."
         rowKey={(j) => j.id}
       />
-      {expandedJob && <JobApplications jobId={expandedJob} studentNameFor={studentNameFor} />}
 
       <h2 style={{ fontSize: 18, margin: '24px 0 12px' }}>Skills catalog</h2>
       <DataTable
