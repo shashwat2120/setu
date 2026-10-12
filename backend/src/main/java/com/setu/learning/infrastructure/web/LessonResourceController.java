@@ -28,19 +28,19 @@ public class LessonResourceController {
         this.lessonResourceService = lessonResourceService;
     }
 
-    public record AddRequest(UUID lessonId, String mediaRef, LessonResourceType type) {
+    public record AddRequest(UUID lessonId, String mediaRef, LessonResourceType type, String title) {
     }
 
-    public record ResourceResponse(UUID id, UUID lessonId, String mediaRef, String type) {
+    public record ResourceResponse(UUID id, UUID lessonId, String mediaRef, String type, String title) {
     }
 
     private static ResourceResponse toResponse(LessonResource r) {
-        return new ResourceResponse(r.id(), r.lessonId(), r.mediaRef(), r.type().name());
+        return new ResourceResponse(r.id(), r.lessonId(), r.mediaRef(), r.type().name(), r.title());
     }
 
     @PostMapping
     public ResponseEntity<?> add(@RequestBody AddRequest request) {
-        var result = lessonResourceService.add(request.lessonId(), request.mediaRef(), request.type());
+        var result = lessonResourceService.add(request.lessonId(), request.mediaRef(), request.type(), request.title());
         return switch (result) {
             case LessonResourceService.AddResult.Success r -> {
                 var added = lessonResourceService.listForLesson(request.lessonId()).stream()

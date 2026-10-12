@@ -7,37 +7,53 @@ import com.setu.shared.tenant.TenantContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.ai.chat.messages.AssistantMessage;
+import org.springframework.ai.chat.messages.Message;
+import org.springframework.ai.chat.messages.UserMessage;
+import org.springframework.ai.chat.model.ToolContext;
+import org.springframework.ai.support.ToolCallbacks;
+import org.springframework.ai.tool.ToolCallback;
+import org.springframework.ai.tool.definition.ToolDefinition;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.core.context.SecurityContext;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 
+import java.time.Duration;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.function.Supplier;
 
 /**
  * Day 14 §AI: the orchestration layer — see the architecture flow in the
- * canonical spec §10. Nothing here is asynchronous/queued: a single
- * {@code POST /ai/chat} call runs authentication (already done by
- * SecurityConfig before this class ever runs) -&gt; tenant resolution -&gt;
- * rate limit -&gt; a single bounded model call (with tool-calling handled
- * transparently by {@link ChatClient}) -&gt; audit -&gt; response. The
- * queued/running/completed async job shape the canonical spec's demo
- * targets (§14) mention is Sprint 6B's AI-Service-extraction scope
- * (AGENTS.md 6B.3), not Day 14's — disclosed here rather than silently
- * assumed.
+ * canonical spec §10. A single {@code POST /ai/chat} (or {@code /ai/chat/stream}) call runs
+ * authentication (already done by SecurityConfig before this class ever runs) -&gt; tenant
+ * resolution -&gt; rate limit -&gt; a single bounded model call (with tool-calling handled
+ * transparently by {@link ChatClient}) -&gt; audit -&gt; response. The queued/running/completed
+ * async job shape the canonical spec's demo targets (§14) mention is Sprint 6B's
+ * AI-Service-extraction scope (AGENTS.md 6B.3) — disclosed here rather than silently assumed.
  * <p>
- * No conversation memory of any kind is kept (Day 14 §15 explicit
- * instruction) — every call is one independent turn; nothing about a
- * prior message influences a later one.
+ * Conversation memory: the last few completed exchanges for this (user, tenant) are replayed to the model
+ * (see {@link AiConversationMemory} for exactly what is and is not kept, and why). This replaces the
+ * original Day 14 "no memory of any kind" rule; the system prompt tells the model that earlier turns are
+ * context only and that any figure must still come from a tool call in the CURRENT turn.
+ * <p>
+ * Streaming: when the primary provider is Gemini, the answer is relayed token by token through a
+ * {@link StreamListener}. The Ollama fallback is never streamed — its streaming connector is the
+ * Windows-JDK-NIO path documented in {@code AiChatConfig} as unusable on this dev machine — so a fallback
+ * answer is delivered as a single chunk. A stream that fails AFTER tokens were already sent is not retried
+ * through the fallback (that would splice two different answers together); it is reported as unavailable.
  */
 @Service
 public class AiChatService {
@@ -53,10 +69,13 @@ public class AiChatService {
     private final TenantContext tenantContext;
     private final AuthorizationContext authorizationContext;
     private final AuditLogWriter auditLogWriter;
+    private final AiConversationMemory memory;
     private final String modelName;
     private final String fallbackModelName;
     private final boolean fallbackIsRedundant;
+    private final boolean primaryCanStream;
     private final long timeoutSeconds;
+    private final long primaryTimeoutSeconds;
     private final ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor();
 
     /**
@@ -67,14 +86,31 @@ public class AiChatService {
      * provider is itself Ollama, {@code fallbackIsRedundant} skips the pointless
      * retry-through-the-same-provider rather than doubling an already-slow local call.
      */
+    public AiChatService(ChatClient chatClient, ChatClient fallbackChatClient,
+                          AiToolService aiToolService, AiToolInvocationRecorder invocationRecorder,
+                          AiRateLimiter rateLimiter, TenantContext tenantContext, AuthorizationContext authorizationContext,
+                          AuditLogWriter auditLogWriter, AiConversationMemory memory,
+                          String activeProvider, String geminiModel, String ollamaModel, long timeoutSeconds) {
+        this(chatClient, fallbackChatClient, aiToolService, invocationRecorder, rateLimiter, tenantContext,
+            authorizationContext, auditLogWriter, memory, activeProvider, geminiModel, ollamaModel, timeoutSeconds,
+            timeoutSeconds);
+    }
+
+    /**
+     * {@code primaryTimeoutSeconds} bounds the primary (Gemini) attempt on its own. A hung primary used to cost the whole
+     * {@code timeoutSeconds} before the slower local fallback even started (measured: 60s + ~35s = ~98s per answer);
+     * the fallback keeps the longer {@code timeoutSeconds} because a local small model genuinely needs it.
+     */
+    @org.springframework.beans.factory.annotation.Autowired
     public AiChatService(ChatClient chatClient, @Qualifier("fallbackChatClient") ChatClient fallbackChatClient,
                           AiToolService aiToolService, AiToolInvocationRecorder invocationRecorder,
                           AiRateLimiter rateLimiter, TenantContext tenantContext, AuthorizationContext authorizationContext,
-                          AuditLogWriter auditLogWriter,
+                          AuditLogWriter auditLogWriter, AiConversationMemory memory,
                           @Value("${spring.ai.model.chat:google-genai}") String activeProvider,
                           @Value("${spring.ai.google.genai.chat.options.model:gemini-2.5-flash}") String geminiModel,
                           @Value("${spring.ai.ollama.chat.options.model:llama3.2:3b}") String ollamaModel,
-                          @Value("${app.ai.request-timeout-seconds:30}") long timeoutSeconds) {
+                          @Value("${app.ai.request-timeout-seconds:30}") long timeoutSeconds,
+                          @Value("${app.ai.primary-timeout-seconds:25}") long primaryTimeoutSeconds) {
         this.chatClient = chatClient;
         this.fallbackChatClient = fallbackChatClient;
         this.aiToolService = aiToolService;
@@ -83,10 +119,13 @@ public class AiChatService {
         this.tenantContext = tenantContext;
         this.authorizationContext = authorizationContext;
         this.auditLogWriter = auditLogWriter;
+        this.memory = memory;
         this.modelName = "ollama".equals(activeProvider) ? ollamaModel : geminiModel;
         this.fallbackModelName = ollamaModel;
         this.fallbackIsRedundant = "ollama".equals(activeProvider);
+        this.primaryCanStream = "google-genai".equals(activeProvider);
         this.timeoutSeconds = timeoutSeconds;
+        this.primaryTimeoutSeconds = Math.min(primaryTimeoutSeconds, timeoutSeconds);
     }
 
     public sealed interface ChatResult {
@@ -103,12 +142,39 @@ public class AiChatService {
         }
     }
 
-    public ChatResult chat(String message) {
+    /** Receives progress while a chat call runs. Both methods may be called from threads other than the caller's. */
+    public interface StreamListener {
+        /** A tool is about to run — the raw tool name, e.g. {@code getStudentAttendance}. */
+        void onTool(String toolName);
+
+        /** The next piece of the answer text. */
+        void onToken(String text);
+    }
+
+    /** Empty if the message is acceptable; otherwise the reason it is not. */
+    public Optional<String> validate(String message) {
         if (message == null || message.isBlank()) {
-            return new ChatResult.InvalidRequest("message must not be blank");
+            return Optional.of("message must not be blank");
         }
         if (message.length() > MAX_MESSAGE_LENGTH) {
-            return new ChatResult.InvalidRequest("message must be at most " + MAX_MESSAGE_LENGTH + " characters");
+            return Optional.of("message must be at most " + MAX_MESSAGE_LENGTH + " characters");
+        }
+        return Optional.empty();
+    }
+
+    /** Forgets this user's current conversation — the "New conversation" action. */
+    public void clearHistory() {
+        memory.clear(AiConversationMemory.Key.of(authorizationContext.currentUserId(), tenantContext.tenantId()));
+    }
+
+    public ChatResult chat(String message) {
+        return chat(message, null);
+    }
+
+    public ChatResult chat(String message, StreamListener listener) {
+        Optional<String> invalid = validate(message);
+        if (invalid.isPresent()) {
+            return new ChatResult.InvalidRequest(invalid.get());
         }
 
         UUID userId = authorizationContext.currentUserId();
@@ -120,25 +186,57 @@ public class AiChatService {
             return new ChatResult.RateLimited();
         }
 
+        AiConversationMemory.Key memoryKey = AiConversationMemory.Key.of(userId, tenantId);
+        List<Message> history = toMessages(memory.history(memoryKey));
+
+        boolean[] tokensSent = {false};
+        StreamListener tracked = listener == null ? null : new StreamListener() {
+            @Override
+            public void onTool(String toolName) {
+                listener.onTool(toolName);
+            }
+
+            @Override
+            public void onToken(String text) {
+                tokensSent[0] = true;
+                listener.onToken(text);
+            }
+        };
+
         invocationRecorder.drain(); // clear any stale state left on this (pooled) thread by an earlier call
+        ChatResult result;
         try {
-            return attempt(chatClient, message, modelName, tenantId, userId, correlationId);
+            result = attempt(chatClient, message, modelName, primaryCanStream && tracked != null, primaryTimeoutSeconds, tracked, history,
+                tenantId, userId, correlationId);
         } catch (Exception primaryFailure) {
             logProviderFailure(primaryFailure, tenantId, userId, correlationId, "primary");
-            if (fallbackIsRedundant) {
+            if (fallbackIsRedundant || tokensSent[0]) {
                 return new ChatResult.ProviderUnavailable();
             }
             invocationRecorder.drain();
             try {
-                ChatResult result = attempt(fallbackChatClient, message, fallbackModelName, tenantId, userId, correlationId);
+                result = attempt(fallbackChatClient, message, fallbackModelName, false, this.timeoutSeconds, tracked, history,
+                    tenantId, userId, correlationId);
                 auditLogWriter.write(tenantId.orElse(null), userId, "AI_CHAT_FALLBACK_USED", "ai_chat", correlationId,
                     Map.of("fallbackModel", fallbackModelName));
-                return result;
             } catch (Exception fallbackFailure) {
                 logProviderFailure(fallbackFailure, tenantId, userId, correlationId, "fallback");
                 return new ChatResult.ProviderUnavailable();
             }
         }
+        if (result instanceof ChatResult.Success success) {
+            memory.append(memoryKey, message, success.answer());
+        }
+        return result;
+    }
+
+    private static List<Message> toMessages(List<AiConversationMemory.Turn> turns) {
+        List<Message> messages = new ArrayList<>(turns.size() * 2);
+        for (AiConversationMemory.Turn turn : turns) {
+            messages.add(new UserMessage(turn.user()));
+            messages.add(new AssistantMessage(turn.assistant()));
+        }
+        return messages;
     }
 
     /**
@@ -153,27 +251,150 @@ public class AiChatService {
      * security context and reported "not found" regardless of which model answered. Capturing the context on
      * the calling thread and restoring it inside the submitted task is the standard fix for this exact
      * ThreadLocal-across-executor-boundary gap.
+     * <p>
+     * The streaming branch has the same problem one level deeper: the reactive pipeline may run a tool on a
+     * thread this class never created, so there the context is carried by {@link ContextCarryingToolCallback}
+     * around each individual tool call instead of by the outer task alone.
      */
-    private ChatResult attempt(ChatClient client, String message, String modelForResult,
+    private ChatResult attempt(ChatClient client, String message, String modelForResult, boolean stream,
+                                long timeoutSeconds, StreamListener listener, List<Message> history,
                                 Optional<UUID> tenantId, UUID userId, UUID correlationId) throws Exception {
         SecurityContext callerContext = SecurityContextHolder.getContext();
-        String answer = executor.submit(() -> {
+        String answer;
+        List<String> sources;
+        if (stream) {
+            List<String> toolNames = new CopyOnWriteArrayList<>();
+            ToolCallback[] tools = wrapTools(callerContext, toolNames, listener);
+            Future<String> running = executor.submit(() -> {
                 SecurityContextHolder.setContext(callerContext);
                 try {
-                    return client.prompt()
+                    StringBuilder text = new StringBuilder();
+                    client.prompt()
+                        .messages(history)
                         .user(message)
-                        .tools(aiToolService)
-                        .call()
-                        .content();
+                        .toolCallbacks(tools)
+                        .stream()
+                        .content()
+                        .doOnNext(chunk -> {
+                            text.append(chunk);
+                            listener.onToken(chunk);
+                        })
+                        .blockLast(Duration.ofSeconds(timeoutSeconds));
+                    return text.toString();
                 } finally {
                     SecurityContextHolder.clearContext();
                 }
-            })
-            .get(timeoutSeconds, TimeUnit.SECONDS);
-        List<String> sources = invocationRecorder.drain();
+            });
+            try {
+                answer = running.get(timeoutSeconds + 1, TimeUnit.SECONDS);
+            } catch (TimeoutException e) {
+                running.cancel(true);
+                throw e;
+            }
+            sources = List.copyOf(toolNames);
+        } else {
+            // The tools run (and record their names, in a ThreadLocal) on this worker thread, so the names must be
+            // drained HERE — draining on the calling thread afterwards always came back empty and the answer lost its sources.
+            record Outcome(String answer, List<String> tools) {
+            }
+            Outcome outcome = executor.submit(() -> {
+                    SecurityContextHolder.setContext(callerContext);
+                    try {
+                        String content = client.prompt()
+                            .messages(history)
+                            .user(message)
+                            .tools(aiToolService)
+                            .call()
+                            .content();
+                        return new Outcome(content, invocationRecorder.drain());
+                    } finally {
+                        SecurityContextHolder.clearContext();
+                    }
+                })
+                .get(timeoutSeconds, TimeUnit.SECONDS);
+            answer = outcome.answer();
+            sources = outcome.tools();
+            if (listener != null) {
+                sources.forEach(listener::onTool);
+            }
+        }
+        if (answer == null || answer.isBlank()) {
+            throw new IllegalStateException("model returned an empty answer");
+        }
+        if (listener != null && !stream) {
+            listener.onToken(answer);
+        }
         auditLogWriter.write(tenantId.orElse(null), userId, "AI_CHAT_COMPLETED", "ai_chat", correlationId,
-            Map.of("toolsInvoked", sources, "messageLength", message.length(), "model", modelForResult));
+            Map.of("toolsInvoked", sources, "messageLength", message.length(), "model", modelForResult,
+                "streamed", stream, "priorExchanges", history.size() / 2));
         return new ChatResult.Success(answer, sources, Instant.now(), modelForResult, correlationId);
+    }
+
+    private ToolCallback[] wrapTools(SecurityContext callerContext, List<String> toolNames, StreamListener listener) {
+        ToolCallback[] raw = ToolCallbacks.from(aiToolService);
+        ToolCallback[] wrapped = new ToolCallback[raw.length];
+        for (int i = 0; i < raw.length; i++) {
+            wrapped[i] = new ContextCarryingToolCallback(raw[i], callerContext, toolNames, listener, invocationRecorder);
+        }
+        return wrapped;
+    }
+
+    /**
+     * Runs one tool under the caller's security context regardless of which thread the streaming pipeline
+     * picked, records the tool name for source attribution, announces it to the listener, and clears the
+     * per-thread invocation recorder afterwards (that recorder is thread-local, and on a pooled reactive thread
+     * nothing else would ever drain it).
+     */
+    private static final class ContextCarryingToolCallback implements ToolCallback {
+        private final ToolCallback delegate;
+        private final SecurityContext context;
+        private final List<String> toolNames;
+        private final StreamListener listener;
+        private final AiToolInvocationRecorder recorder;
+
+        ContextCarryingToolCallback(ToolCallback delegate, SecurityContext context, List<String> toolNames,
+                                     StreamListener listener, AiToolInvocationRecorder recorder) {
+            this.delegate = delegate;
+            this.context = context;
+            this.toolNames = toolNames;
+            this.listener = listener;
+            this.recorder = recorder;
+        }
+
+        @Override
+        public ToolDefinition getToolDefinition() {
+            return delegate.getToolDefinition();
+        }
+
+        @Override
+        public org.springframework.ai.tool.metadata.ToolMetadata getToolMetadata() {
+            return delegate.getToolMetadata();
+        }
+
+        @Override
+        public String call(String toolInput) {
+            return run(() -> delegate.call(toolInput));
+        }
+
+        @Override
+        public String call(String toolInput, ToolContext toolContext) {
+            return run(() -> delegate.call(toolInput, toolContext));
+        }
+
+        private String run(Supplier<String> invocation) {
+            String name = delegate.getToolDefinition().name();
+            if (!toolNames.contains(name)) {
+                toolNames.add(name);
+            }
+            listener.onTool(name);
+            SecurityContextHolder.setContext(context);
+            try {
+                return invocation.get();
+            } finally {
+                SecurityContextHolder.clearContext();
+                recorder.drain();
+            }
+        }
     }
 
     /** Never leaks a stack trace or connection details to the caller (no response body reveals this) — logged server-side only, per this class's existing error-handling contract. */

@@ -185,4 +185,47 @@ public class AssignmentSubmissionService {
     public List<AssignmentSubmission> listForStudent(UUID studentId) {
         return assignmentSubmissionRepository.findByStudentId(studentId);
     }
+
+    public sealed interface GradeResult {
+        record Success() implements GradeResult {
+        }
+
+        record NotFound() implements GradeResult {
+        }
+
+        record NotGradeable() implements GradeResult {
+        }
+    }
+
+    /**
+     * Marks/feedback stored directly on the submission row — deliberately NOT routed through
+     * assessment.grades' versioned publish pipeline (that pipeline needs an existing assessment_id/component_id,
+     * and nothing provisions one per-assignment; wiring that cross-module linkage is a separate, larger change).
+     * Only SUBMITTED/LATE can be graded — a DRAFT row was never actually submitted, and a re-grade of an already
+     * GRADED row goes through this same method (idempotent overwrite, matching how a typo-fix would work), not a
+     * separate correction/versioning path the way assessment.grades has.
+     */
+    @Transactional
+    public GradeResult grade(UUID submissionId, java.math.BigDecimal marks, String feedback) {
+        Optional<AssignmentSubmission> maybe = assignmentSubmissionRepository.findById(submissionId);
+        if (maybe.isEmpty()) {
+            return new GradeResult.NotFound();
+        }
+        AssignmentSubmission submission = maybe.get();
+        if (submission.status() != AssignmentSubmissionStatus.SUBMITTED && submission.status() != AssignmentSubmissionStatus.LATE
+            && submission.status() != AssignmentSubmissionStatus.GRADED) {
+            return new GradeResult.NotGradeable();
+        }
+        Assignment assignment = assignmentService.findById(submission.assignmentId())
+            .orElseThrow(() -> new IllegalArgumentException("assignment not found"));
+        assignmentService.assertManage(assignment.sectionId(), assignment.tenantId());
+
+        UUID actor = authorizationContext.currentUserId();
+        Instant now = Instant.now();
+        submission.grade(marks, feedback, actor, now);
+        assignmentSubmissionRepository.save(submission);
+        auditLogWriter.write(assignment.tenantId(), actor, "ASSIGNMENT_SUBMISSION_GRADED",
+            "learning.assignment_submissions", submission.id(), Map.of("marks", String.valueOf(marks)));
+        return new GradeResult.Success();
+    }
 }

@@ -12,16 +12,61 @@ import { StatusBadge } from '../../components/ui/StatusBadge';
 import { ConfirmActionButton } from '../../components/ui/ConfirmActionButton';
 import { SectionSelect, useSectionOptions } from '../../components/ui/SectionSelect';
 
-function StudentOverrides({ studentId }: { studentId: string }) {
+const OVERRIDE_TYPES = ['PREREQUISITE', 'CAPACITY', 'CREDIT_LIMIT', 'HOLD'] as const;
+
+function StudentOverrides({ studentId, sectionId }: { studentId: string; sectionId: string }) {
   const overrides = useApiQuery<EnrollmentOverrideResponse[]>(`/enrollment/overrides?studentId=${studentId}`);
+  const [type, setType] = useState<typeof OVERRIDE_TYPES[number]>('CAPACITY');
+  const [reason, setReason] = useState('');
+  const [expiresAt, setExpiresAt] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [message, setMessage] = useState('');
+
+  const createOverride = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault(); setSubmitting(true); setMessage('');
+    try {
+      await apiFetch('/enrollment/overrides', {
+        method: 'POST',
+        body: { studentId, sectionId, type, reason: reason || null, expiresAt: expiresAt ? new Date(expiresAt).toISOString() : null },
+      });
+      setMessage('Override granted.'); setReason(''); setExpiresAt(''); overrides.refetch();
+    } catch (e) { setMessage(e instanceof Error ? e.message : 'Could not create the override.'); }
+    finally { setSubmitting(false); }
+  };
+
+  const revoke = async (overrideId: string) => {
+    await apiFetch(`/enrollment/overrides/${overrideId}/revoke`, { method: 'POST' });
+    overrides.refetch();
+  };
+
   const columns: Column<EnrollmentOverrideResponse>[] = [
     { key: 'type', header: 'Type', render: (o) => o.type },
     { key: 'status', header: 'Status', render: (o) => <StatusBadge value={o.status} /> },
     { key: 'reason', header: 'Reason', render: (o) => o.reason ?? '—' },
     { key: 'expires', header: 'Expires', render: (o) => o.expiresAt ?? 'never' },
+    {
+      key: 'actions',
+      header: 'Actions',
+      render: (o) => (o.status === 'ACTIVE' ? (
+        <ConfirmActionButton label="Revoke" variant="danger" confirmMessage="Revoke this override?" onConfirm={() => revoke(o.id)} />
+      ) : null),
+    },
   ];
   return (
     <div style={{ padding: '4px 0 16px' }}>
+      <form onSubmit={createOverride} className="card" style={{ marginBottom: 14, maxWidth: 460 }}>
+        <h3 style={{ fontSize: 14, marginBottom: 8 }}>Grant an override for this section</h3>
+        <div className="form-field">
+          <label htmlFor="override-type">Blocked by</label>
+          <select id="override-type" value={type} onChange={(e) => setType(e.target.value as typeof OVERRIDE_TYPES[number])}>
+            {OVERRIDE_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+          </select>
+        </div>
+        <div className="form-field"><label htmlFor="override-reason">Reason</label><input id="override-reason" value={reason} onChange={(e) => setReason(e.target.value)} /></div>
+        <div className="form-field"><label htmlFor="override-expires">Expires (optional)</label><input id="override-expires" type="datetime-local" value={expiresAt} onChange={(e) => setExpiresAt(e.target.value)} /></div>
+        {message && <p role="status" style={{ marginBottom: 10 }}>{message}</p>}
+        <button type="submit" className="btn btn-primary" disabled={submitting}>{submitting ? 'Granting…' : 'Grant override'}</button>
+      </form>
       <DataTable
         columns={columns}
         rows={overrides.data}
@@ -153,7 +198,7 @@ export default function EnrollmentPage() {
           {selectedStudent && (
             <>
               <h2 style={{ fontSize: 18, margin: '24px 0 12px' }}>Overrides — {selectedStudent.name}</h2>
-              <StudentOverrides studentId={selectedStudent.id} />
+              <StudentOverrides studentId={selectedStudent.id} sectionId={sectionId} />
             </>
           )}
         </>

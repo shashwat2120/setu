@@ -35,7 +35,7 @@ public class FacultyController {
     public record CreateRequest(UUID tenantId, UUID personId, String employeeNo, String designation, LocalDate joinedAt) {
     }
 
-    public record FacultyResponse(UUID id, UUID tenantId, UUID personId, String employeeNo, String status,
+    public record FacultyResponse(UUID id, UUID tenantId, UUID personId, UUID userId, String employeeNo, String status,
                                    String fullName, String email) {
     }
 
@@ -43,7 +43,12 @@ public class FacultyController {
         var person = personDirectory.findById(f.personId());
         String fullName = person.map(PersonDirectory.PersonSummary::legalName).orElse(null);
         String email = person.map(PersonDirectory.PersonSummary::email).orElse(null);
-        return new FacultyResponse(f.id(), f.tenantId(), f.personId(), f.employeeNo(), f.status().name(), fullName, email);
+        // userId is exposed here because this whole endpoint is already the sanctioned "tenant-scoped profile"
+        // path PersonController's own javadoc points admins to (never raw /identity/persons/{id}, which is
+        // self-service-only) — needed so a college admin can assign this faculty member as a department HOD
+        // (identity.RoleAssignmentController operates on userId, not facultyId).
+        UUID userId = person.map(PersonDirectory.PersonSummary::userId).orElse(null);
+        return new FacultyResponse(f.id(), f.tenantId(), f.personId(), userId, f.employeeNo(), f.status().name(), fullName, email);
     }
 
     public record PageResponse<T>(List<T> content, int page, int size, long totalElements, int totalPages) {

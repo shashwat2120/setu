@@ -62,7 +62,7 @@ public class Day9TestFixtures {
             userRegistrationService.register(prefix + "-" + UUID.randomUUID() + "@example.com");
         UUID facultyUserId = outcome.userId();
         UUID roleId = roleRepository.findByCode(RoleCode.FACULTY).orElseThrow().id();
-        userRoleRepository.save(new UserRole(UUID.randomUUID(), facultyUserId, roleId, tenant.tenantId(), Instant.now(), null));
+        userRoleRepository.save(new UserRole(UUID.randomUUID(), facultyUserId, roleId, tenant.tenantId(), Day7TestFixtures.roleStartedAt(), null));
 
         TestAuthentication.authenticateAs(tenant.adminUserId());
         UUID facultyId;

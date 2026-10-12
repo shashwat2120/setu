@@ -96,12 +96,22 @@ public class Day7TestFixtures {
         return new Tenant(tenant, admin);
     }
 
+    /**
+     * When a freshly created test role takes effect. Authorization treats a role as active only if its start is not after a
+     * fresh {@code Instant.now()}, so a start of exactly "now" can look not-yet-active if the machine's clock steps back or
+     * jitters by a few milliseconds (seen once as a spurious {@code tenant_mismatch} in an otherwise passing full run). Starting a few
+     * seconds in the past removes that dependency on the clock without changing what any test asserts.
+     */
+    public static java.time.Instant roleStartedAt() {
+        return java.time.Instant.now().minusSeconds(5);
+    }
+
     public UUID provisionUserWithRole(UUID tenantId, RoleCode role, String emailPrefix) {
         var outcome = (UserRegistrationService.Outcome.Created)
             userRegistrationService.register(emailPrefix + "-" + UUID.randomUUID() + "@example.com");
         UUID userId = outcome.userId();
         UUID roleId = roleRepository.findByCode(role).orElseThrow().id();
-        userRoleRepository.save(new UserRole(UUID.randomUUID(), userId, roleId, tenantId, Instant.now(), null));
+        userRoleRepository.save(new UserRole(UUID.randomUUID(), userId, roleId, tenantId, Day7TestFixtures.roleStartedAt(), null));
         return userId;
     }
 

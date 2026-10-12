@@ -64,8 +64,9 @@ public class AssessmentController {
     }
 
     @GetMapping
-    public ResponseEntity<List<AssessmentResponseBody>> listForSection(@RequestParam UUID sectionId, @RequestParam UUID tenantId) {
-        return ResponseEntity.ok(assessmentService.listForSection(sectionId, tenantId).stream()
+    public ResponseEntity<List<AssessmentResponseBody>> listForSection(@RequestParam UUID sectionId, @RequestParam UUID tenantId,
+            @RequestParam(required = false) UUID guardianForStudentId) {
+        return ResponseEntity.ok(assessmentService.listForSection(sectionId, tenantId, guardianForStudentId).stream()
             .map(AssessmentController::toResponse).toList());
     }
 

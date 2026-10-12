@@ -56,7 +56,7 @@ module" column — each table's schema is its owning module's schema:
 | `institution` | `colleges, campuses, academic_organizations, departments` |
 | `catalog` | `academic_years, academic_periods, programs, curricula, curriculum_requirements, curriculum_requirement_courses, courses, course_prerequisites, buildings, rooms, meeting_patterns, degree_progress` — `degree_progress` moved here per **approved decision H3** |
 | `enrollment` | `classes, class_students, class_faculty, course_sections, faculty_assignments, student_programs, enrollments, enrollment_actions, enrollment_overrides, waitlist_entries` — `student_academic_periods` moved to `record` |
-| `attendance` | `attendance_sessions, attendance_qr_sessions, attendance_records` |
+| `attendance` | `attendance_sessions, attendance_qr_sessions, attendance_records, faculty_attendance, faculty_attendance_regularisations, staff_attendance_policies` |
 | `learning` | `course_modules, lessons, lesson_resources, learning_progress, assignments, assignment_submissions` |
 | `assessment` | `assessments, assessment_components, questions, assessment_attempts, assessment_responses, grades` — stops at grade production (H3); does not include the record-keeping tables below |
 | `record` | `student_academic_records, student_academic_periods, transcripts, graduation_applications` — `degree_progress` moved out to `catalog` (H3); `student_academic_periods` moved in (confirmed Record-owned — official term snapshot). This schema maps to the new **Academic Record** Sprint 6 candidate, not folded into Assessment. |

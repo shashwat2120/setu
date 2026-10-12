@@ -34,17 +34,26 @@ public class LessonResource {
     @Column(nullable = false)
     private LessonResourceType type;
 
+    /** Optional human-readable name, e.g. "Think Python, 2nd edition (PDF)"; null means "show the address". */
+    @Column(name = "title")
+    private String title;
+
     protected LessonResource() {
     }
 
     public LessonResource(UUID id, UUID lessonId, String mediaRef, LessonResourceType type) {
+        this(id, lessonId, mediaRef, type, null);
+    }
+
+    public LessonResource(UUID id, UUID lessonId, String mediaRef, LessonResourceType type, String title) {
         if (mediaRef == null || mediaRef.isBlank()) {
             throw new IllegalArgumentException("mediaRef must not be blank");
         }
         this.id = id;
         this.lessonId = lessonId;
-        this.mediaRef = mediaRef;
+        this.mediaRef = ContentReferences.required(mediaRef);
         this.type = type;
+        this.title = ContentReferences.title(title);
     }
 
     public UUID id() {
@@ -57,6 +66,10 @@ public class LessonResource {
 
     public String mediaRef() {
         return mediaRef;
+    }
+
+    public String title() {
+        return title;
     }
 
     public LessonResourceType type() {

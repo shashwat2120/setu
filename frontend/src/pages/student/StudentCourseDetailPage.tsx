@@ -11,12 +11,14 @@ import { PageHeader } from '../../components/ui/PageHeader';
 import { StatusBadge } from '../../components/ui/StatusBadge';
 import { Skeleton, ErrorState } from '../../components/ui/EmptyState';
 import { ConfirmActionButton } from '../../components/ui/ConfirmActionButton';
+import { LessonContent } from '../../components/learning/LessonContent';
 
 const inputStyle = { padding: '8px 10px', fontSize: 13, border: '1px solid var(--rule)', borderRadius: 4, background: 'var(--bg-elev)', color: 'var(--ink)' };
 
 function LessonRow({ lesson, studentId }: { lesson: LessonResponse; studentId: string }) {
   const progress = useApiQuery<LearningProgressResponse>(`/learning/progress?lessonId=${lesson.id}&studentId=${studentId}`);
   const [saving, setSaving] = useState(false);
+  const [open, setOpen] = useState(false);
 
   const markComplete = async () => {
     setSaving(true);
@@ -40,8 +42,14 @@ function LessonRow({ lesson, studentId }: { lesson: LessonResponse; studentId: s
   const state = progress.data?.state ?? 'NOT_STARTED';
 
   return (
+    <>
     <tr>
-      <td data-label="Lesson">{lesson.title}</td>
+      <td data-label="Lesson">
+        <button type="button" className="btn btn-ghost" aria-expanded={open}
+          style={{ padding: '4px 8px', fontSize: 13, textAlign: 'left' }} onClick={() => setOpen(!open)}>
+          {open ? '▾' : '▸'} {lesson.title}
+        </button>
+      </td>
       <td data-label="Type">{lesson.type ?? '—'}</td>
       <td data-label="Progress">{progress.loading ? <Skeleton height={16} width={70} /> : <StatusBadge value={state} />}</td>
       <td data-label="Actions">
@@ -59,6 +67,14 @@ function LessonRow({ lesson, studentId }: { lesson: LessonResponse; studentId: s
         </div>
       </td>
     </tr>
+    {open && (
+      <tr>
+        <td colSpan={4} style={{ background: 'var(--bg-elev)' }}>
+          <LessonContent lessonId={lesson.id} lessonType={lesson.type} contentRef={lesson.contentRef} />
+        </td>
+      </tr>
+    )}
+    </>
   );
 }
 
@@ -121,9 +137,17 @@ function AssignmentRow({ assignment }: { assignment: LearningAssignmentResponse 
         <StatusBadge value={assignment.status} />
       </div>
       {submissions.loading ? <Skeleton height={20} /> : latest ? (
-        <p style={{ fontSize: 13, marginTop: 10 }}>
-          Your submission: <StatusBadge value={latest.status} /> (attempt {latest.attemptNo}, {latest.submittedAt ? new Date(latest.submittedAt).toLocaleString() : 'pending'})
-        </p>
+        <div style={{ fontSize: 13, marginTop: 10 }}>
+          <p>
+            Your submission: <StatusBadge value={latest.status} /> (attempt {latest.attemptNo}, {latest.submittedAt ? new Date(latest.submittedAt).toLocaleString() : 'pending'})
+          </p>
+          {latest.status === 'GRADED' && (
+            <p style={{ marginTop: 6 }}>
+              Marks: <strong>{latest.marks ?? '—'} / {assignment.maxMarks}</strong>
+              {latest.feedback && <><br />Feedback: {latest.feedback}</>}
+            </p>
+          )}
+        </div>
       ) : (
         assignment.status === 'PUBLISHED' && (
           <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>

@@ -200,7 +200,8 @@ public class AssignmentService {
         return assignmentRepository.findById(assignmentId);
     }
 
-    private void assertManage(UUID sectionId, UUID tenantId) {
+    /** Package-visible: also used by AssignmentSubmissionService#grade for the same faculty/admin write check. */
+    void assertManage(UUID sectionId, UUID tenantId) {
         if (accessSupport.currentAssignedFacultyId(tenantId, sectionId).isPresent()) {
             return;
         }

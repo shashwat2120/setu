@@ -148,6 +148,21 @@ public class StudentProgramService {
         return studentProgramRepository.findByStudentId(studentId);
     }
 
+    /**
+     * The curriculum of this student's ACTIVE program, with NO authorization check of its own — a narrow cross-module
+     * read port for a caller that has already authorized access to the student's academic record ({@code
+     * record.AcademicRecordService}: self / admin / guardian grant). {@link #history} cannot serve that caller because
+     * it demands the registrar-only {@code MANAGE_STUDENT_PROGRAMS}, which would make a student's own degree progress
+     * unreadable to the student.
+     */
+    @Transactional(readOnly = true)
+    public Optional<UUID> activeCurriculumIdUnchecked(UUID studentId) {
+        return studentProgramRepository.findByStudentId(studentId).stream()
+            .filter(p -> p.status() == StudentProgramStatus.ACTIVE)
+            .map(StudentProgram::curriculumId)
+            .findFirst();
+    }
+
     public enum StatusChangeResult {SUCCESS, NOT_FOUND, INVALID_TRANSITION}
 
     @Transactional

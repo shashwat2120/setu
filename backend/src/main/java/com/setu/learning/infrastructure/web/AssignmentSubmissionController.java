@@ -5,12 +5,14 @@ import com.setu.learning.domain.AssignmentSubmission;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.math.BigDecimal;
 import java.util.List;
 import java.util.UUID;
 
@@ -29,12 +31,14 @@ public class AssignmentSubmissionController {
     }
 
     public record SubmissionResponse(UUID id, UUID assignmentId, UUID studentId, int attemptNo, String submittedAt,
-                                      String status, String contentRef) {
+                                      String status, String contentRef, BigDecimal marks, String feedback,
+                                      UUID gradedBy, String gradedAt) {
     }
 
     private static SubmissionResponse toResponse(AssignmentSubmission s) {
         return new SubmissionResponse(s.id(), s.assignmentId(), s.studentId(), s.attemptNo(),
-            s.submittedAt() == null ? null : s.submittedAt().toString(), s.status().name(), s.contentRef());
+            s.submittedAt() == null ? null : s.submittedAt().toString(), s.status().name(), s.contentRef(),
+            s.marks(), s.feedback(), s.gradedBy(), s.gradedAt() == null ? null : s.gradedAt().toString());
     }
 
     @PostMapping
@@ -63,6 +67,20 @@ public class AssignmentSubmissionController {
     public ResponseEntity<List<SubmissionResponse>> listForAssignment(@RequestParam UUID assignmentId) {
         return ResponseEntity.ok(assignmentSubmissionService.listForAssignment(assignmentId).stream()
             .map(AssignmentSubmissionController::toResponse).toList());
+    }
+
+    public record GradeRequest(BigDecimal marks, String feedback) {
+    }
+
+    @PostMapping("/{submissionId}/grade")
+    public ResponseEntity<?> grade(@PathVariable UUID submissionId, @RequestBody GradeRequest request) {
+        var result = assignmentSubmissionService.grade(submissionId, request.marks(), request.feedback());
+        return switch (result) {
+            case AssignmentSubmissionService.GradeResult.Success ignored -> ResponseEntity.noContent().build();
+            case AssignmentSubmissionService.GradeResult.NotFound ignored -> ResponseEntity.status(HttpStatus.NOT_FOUND).build();
+            case AssignmentSubmissionService.GradeResult.NotGradeable ignored ->
+                ResponseEntity.status(HttpStatus.CONFLICT).body(new ErrorResponse("this submission cannot be graded in its current state"));
+        };
     }
 
     public record ErrorResponse(String message) {

@@ -24,6 +24,7 @@ import java.util.UUID;
  * the entity constructor, its actual object-storage existence is out of
  * this module's scope (no media/object-storage service exists in Sprint 5).
  */
+@org.springframework.modulith.NamedInterface // shared.seed.DemoDataSeeder attaches the example documents through this
 @Service
 public class LessonResourceService {
 
@@ -51,8 +52,13 @@ public class LessonResourceService {
         }
     }
 
-    @Transactional
     public AddResult add(UUID lessonId, String mediaRef, LessonResourceType type) {
+        return add(lessonId, mediaRef, type, null);
+    }
+
+    /** {@code title} is an optional human-readable name for the attached document or link. */
+    @Transactional
+    public AddResult add(UUID lessonId, String mediaRef, LessonResourceType type, String title) {
         Optional<Lesson> lesson = lessonService.findById(lessonId);
         if (lesson.isEmpty()) {
             return new AddResult.LessonNotFound();
@@ -62,7 +68,7 @@ public class LessonResourceService {
 
         LessonResource resource;
         try {
-            resource = new LessonResource(UUID.randomUUID(), lessonId, mediaRef, type);
+            resource = new LessonResource(UUID.randomUUID(), lessonId, mediaRef, type, title);
         } catch (IllegalArgumentException e) {
             return new AddResult.InvalidResourceData(e.getMessage());
         }
@@ -98,5 +104,14 @@ public class LessonResourceService {
         CourseModule module = lessonService.moduleFor(lesson).orElseThrow();
         lessonService.assertRead(module.sectionId(), module.tenantId());
         return lessonResourceRepository.findByLessonId(lessonId);
+    }
+
+    /** Demo-data helper: plain-UUID unwrap of {@link #add(UUID, String, LessonResourceType, String)}; any refusal is a seed bug. */
+    @Transactional
+    public UUID addForSeed(UUID lessonId, String mediaRef, LessonResourceType type, String title) {
+        return switch (add(lessonId, mediaRef, type, title)) {
+            case AddResult.Success s -> s.resourceId();
+            default -> throw new IllegalStateException("seed lesson resource refused for " + mediaRef);
+        };
     }
 }

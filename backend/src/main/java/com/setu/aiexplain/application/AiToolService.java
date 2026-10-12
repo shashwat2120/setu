@@ -7,6 +7,8 @@ import com.setu.assessment.domain.Grade;
 import com.setu.attendance.application.AttendanceRecordService;
 import com.setu.career.application.ApplicationService;
 import com.setu.enrollment.application.EnrollmentService;
+import com.setu.finance.application.StudentChargeService;
+import com.setu.record.application.AcademicRecordService;
 import com.setu.institution.application.PolicyDocumentService;
 import com.setu.learning.application.AssignmentService;
 import com.setu.learning.application.CourseModuleService;
@@ -68,6 +70,8 @@ public class AiToolService {
     private final LearningProgressService learningProgressService;
     private final PolicyDocumentService policyDocumentService;
     private final AiToolInvocationRecorder invocationRecorder;
+    private final AcademicRecordService academicRecordService;
+    private final StudentChargeService studentChargeService;
 
     public AiToolService(AiAccessSupport accessSupport, EnrollmentService enrollmentService,
                           AttendanceRecordService attendanceRecordService, GradeService gradeService,
@@ -75,8 +79,11 @@ public class AiToolService {
                           AssessmentService assessmentService, ApplicationService applicationService,
                           CourseModuleService courseModuleService, LessonService lessonService,
                           LearningProgressService learningProgressService, PolicyDocumentService policyDocumentService,
-                          AiToolInvocationRecorder invocationRecorder) {
+                          AiToolInvocationRecorder invocationRecorder, AcademicRecordService academicRecordService,
+                          StudentChargeService studentChargeService) {
         this.invocationRecorder = invocationRecorder;
+        this.academicRecordService = academicRecordService;
+        this.studentChargeService = studentChargeService;
         this.accessSupport = accessSupport;
         this.enrollmentService = enrollmentService;
         this.attendanceRecordService = attendanceRecordService;
@@ -344,6 +351,77 @@ public class AiToolService {
             }
         }
         return recommendations.stream().limit(MAX_RESOURCES).toList();
+    }
+
+    // ---- 8. getTranscript ---------------------------------------------------------------------
+
+    public record TranscriptCourse(String courseCode, String courseTitle, BigDecimal credits, String enrollmentStatus,
+                                    BigDecimal courseGradePoint, List<BigDecimal> gradePoints) {
+    }
+
+    public record TranscriptResult(BigDecimal gpa, BigDecimal creditsCompleted, BigDecimal creditsRequired,
+                                    BigDecimal degreeProgressPercent, boolean hasActiveProgram,
+                                    List<TranscriptCourse> courses) {
+    }
+
+    @Tool(description = "Get a student's academic transcript: every course with its credits, enrollment status and "
+        + "course grade point (weighted across its assessment components), the overall credit-weighted GPA to date, and "
+        + "degree progress (credits completed vs. required). Omit studentId for the caller's own transcript.")
+    public Object getTranscript(
+        @ToolParam(description = "Student profile UUID, or omit for the caller's own transcript", required = false) String studentId) {
+        invocationRecorder.record("getTranscript");
+        var target = accessSupport.resolveTargetStudent(studentId);
+        if (target.isEmpty()) {
+            return new ToolError("student not found");
+        }
+        var t = target.get();
+        try {
+            // AcademicRecordService authorizes the caller itself (self / admin / guardian grant) on both calls
+            var transcript = academicRecordService.transcript(t.studentId(), t.tenantId());
+            var progress = academicRecordService.degreeProgress(t.studentId(), t.tenantId());
+            List<TranscriptCourse> courses = transcript.lines().stream()
+                .map(l -> new TranscriptCourse(l.courseCode(), l.courseTitle(), l.credits(), l.enrollmentStatus(),
+                    l.courseGradePoint(), l.grades().stream().map(AcademicRecordService.GradeLine::gradePoint).filter(Objects::nonNull).toList()))
+                .toList();
+            return new TranscriptResult(transcript.gpa(), progress.creditsCompleted(), progress.creditsRequired(),
+                progress.percentage(), progress.hasActiveProgram(), courses);
+        } catch (AccessDeniedException e) {
+            return new ToolError("not authorized to view this student's transcript");
+        }
+    }
+
+    // ---- 9. getFeeStatus ----------------------------------------------------------------------
+
+    public record FeeCharge(BigDecimal amount, String currency, java.time.LocalDate dueDate, String status) {
+    }
+
+    public record FeeStatusResult(BigDecimal outstanding, String currency, List<FeeCharge> charges) {
+    }
+
+    @Tool(description = "Get a student's fee charges (amount, due date, status) and the total still outstanding "
+        + "(charges that are pending or overdue). Omit studentId for the caller's own fees.")
+    public Object getFeeStatus(
+        @ToolParam(description = "Student profile UUID, or omit for the caller's own fees", required = false) String studentId) {
+        invocationRecorder.record("getFeeStatus");
+        var target = accessSupport.resolveTargetStudent(studentId);
+        if (target.isEmpty()) {
+            return new ToolError("student not found");
+        }
+        try {
+            // StudentChargeService authorizes the caller itself (self / finance admin / guardian grant)
+            var charges = studentChargeService.listForStudent(target.get().studentId());
+            List<FeeCharge> lines = charges.stream()
+                .map(c -> new FeeCharge(c.amount(), c.currency(), c.dueDate(), c.status().name()))
+                .sorted(Comparator.comparing(FeeCharge::dueDate, Comparator.nullsLast(Comparator.naturalOrder())))
+                .toList();
+            BigDecimal outstanding = lines.stream()
+                .filter(c -> c.status().equals("PENDING") || c.status().equals("OVERDUE"))
+                .map(FeeCharge::amount).reduce(BigDecimal.ZERO, BigDecimal::add);
+            String currency = lines.isEmpty() ? null : lines.get(0).currency();
+            return new FeeStatusResult(outstanding, currency, lines);
+        } catch (AccessDeniedException e) {
+            return new ToolError("not authorized to view this student's fees");
+        }
     }
 
     private static double round1(double value) {

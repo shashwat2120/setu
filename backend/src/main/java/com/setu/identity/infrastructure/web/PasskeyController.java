@@ -137,7 +137,25 @@ public class PasskeyController {
                 ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(new ErrorResponse("credential has been revoked"));
             case PasskeyAuthOutcome.VerificationFailed failed ->
                 ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(new ErrorResponse(failed.message()));
+            case PasskeyAuthOutcome.AccountNotActive notActive -> ResponseEntity.status(HttpStatus.FORBIDDEN)
+                .body(new ErrorResponse(notActive.status() == com.setu.identity.domain.UserStatus.DEACTIVATED
+                    ? "this account has been deactivated"
+                    : "this account has been suspended"));
         };
+    }
+
+    public record PasskeyResponse(UUID id, boolean active) {
+    }
+
+    /** Lets a user see whether they already have a passkey before starting a new registration ceremony, and
+     * gives the revoke UI something to list — {@link PasskeyAuthenticationService#listForUser} already existed
+     * for the authentication-options lookup but had no HTTP surface of its own. */
+    @org.springframework.web.bind.annotation.GetMapping
+    public ResponseEntity<List<PasskeyResponse>> list(java.security.Principal principal) {
+        UUID userId = authenticatedUserId(principal)
+            .orElseThrow(() -> new org.springframework.security.access.AccessDeniedException("not authenticated"));
+        return ResponseEntity.ok(authenticationService.listForUser(userId).stream()
+            .map(p -> new PasskeyResponse(p.id(), p.isActive())).toList());
     }
 
     @DeleteMapping("/{passkeyId}")

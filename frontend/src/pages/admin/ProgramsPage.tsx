@@ -1,7 +1,7 @@
 import { useAuth } from '../../auth/AuthContext';
 import { tenantForRole } from '../../auth/types';
 import { useApiQuery } from '../../api/useApiQuery';
-import type { ProgramResponse } from '../../api/types';
+import type { ProgramResponse, CurriculumResponse } from '../../api/types';
 import { PageHeader } from '../../components/ui/PageHeader';
 import { DataTable, type Column } from '../../components/ui/DataTable';
 import { StatusBadge } from '../../components/ui/StatusBadge';
@@ -9,9 +9,56 @@ import { apiFetch } from '../../api/client';
 import { useState } from 'react';
 import type { DepartmentResponse } from '../../api/types';
 
+function ProgramCurricula({ programId, tenantId }: { programId: string; tenantId: string }) {
+  const curricula = useApiQuery<CurriculumResponse[]>(`/catalog/curricula?programId=${programId}&tenantId=${tenantId}`, [programId]);
+  const [form, setForm] = useState({ name: '', versionLabel: '', effectiveFrom: '', effectiveTo: '' });
+  const [message, setMessage] = useState('');
+  async function createCurriculum(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault(); setMessage('');
+    try {
+      await apiFetch('/catalog/curricula', {
+        method: 'POST',
+        body: { programId, name: form.name, versionLabel: form.versionLabel, effectiveFrom: form.effectiveFrom, effectiveTo: form.effectiveTo || null },
+      });
+      setMessage('Curriculum version created.'); setForm({ name: '', versionLabel: '', effectiveFrom: '', effectiveTo: '' }); curricula.refetch();
+    } catch (e) { setMessage(e instanceof Error ? e.message : 'Could not create curriculum.'); }
+  }
+  const columns: Column<CurriculumResponse>[] = [
+    { key: 'name', header: 'Name', render: (c) => c.name },
+    { key: 'version', header: 'Version', render: (c) => <span className="mono">{c.versionLabel}</span> },
+    { key: 'effective', header: 'Effective', render: (c) => `${c.effectiveFrom} → ${c.effectiveTo ?? 'open'}` },
+  ];
+  return (
+    <div style={{ padding: '10px 16px 16px' }}>
+      <form onSubmit={createCurriculum} style={{ padding: '0 0 12px' }}>
+        <h3 style={{ fontSize: 15, marginBottom: 8 }}>Add curriculum version</h3>
+        {([['name', 'Name', 'text'], ['versionLabel', 'Version label', 'text'], ['effectiveFrom', 'Effective from', 'date'], ['effectiveTo', 'Effective to (optional)', 'date']] as const).map(([key, label, type]) => (
+          <div className="form-field" key={key}>
+            <label htmlFor={`curriculum-${key}`}>{label}</label>
+            <input id={`curriculum-${key}`} type={type} value={form[key]} onChange={(e) => setForm({ ...form, [key]: e.target.value })} required={key !== 'effectiveTo'} />
+          </div>
+        ))}
+        {message && <p role="status">{message}</p>}
+        <button className="btn btn-primary">Create curriculum version</button>
+      </form>
+      <DataTable
+        columns={columns}
+        rows={curricula.data}
+        loading={curricula.loading}
+        error={curricula.error}
+        onRetry={curricula.refetch}
+        emptyTitle="No curriculum versions"
+        emptyDescription="This program has no curriculum versions yet — students cannot be assigned to it until one exists."
+        rowKey={(c) => c.id}
+      />
+    </div>
+  );
+}
+
 export default function ProgramsPage() {
   const { user } = useAuth();
   const tenantId = tenantForRole(user, 'COLLEGE_ADMIN');
+  const [expandedProgram, setExpandedProgram] = useState<string | null>(null);
 
   const { data, loading, error, refetch } = useApiQuery<ProgramResponse[]>(
     tenantId ? `/catalog/programs?tenantId=${tenantId}` : null,
@@ -29,6 +76,16 @@ export default function ProgramsPage() {
     { key: 'code', header: 'Code', render: (p) => <span className="mono">{p.code}</span> },
     { key: 'name', header: 'Name', render: (p) => p.name },
     { key: 'status', header: 'Status', render: (p) => <StatusBadge value={p.status} /> },
+    {
+      key: 'actions',
+      header: '',
+      render: (p) => (
+        <button type="button" className="btn btn-ghost" style={{ padding: '6px 10px', fontSize: 12 }}
+          onClick={() => setExpandedProgram(expandedProgram === p.id ? null : p.id)}>
+          {expandedProgram === p.id ? 'Hide curricula' : 'Curricula'}
+        </button>
+      ),
+    },
   ];
 
   return (
@@ -48,6 +105,7 @@ export default function ProgramsPage() {
         emptyDescription="No programs have been added yet."
         rowKey={(p) => p.id}
       />
+      {expandedProgram && tenantId && <ProgramCurricula programId={expandedProgram} tenantId={tenantId} />}
     </div>
   );
 }

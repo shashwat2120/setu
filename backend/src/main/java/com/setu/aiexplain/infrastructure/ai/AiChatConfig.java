@@ -82,6 +82,10 @@ public class AiChatConfig {
            not permitted - never fabricate a plausible-sounding answer to fill the gap.
         6. When you use a tool's result, be clear about what it covers (e.g. "across your currently enrolled \
            sections") so the user understands the scope of what you are reporting.
+        7. Earlier turns of this conversation are context for what the user means (e.g. "and CS201?"), nothing \
+           more. Figures in them may be out of date, so any number, grade, percentage, or status you state now \
+           must come from a tool call made in the CURRENT turn - call the tool again rather than repeating an \
+           earlier figure.
         """;
 
     /**

@@ -229,8 +229,22 @@ public class CourseSectionService implements CourseSectionDirectory {
      * {@code unassignedFacultyCannotViewAnotherFacultysSection} already encodes that as required behavior.
      */
     public Optional<CourseSection> get(UUID sectionId) {
+        return get(sectionId, null);
+    }
+
+    /**
+     * Adds a fourth bypass for a guardian viewing on behalf of one student ({@code guardianForStudentId}, passed by
+     * the guardian dashboard): allowed only when that exact student is actively ENROLLED in this section AND the
+     * caller holds a real, active {@code VIEW_SCHEDULE} delegation for that student. Without it the guardian
+     * dashboard's schedule rows could not resolve a section's course (guardians never hold {@code VIEW_TENANT_DATA}).
+     */
+    @Transactional(readOnly = true)
+    public Optional<CourseSection> get(UUID sectionId, UUID guardianForStudentId) {
         Optional<CourseSection> section = courseSectionRepository.findById(sectionId);
         section.ifPresent(s -> {
+            if (guardianForStudentId != null && isDelegatedGuardianOfEnrolledStudent(s, guardianForStudentId)) {
+                return;
+            }
             UUID currentUserId = authorizationContext.currentUserId();
             UUID ownFacultyId = facultyDirectory.findIdByTenantAndOwnerUserId(s.tenantId(), currentUserId).orElse(null);
             boolean isAssignedFaculty = ownFacultyId != null && facultyAssignmentService.isActivelyAssigned(s.id(), ownFacultyId);
@@ -242,6 +256,22 @@ public class CourseSectionService implements CourseSectionDirectory {
             }
         });
         return section;
+    }
+
+    private boolean isDelegatedGuardianOfEnrolledStudent(CourseSection section, UUID studentId) {
+        boolean enrolled = enrollmentRepository.findBySectionIdAndStudentId(section.id(), studentId)
+            .filter(e -> e.status() == EnrollmentStatus.ENROLLED).isPresent();
+        if (!enrolled) {
+            return false;
+        }
+        var owner = studentProfileService.findTenantAndOwnerUserId(studentId);
+        if (owner.isEmpty() || !owner.get().tenantId().equals(section.tenantId())) {
+            return false;
+        }
+        ResourceRef delegated = ResourceRef.of("course_section", section.id(), section.tenantId())
+            .ownedBy(owner.get().ownerUserId()).delegatableForStudent(studentId);
+        // a denied delegation (no grant, revoked, expired, wrong student) falls through to the normal checks, which deny
+        return authorizationContext.can("VIEW_SCHEDULE", delegated).isAllowed();
     }
 
     @Transactional(readOnly = true)

@@ -108,6 +108,20 @@ class GlobalExceptionHandlerTests {
             .andExpect(jsonPath("$.requestId").exists());
     }
 
+    // ---- 405: wrong HTTP method is a client mistake, not an unexpected server error ----
+
+    @Test
+    void wrongHttpMethod_returns405NotTheGeneric500() throws Exception {
+        var tenant = fixtures.provisionTenant("GEH405");
+
+        // /ai/chat is POST-only; a GET used to fall through to the 500 INTERNAL_ERROR safety net
+        mockMvc.perform(get("/ai/chat").header("Authorization", bearerFor(tenant.adminUserId())))
+            .andExpect(status().isMethodNotAllowed())
+            .andExpect(jsonPath("$.status").value(405))
+            .andExpect(jsonPath("$.code").value("METHOD_NOT_ALLOWED"))
+            .andExpect(jsonPath("$.requestId").exists());
+    }
+
     @Test
     void garbageToken_treatedSameAsNoToken_returns401() throws Exception {
         mockMvc.perform(get("/institution/colleges/" + UUID.randomUUID())

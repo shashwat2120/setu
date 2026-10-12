@@ -38,7 +38,12 @@ import java.util.UUID;
  * be syntactically valid JSON, and if present must be a JSON object (not a
  * scalar/array), matching the column's own {@code '{}'}-shaped default.
  * This gap and decision are disclosed in the Day 7 report.
+ * <p>
+ * {@code @NamedInterface} added alongside {@code record.application.AcademicRecordService}'s degree-progress
+ * calculation — the very evaluation this class's own javadoc above says is deliberately out of scope here; that
+ * other module needed {@link #listByCurriculum} (and {@link CurriculumRequirement#minCredits()}) to compute it.
  */
+@org.springframework.modulith.NamedInterface
 @Service
 public class CurriculumRequirementService {
 
@@ -132,6 +137,30 @@ public class CurriculumRequirementService {
             authorizationContext.assertCan(VIEW_PERMISSION, ResourceRef.of("curriculum_requirement", r.id(), tenantId));
         });
         return requirement;
+    }
+
+    /** Plain-UUID unwrap of {@link #create} for {@code shared.seed.DemoDataSeeder}, matching the other catalog services' {@code *ForSeed} methods. */
+    @Transactional
+    public UUID createForSeed(UUID curriculumId, String groupCode, BigDecimal minCredits, Integer minCourses, String ruleJson) {
+        return switch (create(curriculumId, groupCode, minCredits, minCourses, ruleJson)) {
+            case CreateResult.Success s -> s.requirementId();
+            default -> throw new IllegalStateException("seed curriculum requirement creation failed: " + groupCode);
+        };
+    }
+
+    /**
+     * Sum of every requirement's minimum credits for this curriculum, with NO authorization check of its own — a
+     * narrow cross-module read port for {@code record.AcademicRecordService}, which has already authorized access to
+     * the student's academic record (self / admin / guardian grant). {@link #listByCurriculum} cannot serve that
+     * caller because it demands the admin-only {@code VIEW_TENANT_DATA}, which would hide a student's own degree
+     * progress from the student. Exposes only a credit total, never the requirement rows.
+     */
+    @Transactional(readOnly = true)
+    public java.math.BigDecimal totalMinCreditsUnchecked(UUID curriculumId) {
+        return requirementRepository.findByCurriculumId(curriculumId).stream()
+            .map(CurriculumRequirement::minCredits)
+            .filter(java.util.Objects::nonNull)
+            .reduce(java.math.BigDecimal.ZERO, java.math.BigDecimal::add);
     }
 
     @Transactional(readOnly = true)

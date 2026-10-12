@@ -110,10 +110,16 @@ public class AssessmentComponentService {
 
     @Transactional(readOnly = true)
     public List<AssessmentComponent> listForAssessment(UUID assessmentId) {
+        return listForAssessment(assessmentId, null);
+    }
+
+    /** {@code guardianForStudentId}: a guardian's VIEW_GRADES delegation for that exact student — see {@link AssessmentService#get(UUID, UUID)}. */
+    @Transactional(readOnly = true)
+    public List<AssessmentComponent> listForAssessment(UUID assessmentId, UUID guardianForStudentId) {
         // get() throws if the caller has no read access at all, and returns empty (no exception) if the caller can
         // read SOME assessments but this one is DRAFT/SCHEDULED and hidden from them — components inherit the same
         // visibility, so an empty Optional here means an empty component list, not an error.
-        Optional<Assessment> visible = assessmentService.get(assessmentId);
+        Optional<Assessment> visible = assessmentService.get(assessmentId, guardianForStudentId);
         if (visible.isEmpty()) {
             return List.of();
         }
@@ -127,6 +133,19 @@ public class AssessmentComponentService {
                 return oa.compareTo(ob);
             })
             .toList();
+    }
+
+    /**
+     * Component id -&gt; weight, with NO authorization check of its own — a narrow cross-module read port for
+     * {@code record.AcademicRecordService}, which has already authorized access to the student's academic record and
+     * needs the weights only to roll component grades up into a per-course grade point. Exposes weights, never
+     * assessment content, marks or questions.
+     */
+    @Transactional(readOnly = true)
+    public java.util.Map<UUID, java.math.BigDecimal> weightsUnchecked(java.util.Collection<UUID> componentIds) {
+        java.util.Map<UUID, java.math.BigDecimal> weights = new java.util.HashMap<>();
+        assessmentComponentRepository.findAllById(componentIds).forEach(c -> weights.put(c.id(), c.weight()));
+        return weights;
     }
 
     Optional<AssessmentComponent> findById(UUID componentId) {

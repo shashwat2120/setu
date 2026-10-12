@@ -52,7 +52,7 @@ public class Lesson {
         this.moduleId = moduleId;
         this.title = title;
         this.type = type;
-        this.contentRef = contentRef;
+        this.contentRef = ContentReferences.optional(contentRef);
         this.sequence = sequence;
         this.durationMinutes = durationMinutes;
     }
@@ -91,7 +91,7 @@ public class Lesson {
         }
         this.title = title;
         this.type = type;
-        this.contentRef = contentRef;
+        this.contentRef = ContentReferences.optional(contentRef);
         this.sequence = sequence;
         this.durationMinutes = durationMinutes;
     }

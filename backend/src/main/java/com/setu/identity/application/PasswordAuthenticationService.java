@@ -51,6 +51,14 @@ public class PasswordAuthenticationService {
         }
         User user = maybeUser.get();
 
+        if (!user.isActive()) {
+            // Same short-circuit as the lock check below (no dummy-hash timing parity needed — the account is
+            // already known to exist, so there's no enumeration concern, only "don't verify a password that
+            // wouldn't matter anyway"): a suspended/deactivated account must not authenticate, full stop.
+            auditLogWriter.write(null, user.id(), "PASSWORD_VERIFY_FAILURE", "identity.users", user.id(),
+                Map.of("reason", "account_" + user.status().name().toLowerCase()));
+            return new PasswordAuthOutcome.AccountNotActive(user.status());
+        }
         if (user.isPasswordLocked(now)) {
             auditLogWriter.write(null, user.id(), "PASSWORD_VERIFY_FAILURE", "identity.users", user.id(),
                 Map.of("reason", "account_locked"));

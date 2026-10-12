@@ -129,6 +129,10 @@ public class DemoDataSeeder implements ApplicationRunner {
 
     private final ProgramService programService;
     private final CurriculumService curriculumService;
+    private final com.setu.catalog.application.CurriculumRequirementService curriculumRequirementService;
+    private final com.setu.attendance.application.FacultyAttendanceService facultyAttendanceService;
+    private final com.setu.attendance.application.FacultyRegularisationService facultyRegularisationService;
+    private final com.setu.learning.application.LessonResourceService lessonResourceService;
     private final AcademicYearService academicYearService;
     private final AcademicPeriodService academicPeriodService;
     private final CourseService courseService;
@@ -243,7 +247,15 @@ public class DemoDataSeeder implements ApplicationRunner {
                            PaymentService paymentService, SkillCategoryService skillCategoryService,
                            SkillService skillService, StudentSkillService studentSkillService, JobService jobService,
                            JobSkillService jobSkillService, ApplicationService applicationService,
-                           PlacementRecordService placementRecordService) {
+                           PlacementRecordService placementRecordService,
+                           com.setu.catalog.application.CurriculumRequirementService curriculumRequirementService,
+                           com.setu.attendance.application.FacultyAttendanceService facultyAttendanceService,
+                           com.setu.attendance.application.FacultyRegularisationService facultyRegularisationService,
+                           com.setu.learning.application.LessonResourceService lessonResourceService) {
+        this.facultyRegularisationService = facultyRegularisationService;
+        this.lessonResourceService = lessonResourceService;
+        this.curriculumRequirementService = curriculumRequirementService;
+        this.facultyAttendanceService = facultyAttendanceService;
         this.userRegistrationService = userRegistrationService;
         this.passwordResetService = passwordResetService;
         this.userDirectoryService = userDirectoryService;
@@ -374,6 +386,11 @@ public class DemoDataSeeder implements ApplicationRunner {
             "BACHELOR", 8, new BigDecimal("160"));
         UUID curriculumId = curriculumService.createReferenceForSeed(programId, "B.Tech CSE 2024 Curriculum", "v2024",
             LocalDate.of(2024, 6, 1), null);
+        // Degree requirements that add up to the program's 160 credits, so Degree Progress reads "0 of 160" rather than "0 of 0".
+        // Seed data, like everything here: nobody has COMPLETED a course yet, so progress is honestly 0% until enrollments complete.
+        curriculumRequirementService.createForSeed(curriculumId, "CORE", new BigDecimal("100"), 25, null);
+        curriculumRequirementService.createForSeed(curriculumId, "ELECTIVE", new BigDecimal("36"), 9, null);
+        curriculumRequirementService.createForSeed(curriculumId, "GENERAL_EDUCATION", new BigDecimal("24"), 6, null);
 
         UUID yearId = academicYearService.createYear(tenantId, "AY2024-25", LocalDate.of(2024, 6, 1), LocalDate.of(2025, 5, 31));
         academicYearService.markCurrent(yearId);
@@ -424,6 +441,7 @@ public class DemoDataSeeder implements ApplicationRunner {
         List<SeededStudent> students = seedTenantAStudents(tenantId, collegeAdmin, faculty1.account().userId(),
             faculty2.account().userId(), programId, curriculumId, section1Id, section2Id, meeting1Id, meeting2Id, credentials);
 
+        seedStaffAttendance(collegeAdmin, faculty1, faculty2);
         seedTenantAGuardians(tenantId, collegeAdmin, students, credentials);
 
         String placementOfficerEmail = demoEmail("placement.officer");
@@ -437,6 +455,49 @@ public class DemoDataSeeder implements ApplicationRunner {
         seedTenantAFinance(tenantId, collegeAdmin, programId, yearId, students, credentials);
 
         userDirectoryService.authenticateForSeed(superAdmin.userId());
+    }
+
+    /**
+     * Example staff attendance for the previous weekdays, so the admin Staff Attendance page and the faculty history are not
+     * empty on first run. Explicitly SEED DATA: every row is an administrator mark (the only way a past day can be recorded)
+     * carrying a reason that says so. Today is deliberately left unrecorded so the live check-in demo works.
+     */
+    private void seedStaffAttendance(Account collegeAdmin, SeededFaculty faculty1, SeededFaculty faculty2) {
+        userDirectoryService.authenticateForSeed(collegeAdmin.userId());
+        LocalDate today = facultyAttendanceService.todayForCurrentTenant().orElse(LocalDate.now());
+        String reason = "Demo seed data (example): recorded from the attendance register";
+        int weekdaysSeeded = 0;
+        LocalDate absentDay = null;
+        for (int back = 1; back <= 14 && weekdaysSeeded < 8; back++) {
+            LocalDate day = today.minusDays(back);
+            if (day.getDayOfWeek() == java.time.DayOfWeek.SATURDAY || day.getDayOfWeek() == java.time.DayOfWeek.SUNDAY) {
+                continue;
+            }
+            weekdaysSeeded++;
+            var status1 = weekdaysSeeded == 3 ? com.setu.attendance.domain.FacultyAttendanceStatus.ON_LEAVE
+                : com.setu.attendance.domain.FacultyAttendanceStatus.PRESENT;
+            var status2 = weekdaysSeeded == 5 ? com.setu.attendance.domain.FacultyAttendanceStatus.HALF_DAY
+                : weekdaysSeeded == 7 ? com.setu.attendance.domain.FacultyAttendanceStatus.ABSENT
+                : com.setu.attendance.domain.FacultyAttendanceStatus.PRESENT;
+            facultyAttendanceService.markByAdmin(faculty1.facultyId(), day, status1, reason);
+            facultyAttendanceService.markByAdmin(faculty2.facultyId(), day, status2, reason);
+            if (status2 == com.setu.attendance.domain.FacultyAttendanceStatus.ABSENT) {
+                absentDay = day;
+            }
+        }
+        // One example request waiting in the admin queue: faculty2 was recorded ABSENT that day and says they forgot to check in.
+        if (absentDay != null) {
+            userDirectoryService.authenticateForSeed(faculty2.account().userId());
+            facultyRegularisationService.request(absentDay, com.setu.attendance.domain.FacultyAttendanceStatus.PRESENT,
+                java.time.LocalTime.of(9, 30), java.time.LocalTime.of(17, 0),
+                "Demo seed data (example): forgot to check in; I was teaching CS201-A that day");
+            userDirectoryService.authenticateForSeed(collegeAdmin.userId());
+        }
+    }
+
+    /** Attaches one example document/link to a seeded lesson; any refusal is a seed bug and fails loudly (see addForSeed). */
+    private void attachResource(UUID lessonId, com.setu.learning.domain.LessonResourceType type, String url, String title) {
+        lessonResourceService.addForSeed(lessonId, url, type, title);
     }
 
     private void seedPolicyDocuments(UUID tenantId) {
@@ -535,8 +596,29 @@ public class DemoDataSeeder implements ApplicationRunner {
 
         userDirectoryService.authenticateForSeed(collegeAdmin.userId());
         UUID moduleId = courseModuleService.createForSeed(section1Id, "Module 1: Foundations", 1);
-        UUID lesson1Id = lessonService.createForSeed(moduleId, "Variables & Types", LessonType.TEXT, "ref://cs101/lesson1", 1, 20);
-        UUID lesson2Id = lessonService.createForSeed(moduleId, "Control Flow", LessonType.VIDEO, "ref://cs101/lesson2", 2, 25);
+        // Real, public learning material (verified to exist when this seed was written): official CS50P lectures and notes, the Python
+        // documentation, and a free textbook PDF. Every lesson's video is a YouTube address; every attachment is a REFERENCE (a link) —
+        // no file is stored here. Example content: a college would replace these with its own.
+        UUID lesson1Id = lessonService.createForSeed(moduleId, "Variables & Types", LessonType.VIDEO,
+            "https://www.youtube.com/watch?v=JP7ITIXGpHk", 1, null);
+        attachResource(lesson1Id, com.setu.learning.domain.LessonResourceType.DOCUMENT, "https://cs50.harvard.edu/python/2022/notes/0/",
+            "CS50P Lecture 0 notes: functions and variables (Harvard CS50)");
+        attachResource(lesson1Id, com.setu.learning.domain.LessonResourceType.DOCUMENT, "https://docs.python.org/3/tutorial/introduction.html",
+            "The Python Tutorial: an informal introduction (python.org)");
+        attachResource(lesson1Id, com.setu.learning.domain.LessonResourceType.DOCUMENT, "https://greenteapress.com/thinkpython2/thinkpython2.pdf",
+            "Think Python, 2nd edition (free PDF, Allen B. Downey)");
+        UUID lesson2Id = lessonService.createForSeed(moduleId, "Control Flow", LessonType.VIDEO,
+            "https://www.youtube.com/watch?v=_b6NgY_pMdw", 2, null);
+        attachResource(lesson2Id, com.setu.learning.domain.LessonResourceType.DOCUMENT, "https://cs50.harvard.edu/python/notes/1/",
+            "CS50P Lecture 1 notes: conditionals (Harvard CS50)");
+        attachResource(lesson2Id, com.setu.learning.domain.LessonResourceType.DOCUMENT, "https://cs50.harvard.edu/python/notes/2/",
+            "CS50P Lecture 2 notes: loops (Harvard CS50)");
+        attachResource(lesson2Id, com.setu.learning.domain.LessonResourceType.DOCUMENT, "https://docs.python.org/3/tutorial/controlflow.html",
+            "The Python Tutorial: more control flow tools (python.org)");
+        // CS101 stays at exactly two lessons: seeded learning progress feeds the risk engine ("completion vs expected"), so adding a lesson
+        // here would silently change every seeded risk result. A second walkthrough therefore rides along as a supplementary video resource.
+        attachResource(lesson1Id, com.setu.learning.domain.LessonResourceType.VIDEO, "https://www.youtube.com/watch?v=kqtD5dpn9C8",
+            "Python in one hour: a second walkthrough (Programming with Mosh)");
 
         // MANAGE_ASSIGNMENTS has no tenant-wide "_ALL_SECTIONS" variant (confirmed against identity.role_permissions:
         // only SUPER_ADMIN holds it outright) — assignment ownership is section-faculty-or-platform-admin only, never
@@ -652,7 +734,21 @@ public class DemoDataSeeder implements ApplicationRunner {
                                         SeededStudent strong, SeededStudent average, SeededStudent attendanceRisk) {
         userDirectoryService.authenticateForSeed(faculty2UserId);
         UUID moduleId = courseModuleService.createForSeed(section2Id, "Module 1: Algorithmic Complexity", 1);
-        lessonService.createForSeed(moduleId, "Big-O Notation", LessonType.TEXT, "ref://cs201/lesson1", 1, 20);
+        // Real, public learning material (verified to exist when this seed was written). Example content: replace with the college's own.
+        UUID bigO = lessonService.createForSeed(moduleId, "Big-O Notation", LessonType.VIDEO,
+            "https://www.youtube.com/watch?v=g2o22C3CRfU", 1, 2);
+        attachResource(bigO, com.setu.learning.domain.LessonResourceType.DOCUMENT, "https://wiki.python.org/moin/TimeComplexity",
+            "Time complexity of Python's built-in operations (python.org wiki)");
+        attachResource(bigO, com.setu.learning.domain.LessonResourceType.DOCUMENT, "https://opendatastructures.org/ods-python.pdf",
+            "Open Data Structures, Python edition (free PDF, Pat Morin)");
+        UUID structures = lessonService.createForSeed(moduleId, "Data Structures: Easy to Advanced", LessonType.VIDEO,
+            "https://www.youtube.com/watch?v=RBSGKlAvoiM", 2, null);
+        attachResource(structures, com.setu.learning.domain.LessonResourceType.DOCUMENT, "https://docs.python.org/3/tutorial/datastructures.html",
+            "The Python Tutorial: data structures (python.org)");
+        UUID inPython = lessonService.createForSeed(moduleId, "Data Structures and Algorithms in Python", LessonType.VIDEO,
+            "https://www.youtube.com/watch?v=pkYVOmU3MgA", 3, null);
+        attachResource(inPython, com.setu.learning.domain.LessonResourceType.DOCUMENT, "https://opendatastructures.org/ods-python.pdf",
+            "Open Data Structures, Python edition (free PDF, Pat Morin)");
 
         UUID assignmentId = assignmentService.createForSeed(section2Id, "A1 - Sorting Algorithms Report",
             new BigDecimal("100"), Instant.now().plusSeconds(86400L * 20), null);
@@ -890,6 +986,9 @@ public class DemoDataSeeder implements ApplicationRunner {
             new BigDecimal("120"));
         UUID curriculumId = curriculumService.createReferenceForSeed(programId, "B.A. English 2024 Curriculum", "v2024",
             LocalDate.of(2024, 6, 1), null);
+        curriculumRequirementService.createForSeed(curriculumId, "CORE", new BigDecimal("72"), 18, null);
+        curriculumRequirementService.createForSeed(curriculumId, "ELECTIVE", new BigDecimal("30"), 8, null);
+        curriculumRequirementService.createForSeed(curriculumId, "GENERAL_EDUCATION", new BigDecimal("18"), 5, null);
         UUID yearId = academicYearService.createYear(tenantId, "AY2024-25", LocalDate.of(2024, 6, 1), LocalDate.of(2025, 5, 31));
         academicYearService.markCurrent(yearId);
         Instant regOpen = Instant.now().minusSeconds(86400L * 60).truncatedTo(java.time.temporal.ChronoUnit.MICROS);

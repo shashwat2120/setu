@@ -49,6 +49,13 @@ const BAND_CLASS: Record<string, string> = {
   CURRENT: 'badge-active',
   REGISTRATION_OPEN: 'badge-active',
   REGISTRATION_CLOSED: 'badge-medium',
+  // Faculty attendance regularisation requests (REJECTED reuses the enrollment entry above)
+  APPROVED: 'badge-ok',
+  // Faculty (staff) daily attendance
+  PRESENT: 'badge-ok',
+  HALF_DAY: 'badge-warn',
+  ABSENT: 'badge-danger',
+  ON_LEAVE: 'badge-medium',
   // Enrollment override / waitlist
   USED: 'badge-medium',
   WAITING: 'badge-medium',

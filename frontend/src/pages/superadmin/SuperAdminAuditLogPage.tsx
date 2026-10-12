@@ -19,9 +19,9 @@ export default function SuperAdminAuditLogPage() {
   const columns: Column<AuditLogEntryResponse>[] = [
     { key: 'createdAt', header: 'When', render: (e) => new Date(e.createdAt).toLocaleString() },
     { key: 'action', header: 'Action', render: (e) => <span className="mono">{e.action}</span> },
-    { key: 'resourceType', header: 'Resource', render: (e) => `${e.resourceType} · ${e.resourceId.slice(0, 8)}…` },
+    { key: 'resourceType', header: 'Resource', render: (e) => `${e.resourceType}${e.resourceId ? ` · ${e.resourceId.slice(0, 8)}…` : ''}` },
     { key: 'tenant', header: 'Tenant', render: (e) => collegeNameFor(e.tenantId) },
-    { key: 'actor', header: 'Actor user ID', render: (e) => <span className="mono">{e.actorUserId.slice(0, 8)}…</span> },
+    { key: 'actor', header: 'Actor user ID', render: (e) => e.actorUserId ? <span className="mono">{e.actorUserId.slice(0, 8)}…</span> : <span style={{ color: 'var(--ink-soft)' }}>—</span> },
   ];
 
   return (

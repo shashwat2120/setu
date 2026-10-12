@@ -231,12 +231,18 @@ public class AssessmentService {
 
     @Transactional(readOnly = true)
     public Optional<Assessment> get(UUID assessmentId) {
+        return get(assessmentId, null);
+    }
+
+    /** {@code guardianForStudentId}: same meaning as on {@link #listForSection(UUID, UUID, UUID)} — a guardian's VIEW_GRADES delegation for that exact student. */
+    @Transactional(readOnly = true)
+    public Optional<Assessment> get(UUID assessmentId, UUID guardianForStudentId) {
         Optional<Assessment> assessment = assessmentRepository.findById(assessmentId);
         if (assessment.isEmpty()) {
             return Optional.empty();
         }
         Assessment a = assessment.get();
-        boolean isFacultyOrAdmin = assertRead(a.sectionId(), a.tenantId());
+        boolean isFacultyOrAdmin = assertRead(a.sectionId(), a.tenantId(), guardianForStudentId);
         boolean hiddenFromStudent = (a.status() == AssessmentStatus.DRAFT || a.status() == AssessmentStatus.SCHEDULED)
             && !isFacultyOrAdmin;
         if (hiddenFromStudent) {
@@ -247,7 +253,21 @@ public class AssessmentService {
 
     @Transactional(readOnly = true)
     public List<Assessment> listForSection(UUID sectionId, UUID tenantId) {
-        boolean isFacultyOrAdmin = assertRead(sectionId, tenantId);
+        return listForSection(sectionId, tenantId, null);
+    }
+
+    /**
+     * {@code guardianForStudentId}: the frontend passes this when the caller is viewing on behalf of a specific
+     * student (the guardian dashboard) rather than as faculty/admin/the student themselves — without it, a
+     * guardian holding a real, active {@code VIEW_GRADES} delegation for that exact student was falling straight
+     * through to {@link #assertRead}'s final {@code assertCan(VIEW_TENANT_DATA, ...)}, which guardians never
+     * hold, so the call 403'd and the frontend's grades widget silently showed "No assessments yet" instead of
+     * the real cause. Mirrors the same {@code delegatableForStudent} idiom {@link GradeService#assertReadAccess}
+     * already uses for the grade values themselves.
+     */
+    @Transactional(readOnly = true)
+    public List<Assessment> listForSection(UUID sectionId, UUID tenantId, UUID guardianForStudentId) {
+        boolean isFacultyOrAdmin = assertRead(sectionId, tenantId, guardianForStudentId);
         List<Assessment> all = assessmentRepository.findBySectionId(sectionId);
         if (isFacultyOrAdmin) {
             return all;
@@ -280,6 +300,10 @@ public class AssessmentService {
 
     /** Returns true when the caller is assigned faculty or a permitted admin. */
     private boolean assertRead(UUID sectionId, UUID tenantId) {
+        return assertRead(sectionId, tenantId, null);
+    }
+
+    private boolean assertRead(UUID sectionId, UUID tenantId, UUID guardianForStudentId) {
         ResourceRef scoped = accessSupport.sectionScoped("assessment", UUID.randomUUID(), tenantId, sectionId);
         if (authorizationContext.can(MANAGE_PERMISSION, scoped).isAllowed()) {
             return true;
@@ -289,6 +313,13 @@ public class AssessmentService {
             return true;
         }
         if (accessSupport.currentEnrolledStudentId(tenantId, sectionId).isPresent()) {
+            return false;
+        }
+        if (guardianForStudentId != null) {
+            UUID ownerUserId = accessSupport.ownerUserIdOf(guardianForStudentId).orElse(null);
+            ResourceRef delegated = ResourceRef.of("assessment", UUID.randomUUID(), tenantId)
+                .ownedBy(ownerUserId).delegatableForStudent(guardianForStudentId);
+            authorizationContext.assertCan("VIEW_GRADES", delegated);
             return false;
         }
         authorizationContext.assertCan(VIEW_PERMISSION, ResourceRef.of("assessment", UUID.randomUUID(), tenantId));

@@ -36,7 +36,7 @@ public class StudentController {
     public record AdmitRequest(UUID tenantId, UUID personId, String admissionNo, String rollNo, LocalDate admissionDate) {
     }
 
-    public record StudentResponse(UUID id, UUID tenantId, UUID personId, String admissionNo, String status,
+    public record StudentResponse(UUID id, UUID tenantId, UUID personId, UUID userId, String admissionNo, String status,
                                    String fullName, String email) {
     }
 
@@ -44,7 +44,8 @@ public class StudentController {
         var person = personDirectory.findById(p.personId());
         String fullName = person.map(PersonDirectory.PersonSummary::legalName).orElse(null);
         String email = person.map(PersonDirectory.PersonSummary::email).orElse(null);
-        return new StudentResponse(p.id(), p.tenantId(), p.personId(), p.admissionNo(), p.status().name(), fullName, email);
+        UUID userId = person.map(PersonDirectory.PersonSummary::userId).orElse(null);
+        return new StudentResponse(p.id(), p.tenantId(), p.personId(), userId, p.admissionNo(), p.status().name(), fullName, email);
     }
 
     public record PageResponse<T>(List<T> content, int page, int size, long totalElements, int totalPages) {

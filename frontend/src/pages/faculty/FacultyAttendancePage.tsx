@@ -6,7 +6,7 @@ import { apiFetch, ApiError } from '../../api/client';
 import { useAttendanceLiveUpdates } from '../../api/useAttendanceLiveUpdates';
 import type {
   FacultyAssignmentResponse, CourseSectionResponse, CourseResponse, MeetingPatternResponse,
-  AttendanceOpenResponse, AttendanceRecordResponse,
+  AttendanceOpenResponse, AttendanceRecordResponse, AttendanceSessionResponse,
 } from '../../api/types';
 import { PageHeader } from '../../components/ui/PageHeader';
 import { Skeleton, EmptyState } from '../../components/ui/EmptyState';
@@ -82,7 +82,25 @@ export default function FacultyAttendancePage() {
       setSession(result);
       setClosedCount(null);
     } catch (e) {
-      setActionError(e instanceof ApiError ? e.message : 'Could not open the session.');
+      if (e instanceof ApiError && e.status === 409) {
+        // A session for this meeting is already open (e.g. from an earlier page load) — resume into it
+        // rather than dead-ending with an error the faculty member has no way to act on.
+        try {
+          const existing = await apiFetch<AttendanceSessionResponse[]>(`/attendance/sessions?sectionId=${selectedSectionId}`);
+          const open = existing.find((s) => s.meetingId === selectedMeetingId && s.status === 'OPEN');
+          if (open) {
+            const qr = await apiFetch<{ qrToken: string; qrExpiresAt: string }>(`/attendance/sessions/${open.id}/qr`);
+            setSession({ sessionId: open.id, qrToken: qr.qrToken, qrExpiresAt: qr.qrExpiresAt });
+            setClosedCount(null);
+          } else {
+            setActionError('An attendance session is already open for this meeting, but it could not be found to resume.');
+          }
+        } catch {
+          setActionError('An attendance session is already open for this meeting, but it could not be resumed.');
+        }
+      } else {
+        setActionError(e instanceof ApiError ? e.message : 'Could not open the session.');
+      }
     } finally {
       setBusy(false);
     }
@@ -107,8 +125,8 @@ export default function FacultyAttendancePage() {
 
   const refetchRecords = useCallback(() => {
     if (!session) return;
-    apiFetch<AttendanceRecordResponse[]>(`/attendance/sessions/${session.sessionId}/records`).then(setRecords).catch(() => {});
-  }, [session]);
+    apiFetch<AttendanceRecordResponse[]>(`/attendance/sessions/${session.sessionId}/records?tenantId=${tenantId}`).then(setRecords).catch(() => {});
+  }, [session, tenantId]);
 
   const { connected: liveConnected, error: liveError } = useAttendanceLiveUpdates(
     session && closedCount === null ? selectedSectionId : null,
@@ -130,7 +148,7 @@ export default function FacultyAttendancePage() {
         { method: 'POST' },
       );
       setClosedCount(result.absentRecordsGenerated);
-      const recs = await apiFetch<AttendanceRecordResponse[]>(`/attendance/sessions/${session.sessionId}/records`);
+      const recs = await apiFetch<AttendanceRecordResponse[]>(`/attendance/sessions/${session.sessionId}/records?tenantId=${tenantId}`);
       setRecords(recs);
     } catch (e) {
       setActionError(e instanceof ApiError ? e.message : 'Could not close the session.');

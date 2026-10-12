@@ -30,6 +30,13 @@ export default function StudentCoursesPage() {
 
   const [rows, setRows] = useState<EnrichedRow[] | null>(null);
   const [openSections, setOpenSections] = useState<CourseSectionResponse[]>([]);
+
+  const activeSectionIds = new Set(
+    (data?.content ?? [])
+      .filter((e) => e.status === 'REQUESTED' || e.status === 'ENROLLED' || e.status === 'WAITLISTED')
+      .map((e) => e.sectionId),
+  );
+  const registrableSections = openSections.filter((s) => !activeSectionIds.has(s.id));
   const [notice, setNotice] = useState('');
   const [busySection, setBusySection] = useState('');
 
@@ -81,7 +88,7 @@ export default function StudentCoursesPage() {
         <h2 style={{ fontSize: 17, marginBottom: 8 }}>Register for a section</h2>
         <p style={{ color: 'var(--ink-soft)', fontSize: 13, marginBottom: 12 }}>Setu checks prerequisites, schedule conflicts, capacity, credit limits, and holds when you submit.</p>
         {notice && <p role="status" style={{ marginBottom: 10 }}>{notice}</p>}
-        {openSections.length === 0 ? <p style={{ color: 'var(--ink-soft)' }}>No open sections are available right now.</p> : openSections.map((s) => <div key={s.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 0', borderTop: '1px solid var(--line)' }}><span className="mono">{s.sectionCode}</span><button className="btn btn-primary" type="button" disabled={!!busySection} onClick={() => enroll(s.id)}>{busySection === s.id ? 'Submitting…' : 'Enroll'}</button></div>)}
+        {registrableSections.length === 0 ? <p style={{ color: 'var(--ink-soft)' }}>No open sections are available right now.</p> : registrableSections.map((s) => <div key={s.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 0', borderTop: '1px solid var(--line)' }}><span className="mono">{s.sectionCode}</span><button className="btn btn-primary" type="button" disabled={!!busySection} onClick={() => enroll(s.id)}>{busySection === s.id ? 'Submitting…' : 'Enroll'}</button></div>)}
       </section>
       <DataTable
         columns={columns}

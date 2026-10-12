@@ -10,19 +10,12 @@ import org.springframework.boot.test.context.SpringBootTest;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * Day 16 §ai-perf TEST: "missing API key" — Gemini selected as the primary provider with a
- * genuinely blank {@code spring.ai.google.genai.api-key} (never the real key, and never a
- * fake/placeholder one — see this class's own explicit blank override). Google GenAI's client
- * builder does not validate the key at construction time (confirmed by inspecting
- * GoogleGenAiChatAutoConfiguration's bytecode: it only branches on hasText(apiKey) for
- * Vertex-vs-Developer-API mode logging, never throws for a blank key there) — the real failure
- * surfaces on the first actual API call, which this test drives genuinely, in its own Spring
- * context so it never affects any other AI test's provider configuration. Runs with
- * {@code fallbackIsRedundant=false} (activeProvider defaults to "google-genai"), so a real
- * fallback-to-Ollama attempt also happens here; the assertion only requires SOME answer to
- * come back (either Gemini unexpectedly accepting the blank key, or — the expected path — the
- * real local Ollama fallback succeeding after Gemini's real auth failure), proving the whole
- * chain degrades safely either way rather than crashing.
+ * Day 16 §ai-perf TEST: "missing API key" — Gemini selected as the primary provider with a genuinely blank
+ * {@code spring.ai.google.genai.api-key}. Spring AI 2.x refuses to build its Google GenAI client without
+ * credentials, which used to abort the whole application at startup; {@code AiProviderSafetyPostProcessor} now
+ * switches the primary provider to Ollama in that case, so the app must START and still answer (or return a
+ * controlled {@code ProviderUnavailable}) — never crash, never leak a stack trace. Runs in its own Spring context so
+ * the provider override never affects any other AI test.
  */
 @SpringBootTest(properties = {"spring.ai.model.chat=google-genai", "spring.ai.google.genai.api-key="})
 class AiChatGeminiMissingApiKeyTests {

@@ -56,6 +56,9 @@ questions from that round. `api_clients` is removed entirely (decision E).
 | `attendance_sessions` | `attendance` | Attendance |
 | `attendance_qr_sessions` | `attendance` | Attendance |
 | `attendance_records` | `attendance` | Attendance |
+| `faculty_attendance` | `attendance` | Attendance |
+| `faculty_attendance_regularisations` | `attendance` | Attendance |
+| `staff_attendance_policies` | `attendance` | Attendance |
 | `course_modules` | `learning` | Learning |
 | `lessons` | `learning` | Learning |
 | `lesson_resources` | `learning` | Learning |

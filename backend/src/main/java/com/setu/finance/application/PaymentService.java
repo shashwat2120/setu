@@ -190,6 +190,20 @@ public class PaymentService {
      * maps it to a 409 the webhook sender's own standard retry behavior
      * resolves cleanly on the next delivery attempt.
      */
+    /**
+     * Admin-facing lookup so a College Admin (the only role that holds {@code MANAGE_FINANCE} besides Super
+     * Admin) can find a student's payments to call {@link #recordWebhookEvent} against — the webhook endpoint
+     * itself has no search surface of its own, by the same stands-in-for-a-real-provider (not a student action)
+     * reasoning as that method's own javadoc.
+     */
+    @Transactional(readOnly = true)
+    public java.util.List<Payment> listForStudent(UUID tenantId, UUID studentId) {
+        authorizationContext.assertCan(MANAGE_PERMISSION, ResourceRef.of("payment", UUID.randomUUID(), tenantId));
+        return studentAccountService.get(tenantId, studentId)
+            .map(account -> paymentRepository.findByStudentAccountId(account.id()))
+            .orElse(java.util.List.of());
+    }
+
     @Transactional
     public WebhookResult recordWebhookEvent(UUID paymentId, String providerEventId, String eventType, String payloadJson) {
         authorizationContext.assertCan(MANAGE_PERMISSION, ResourceRef.of("payment", paymentId, null));

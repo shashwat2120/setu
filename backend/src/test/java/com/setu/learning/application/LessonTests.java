@@ -138,4 +138,33 @@ class LessonTests {
 
         assertThat(result).isInstanceOf(LessonService.CreateResult.SequenceAlreadyInUse.class);
     }
+
+    @Test
+    void youtubeAndDocumentationLinksAreAcceptedAsLessonContent() {
+        var s = setUp("LS8");
+        TestAuthentication.authenticateAs(s.faculty.userId());
+
+        var result = lessonService.create(s.moduleId, "CS50P Lecture 0", LessonType.VIDEO,
+            "https://www.youtube.com/watch?v=JP7ITIXGpHk", 1, 120);
+
+        assertThat(result).isInstanceOf(LessonService.CreateResult.Success.class);
+        var lessonId = ((LessonService.CreateResult.Success) result).lessonId();
+        assertThat(lessonService.get(lessonId)).get().extracting(l -> l.contentRef())
+            .isEqualTo("https://www.youtube.com/watch?v=JP7ITIXGpHk");
+    }
+
+    @Test
+    void unsafeLessonContentLinksAreRejectedOnCreateAndUpdate() {
+        var s = setUp("LS9");
+        TestAuthentication.authenticateAs(s.faculty.userId());
+        var created = (LessonService.CreateResult.Success) lessonService.create(s.moduleId, "Intro", LessonType.VIDEO, "s3://x", 1, 10);
+
+        for (String bad : new String[]{"javascript:alert(1)", "http://example.org/plain", "data:text/html;base64,AAAA", "https://a b"}) {
+            assertThat(lessonService.create(s.moduleId, "Bad", LessonType.TEXT, bad, 2, 5))
+                .as("create " + bad).isInstanceOf(LessonService.CreateResult.InvalidLessonData.class);
+            assertThat(lessonService.update(created.lessonId(), "Intro", LessonType.VIDEO, bad, 1, 10))
+                .as("update " + bad).isInstanceOf(LessonService.UpdateResult.InvalidLessonData.class);
+        }
+        assertThat(lessonService.get(created.lessonId())).get().extracting(l -> l.contentRef()).isEqualTo("s3://x");
+    }
 }

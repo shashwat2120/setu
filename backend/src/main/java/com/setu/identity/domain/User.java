@@ -93,12 +93,32 @@ public class User {
         return status == UserStatus.ACTIVE;
     }
 
+    public boolean isSuspended() {
+        return status == UserStatus.SUSPENDED;
+    }
+
+    public boolean isDeactivated() {
+        return status == UserStatus.DEACTIVATED;
+    }
+
     public boolean hasPassword() {
         return passwordHash != null;
     }
 
     public void suspend() {
         this.status = UserStatus.SUSPENDED;
+        this.updatedAt = Instant.now();
+    }
+
+    /** Reverses a suspension. Never valid from DEACTIVATED — deactivation is deliberately terminal; the caller (UserAccessService) enforces that, this method only performs the transition. */
+    public void reactivate() {
+        this.status = UserStatus.ACTIVE;
+        this.updatedAt = Instant.now();
+    }
+
+    /** Terminal: no operation on this class ever moves a user out of DEACTIVATED. Offboarding, not a reversible hold. */
+    public void deactivate() {
+        this.status = UserStatus.DEACTIVATED;
         this.updatedAt = Instant.now();
     }
 

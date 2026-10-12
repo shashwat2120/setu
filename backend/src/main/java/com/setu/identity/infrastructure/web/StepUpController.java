@@ -75,6 +75,10 @@ public class StepUpController {
                 ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(new ErrorResponse("credential has been revoked"));
             case PasskeyAuthOutcome.VerificationFailed failed ->
                 ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(new ErrorResponse(failed.message()));
+            case PasskeyAuthOutcome.AccountNotActive notActive -> ResponseEntity.status(HttpStatus.FORBIDDEN)
+                .body(new ErrorResponse(notActive.status() == com.setu.identity.domain.UserStatus.DEACTIVATED
+                    ? "this account has been deactivated"
+                    : "this account has been suspended"));
         };
     }
 

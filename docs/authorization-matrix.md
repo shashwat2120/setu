@@ -41,6 +41,9 @@ sections/advisees; **Tenant** = anything in the actor's current tenant;
 | Waitlist | Platform | Tenant, full | Read (assigned sections) | Own | — | Read own (if granted) |
 | Attendance session (open/close) | Platform | Tenant | Own assigned sections only | — | — | — |
 | Attendance record (mark/correct) | Platform | Tenant, correct with audit | Own assigned sections, mark + correct with audit | Own, read only (scan is the "write," via the student-facing scan endpoint, not a direct record edit) | — | Read own (if `VIEW_ATTENDANCE` granted) |
+| Faculty (staff) attendance | Platform | Tenant: view all, mark/correct with audit (`MANAGE_STAFF_ATTENDANCE`) | Own only: check in / check out / view own history (`CHECK_IN_STAFF_ATTENDANCE`) | — | — | — |
+| Faculty attendance regularisation | Platform | Tenant: view queue, approve/reject (`MANAGE_STAFF_ATTENDANCE`); never their own request | Own only: request for a past day, withdraw, view own (`CHECK_IN_STAFF_ATTENDANCE`) | — | — | — |
+| Staff attendance policy (shift, grace, full/half-day hours) | Platform | Tenant: read + change, audited, versioned (`MANAGE_STAFF_ATTENDANCE`) | Read own college's policy only (`CHECK_IN_STAFF_ATTENDANCE`) | — | — | — |
 
 ## Learning, assessment, records
 

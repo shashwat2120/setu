@@ -97,8 +97,8 @@ class OutboxPublisher {
             kafkaTemplate.send(record).get(sendTimeoutSeconds, TimeUnit.SECONDS);
             event.markPublished();
         } catch (Exception e) {
-            log.warn("outbox event {} ({} on {}) could not be published, leaving NEW for retry: {}",
-                event.id(), event.eventType(), topic, e.toString());
+            log.warn("outbox event {} ({} on {}) could not be published, leaving NEW for retry",
+                event.id(), event.eventType(), topic, e);
         }
     }
 }

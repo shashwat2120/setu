@@ -23,7 +23,7 @@ is the locked build contract. Where anything below (or in `docs/PRD.md` /
 | Language | Java 21 (virtual threads) |
 | Backend | Spring Boot 4.x, Spring Modulith |
 | Security | Spring Security 7 — passkeys/WebAuthn, Argon2id fallback |
-| AI | Spring AI 2.x + Ollama (local) |
+| AI | Spring AI 2.x: Gemini as the primary provider when a key is configured, with a local Ollama model as the fallback |
 | Data | PostgreSQL + pgvector, Flyway migrations |
 | Cache | Redis |
 | Events | Kafka via Spring Modulith event externalization (transactional outbox) |
@@ -62,15 +62,92 @@ See [docs/FINAL_CANONICAL_PROJECT_SPEC.md](docs/FINAL_CANONICAL_PROJECT_SPEC.md)
 
 | Role | Dashboard | Status |
 |---|---|---|
-| SUPER_ADMIN | — | role only, no UI |
-| COLLEGE_ADMIN | Registrar operations | designed |
-| FACULTY | Live attendance + student risk detail | designed |
-| STUDENT | Student overview | designed |
-| PLACEMENT_OFFICER | — | role only, no UI |
-| GUARDIAN | Reduced read-only student view | planned |
+| SUPER_ADMIN | Colleges, roles, platform audit log | built |
+| COLLEGE_ADMIN | Registrar operations: enrollment, sections, attendance (student and staff), grades, finance, career, audit log | built |
+| FACULTY | Courses and lesson content, live QR attendance, assessments and grades, student success, own check-in/out | built |
+| STUDENT | Courses and lessons, attendance, grades, finance, career, success, AI advisor | built |
+| PLACEMENT_OFFICER | Jobs, skills, placements | built |
+| GUARDIAN | Reduced read-only student view, scoped to the grant | built |
 
 Roles are not authorization. Every request evaluates
 role + tenant + resource + action + workflow state + ownership.
+
+## Quick start (local)
+
+Prerequisites: Java 21, a current Node.js (developed on Node 24), Docker Desktop.
+
+```bash
+# 1. Postgres (pgvector), Redis and Kafka
+cd infra/docker && cp .env.example .env && docker compose up -d
+
+# 2. Backend with demo data (see backend/README.md for why this is a test-launched bridge on this Windows machine)
+cd backend
+DB_PORT=5433 REDIS_PORT=6380 KAFKA_BOOTSTRAP_SERVERS=localhost:9093 ./mvnw -q test "-Dtest=LiveDevBridge#serve" -DfailIfNoTests=false
+
+# 3. Frontend
+cd frontend && npm install && npm run dev
+```
+
+Wait for `LIVE_DEV_BRIDGE_LISTENING_ON_8089` in the backend log, then open <http://localhost:5180>. The ports above are this
+repo's `.env.example` defaults (5433/6380/9093, chosen so they do not clash with other local projects); change them together
+if you change `infra/docker/.env`.
+
+**Demo logins** (seed data; every account shares one password, `SetuDemo#2025!`):
+
+| Role | Email |
+|---|---|
+| Super admin | `super.admin@demo.setu.local` |
+| College admin | `admin.sit@demo.setu.local` |
+| Faculty | `faculty.rao@demo.setu.local`, `faculty.mehta@demo.setu.local` |
+| Student | `student.strong@demo.setu.local` (and `student.average`, `student.attendance.risk`, `student.assessment.risk`, `student.learning.risk`, `student.intervention`) |
+| Guardian | `guardian.kapoor@demo.setu.local` |
+| Placement officer | `placement.officer@demo.setu.local` |
+
+A second college (`admin.mrd@`, `faculty.mrd@`, `student.mrd@`) exists to show tenant isolation. The full list is printed in the
+backend log at startup, and the click-through is in [docs/demo-script.md](docs/demo-script.md).
+
+## What is built
+
+- **Identity:** passkey and Argon2id password sign-in, rotating refresh tokens, rate-limited login and password reset, and a
+  password-reset flow with a server-side password policy (8 to 128 characters, no very common passwords or the account's own
+  email). A completed reset signs out every existing session and cancels the user's other reset links.
+- **Academic core:** institutions, programs and curricula, courses and sections, enrollment with waitlists and overrides,
+  credit-weighted GPA, degree requirements.
+- **Attendance:** rotating signed QR attendance over STOMP; faculty (staff) attendance with check-in/out, a versioned policy
+  (shift, late grace, half-day and short-hours thresholds) and regularisation requests for forgotten days. Percentages are
+  computed from records, never stored.
+- **Learning:** modules, lessons and assignments. A lesson links to a real video (a YouTube link plays inside the lesson page)
+  and carries attached documents and links. Setu stores **references only**: `https://`, `ref://` or `s3://` addresses, never
+  the files themselves.
+- **Assessment, records, finance, career:** versioned grades, transcripts, fee accounts with idempotent payment webhooks, jobs
+  and placements.
+- **Student Success Engine and AI advisor:** a deterministic, reproducible risk score; an advisor that answers only through
+  application-owned, authorization-checked tools and cites its sources.
+- **Platform:** transactional outbox to Kafka, per-module Flyway migrations, an audit log, Actuator health and Modulith endpoints. Prometheus and Grafana dashboards are planned, not built.
+
+Sprint 6 (service extraction) has not started: the system is still one Spring Modulith application, and nothing consumes the
+Kafka topics yet.
+
+## Configuration
+
+Secrets and local overrides live in the git-ignored `backend/.env.local`; nothing secret is committed.
+
+| Variable | Purpose |
+|---|---|
+| `AI_PROVIDER` | `google-genai` (Gemini primary) or `ollama` (default, used by tests) |
+| `GEMINI_API_KEY`, `GEMINI_MODEL` | Gemini credentials and model. Pick a model that actually answers for your key: see [backend/README.md](backend/README.md#ai-advisor) |
+| `AI_PRIMARY_TIMEOUT_SECONDS` | How long Gemini may take before the local fallback is tried (default 25) |
+| `BREVO_API_KEY`, `MAIL_FROM_ADDRESS` | Real password-reset email delivery through Brevo. Without a key the email is not sent |
+| `EMAIL_PREVIEW_ENABLED` | Also write each reset email to `backend/target/demo-email-outbox` for local inspection |
+
+## Testing
+
+```bash
+cd backend && ./mvnw test      # the full suite (hundreds of tests); needs the Docker stack up and a fresh database
+cd frontend && npx tsc -b && npx oxlint && npx vite build
+```
+
+The seeder verification tests need an empty database, so reset it first with `docker compose down -v && docker compose up -d`.
 
 ## Non-negotiables
 
@@ -90,12 +167,12 @@ role + tenant + resource + action + workflow state + ownership.
 
 ```
 setu/
-├── backend/     Spring Boot modular monolith
-├── frontend/    React + TypeScript + Vite
+├── backend/     Spring Boot modular monolith (see backend/README.md)
+├── frontend/    React + TypeScript + Vite (see frontend/README.md)
 ├── infra/
-│   ├── docker/  Compose files
-│   └── db/      Flyway migrations
-└── docs/        ERD, ADRs, state machines
+│   ├── docker/  Compose files (see infra/docker/README.md)
+│   └── db/      Flyway migrations (see infra/db/README.md)
+└── docs/        spec, ERD, state machines, Kafka catalog, demo script
 ```
 
 ## Design

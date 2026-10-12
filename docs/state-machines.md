@@ -275,6 +275,49 @@ terminal states → correction rules → audit → emitted event.
 - **Emitted event**: `AttendanceRecorded` (initial), `AttendanceCorrected` (any
   correction)
 
+## 25. Faculty Attendance (staff day record)
+
+- **States**: `PRESENT`, `HALF_DAY`, `ABSENT`, `ON_LEAVE`; for `PRESENT`/`HALF_DAY` the row is also *open* (checked in, not
+  yet out) or *complete* (`check_out_at` set)
+- **Transitions**: (no row) → `PRESENT` by the faculty member's own **check-in** (server time, today in the college timezone);
+  `PRESENT` open → complete by their own **check-out**; any state → any other via **administrator marking or correction only**
+  (an admin may also create the row for a day the faculty member never checked in)
+- **Validation**: self check-in only for the caller's own `ACTIVE` faculty profile, only for *today*, and only if no row exists yet
+  (an admin-recorded `ABSENT`/`ON_LEAVE` is not overridden by a later self check-in — the admin corrects it); check-out only after
+  a check-in and only once; faculty cannot create, edit or backdate any other day; admin marking requires a `reason`; no future dates
+- **Policy rules** (college's current policy, docs/erd `staff_attendance_policies`): at check-in, if the college-local check-in time is later than
+  shift start + grace, `late_minutes` = minutes after shift start; at check-out, `worked_minutes` = check-out − check-in; a `PRESENT` day
+  with fewer than the full-day minutes becomes `HALF_DAY` automatically, and fewer than the half-day minutes also sets `short_hours`.
+  The evaluation stores the `policy_version` used. Administrator marks and approved regularisations keep their stated status (a person
+  decided) but still record the metrics for any times they set. A past day with a check-in and no check-out is shown as **missing
+  check-out** (derived at read time) and can be fixed with a regularisation request.
+- **Terminal**: none — an administrator can always correct a day
+- **Concurrency**: `UNIQUE (faculty_id, attendance_date)` + optimistic `version`
+- **Audit**: check-in, check-out and every admin mark/correction (old status → new status, actor, reason)
+- **Emitted events** (payloads also carry `late_minutes`, `worked_minutes`, `policy_version`): `FacultyCheckedIn`, `FacultyCheckedOut`, `FacultyAttendanceMarked` (admin created the day),
+  `FacultyAttendanceCorrected` (admin changed an existing day, carries the previous status) — via the transactional outbox, in
+  the same transaction as the change; refused actions emit nothing. No consumer exists yet
+
+## 26. Faculty Attendance Regularisation
+
+- **States**: `PENDING`, `APPROVED`, `REJECTED`, `WITHDRAWN`
+- **Transitions**: (none) → `PENDING` by the faculty member for their OWN past day; `PENDING → APPROVED` or `REJECTED` by an
+  administrator (`MANAGE_STAFF_ATTENDANCE`); `PENDING → WITHDRAWN` by the requester
+- **Validation (request)**: own `ACTIVE` faculty profile; the day is strictly before today (today is handled by check-in) and within the
+  last 30 days (`app.staff-attendance.regularisation-window-days`); requested status is `PRESENT`, `HALF_DAY` or `ON_LEAVE`; check-in/out
+  times only for `PRESENT`/`HALF_DAY`, check-out after check-in; a reason is required; refused if an open request already exists for
+  that day or if the day already says exactly what is being requested (nothing to change)
+- **Validation (decision)**: only a `PENDING` request can be decided; a rejection needs a note; **nobody decides their own request**
+  (an administrator who is also a faculty member cannot approve theirs)
+- **Effect of approval**: in the SAME transaction the day in `faculty_attendance` is created or corrected to the requested status/times
+  (source `ADMIN`, `corrected_by` = the approver, reason cites the regularisation) — never a silent edit
+- **Terminal**: `APPROVED`, `REJECTED`, `WITHDRAWN`; a later mistake is fixed by an administrator's normal correction or a new request
+- **Concurrency**: partial unique index (one `PENDING` per faculty per day) + optimistic `version`
+- **Audit**: request, approval, rejection and withdrawal each audited
+- **Emitted events**: `FacultyRegularisationRequested`, `FacultyRegularisationApproved`, `FacultyRegularisationRejected`,
+  `FacultyRegularisationWithdrawn` (topic `setu.faculty_attendance`); an approval additionally emits the usual
+  `FacultyAttendanceMarked`/`FacultyAttendanceCorrected` for the day it changed
+
 ## 16. Assignment Submission
 
 - **States**: `DRAFT`, `SUBMITTED`, `LATE`, `GRADED`, `RESUBMISSION_REQUESTED`

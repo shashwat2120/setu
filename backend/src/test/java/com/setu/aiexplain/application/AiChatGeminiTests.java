@@ -3,6 +3,7 @@ package com.setu.aiexplain.application;
 import com.setu.identity.TestAuthentication;
 import com.setu.testsupport.Day13TestFixtures;
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -20,7 +21,13 @@ import static org.assertj.core.api.Assertions.assertThat;
  * environment variable to be set when this class runs — it makes a genuine API call, per this
  * codebase's own established discipline of never mocking a provider integration (see
  * AiChatIntegrationTests, the equivalent real-Ollama suite).
+ * <p>
+ * Tagged {@code live-gemini} and therefore EXCLUDED from a plain {@code mvn test}: it spends the Gemini API key's
+ * quota (the free tier has a daily cap that a full test run on top of normal use can exhaust, after which the app
+ * correctly falls back to Ollama and this test's {@code contains("gemini")} check fails for reasons that have nothing
+ * to do with the code). Run it on purpose: {@code ./mvnw test -DexcludedGroups=none -Dtest=AiChatGeminiTests}.
  */
+@Tag("live-gemini")
 @SpringBootTest(properties = "spring.ai.model.chat=google-genai")
 class AiChatGeminiTests {
 

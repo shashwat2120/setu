@@ -118,4 +118,45 @@ class LessonResourceTests {
 
         assertThat(result).isInstanceOf(LessonResourceService.AddResult.InvalidResourceData.class);
     }
+
+    @Test
+    void titleIsStoredAndReturnedWithTheResource() {
+        var s = setUp("LR6");
+        TestAuthentication.authenticateAs(s.faculty.userId());
+
+        var added = (LessonResourceService.AddResult.Success) lessonResourceService.add(s.lessonId,
+            "https://greenteapress.com/thinkpython2/thinkpython2.pdf", LessonResourceType.DOCUMENT, "  Think Python, 2nd edition (PDF) ");
+
+        var listed = lessonResourceService.listForLesson(s.lessonId);
+        assertThat(listed).singleElement().satisfies(r -> {
+            assertThat(r.id()).isEqualTo(added.resourceId());
+            assertThat(r.mediaRef()).isEqualTo("https://greenteapress.com/thinkpython2/thinkpython2.pdf");
+            assertThat(r.title()).isEqualTo("Think Python, 2nd edition (PDF)");
+        });
+    }
+
+    @Test
+    void unsafeOrOverlongReferencesAndTitlesAreRejected() {
+        var s = setUp("LR7");
+        TestAuthentication.authenticateAs(s.faculty.userId());
+
+        for (String bad : new String[]{"javascript:alert(1)", "http://example.org/plain", "data:text/html;base64,AAAA",
+            "https://user:pw@example.org/", "https://example.org/a b"}) {
+            assertThat(lessonResourceService.add(s.lessonId, bad, LessonResourceType.LINK))
+                .as(bad).isInstanceOf(LessonResourceService.AddResult.InvalidResourceData.class);
+        }
+        assertThat(lessonResourceService.add(s.lessonId, "https://example.org/ok", LessonResourceType.LINK, "t".repeat(201)))
+            .isInstanceOf(LessonResourceService.AddResult.InvalidResourceData.class);
+        assertThat(lessonResourceService.listForLesson(s.lessonId)).isEmpty();
+    }
+
+    @Test
+    void unassignedFacultyCannotAttachALinkEvenIfItIsValid() {
+        var s = setUp("LR8");
+        var stranger = setUp("LR8Y"); // a faculty member of a different tenant and section
+        TestAuthentication.authenticateAs(stranger.faculty.userId());
+
+        assertThatThrownBy(() -> lessonResourceService.add(s.lessonId, "https://www.youtube.com/watch?v=JP7ITIXGpHk",
+            LessonResourceType.VIDEO, "x")).isInstanceOf(AccessDeniedException.class);
+    }
 }

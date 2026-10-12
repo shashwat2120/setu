@@ -10,16 +10,52 @@ export interface StudentResponse {
   id: string;
   tenantId: string;
   personId: string;
+  userId: string | null;
   admissionNo: string;
   status: string;
   fullName: string | null;
   email: string | null;
 }
 
+/** identity.users.status — account-level login access, independent of the profile status above. See UserAccessService. */
+export type AccountStatus = 'ACTIVE' | 'SUSPENDED' | 'DEACTIVATED';
+
+export interface TranscriptGradeLine {
+  componentId: string;
+  rawMarks: number | null;
+  gradeCode: string | null;
+  gradePoint: number | null;
+}
+
+export interface TranscriptLine {
+  enrollmentId: string;
+  courseCode: string | null;
+  courseTitle: string | null;
+  credits: number | null;
+  sectionCode: string | null;
+  enrollmentStatus: string;
+  grades: TranscriptGradeLine[];
+  /** Weighted rollup of this course's published component grade points; null until something is published. */
+  courseGradePoint: number | null;
+}
+
+export interface TranscriptResponse {
+  lines: TranscriptLine[];
+  gpa: number | null;
+}
+
+export interface DegreeProgressResponse {
+  creditsCompleted: number;
+  creditsRequired: number;
+  percentage: number;
+  hasActiveProgram: boolean;
+}
+
 export interface FacultyResponse {
   id: string;
   tenantId: string;
   personId: string;
+  userId: string | null;
   employeeNo: string;
   status: string;
   fullName: string | null;
@@ -46,6 +82,52 @@ export interface ProgramResponse {
   code: string;
   name: string;
   status: string;
+}
+
+export interface CurriculumResponse {
+  id: string;
+  tenantId: string;
+  programId: string;
+  name: string;
+  versionLabel: string;
+  effectiveFrom: string;
+  effectiveTo: string | null;
+}
+
+export interface BuildingResponse {
+  id: string;
+  tenantId: string;
+  code: string;
+  name: string;
+}
+
+export interface PrerequisiteResponse {
+  id: string;
+  courseId: string;
+  prerequisiteCourseId: string;
+  ruleType: string;
+  minimumGrade: string | null;
+}
+
+export interface RoomResponse {
+  id: string;
+  tenantId: string;
+  buildingId: string;
+  code: string;
+  capacity: number;
+  featuresJson: string | null;
+}
+
+export interface MeetingPatternResponse {
+  id: string;
+  tenantId: string;
+  sectionId: string;
+  dayOfWeek: number;
+  startTime: string;
+  endTime: string;
+  roomId: string;
+  effectiveFrom: string;
+  effectiveTo: string | null;
 }
 
 export interface CourseSectionResponse {
@@ -84,16 +166,6 @@ export interface EnrollmentResponse {
   enrolledAt: string | null;
   droppedAt: string | null;
   finalStatus: string | null;
-}
-
-export interface MeetingPatternResponse {
-  id: string;
-  tenantId: string;
-  sectionId: string;
-  dayOfWeek: number;
-  startTime: string;
-  endTime: string;
-  roomId: string | null;
 }
 
 export interface AttendanceSessionResponse {
@@ -421,6 +493,10 @@ export interface AssignmentSubmissionResponse {
   submittedAt: string | null;
   status: string;
   contentRef: string | null;
+  marks: number | null;
+  feedback: string | null;
+  gradedBy: string | null;
+  gradedAt: string | null;
 }
 
 export interface LearningProgressResponse {
@@ -439,6 +515,7 @@ export interface LessonResourceResponse {
   lessonId: string;
   mediaRef: string;
   type: string;
+  title: string | null;
 }
 
 export interface AssessmentAttemptResponse {
@@ -475,6 +552,15 @@ export interface AssessmentResponseRecord {
 export interface PaymentInitiateResponse {
   paymentId: string;
   replayed: boolean;
+}
+
+export interface PaymentResponse {
+  id: string;
+  tenantId: string;
+  amount: number;
+  currency: string;
+  method: string;
+  status: string;
 }
 
 export interface ReceiptResponse {
@@ -516,10 +602,10 @@ export interface StudentSkillResponse {
 export interface AuditLogEntryResponse {
   id: string;
   tenantId: string | null;
-  actorUserId: string;
+  actorUserId: string | null;
   action: string;
   resourceType: string;
-  resourceId: string;
+  resourceId: string | null;
   createdAt: string;
 }
 
@@ -549,4 +635,64 @@ export interface GuardianGrantResponse {
   status: string;
   expiresAt: string | null;
   permissions: string[];
+}
+
+// --- Faculty (staff) attendance ---
+
+export type StaffAttendanceStatus = 'PRESENT' | 'HALF_DAY' | 'ABSENT' | 'ON_LEAVE';
+
+export interface StaffAttendanceResponse {
+  id: string;
+  tenantId: string;
+  facultyId: string;
+  attendanceDate: string;
+  status: StaffAttendanceStatus;
+  checkInAt: string | null;
+  checkOutAt: string | null;
+  source: 'SELF' | 'ADMIN';
+  correctedBy: string | null;
+  correctionReason: string | null;
+  /** Minutes after the shift start, only when beyond the grace period; null if on time (or not evaluated). */
+  lateMinutes: number | null;
+  /** Check-out minus check-in; null until both exist. */
+  workedMinutes: number | null;
+  /** The policy version this day was judged under (0 = the built-in defaults); null if not evaluated. */
+  policyVersion: number | null;
+  /** Worked fewer minutes than a half day needs. */
+  shortHours: boolean;
+}
+
+/** `date` is today in the college's own timezone, supplied by the server along with its clock and the college timezone. */
+export interface StaffAttendanceToday {
+  date: string;
+  serverTime: string;
+  timeZone: string;
+  record: StaffAttendanceResponse | null;
+}
+
+/** A college's staff-attendance rules; times are college-local HH:mm. `version` 0 means the built-in defaults (nothing saved yet). */
+export interface StaffAttendancePolicy {
+  version: number;
+  shiftStart: string;
+  shiftEnd: string;
+  graceMinutes: number;
+  fullDayMinutes: number;
+  halfDayMinutes: number;
+}
+
+/** A faculty member's request to correct a past day of their own attendance ("I forgot to check in"). */
+export interface RegularisationResponse {
+  id: string;
+  tenantId: string;
+  facultyId: string;
+  attendanceDate: string;
+  requestedStatus: 'PRESENT' | 'HALF_DAY' | 'ON_LEAVE';
+  requestedCheckInAt: string | null;
+  requestedCheckOutAt: string | null;
+  reason: string;
+  status: 'PENDING' | 'APPROVED' | 'REJECTED' | 'WITHDRAWN';
+  decidedBy: string | null;
+  decidedAt: string | null;
+  decisionNote: string | null;
+  createdAt: string;
 }

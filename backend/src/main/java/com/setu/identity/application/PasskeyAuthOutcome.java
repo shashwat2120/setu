@@ -18,4 +18,8 @@ public sealed interface PasskeyAuthOutcome {
 
     record VerificationFailed(String message) implements PasskeyAuthOutcome {
     }
+
+    /** The credential is valid but the account itself is SUSPENDED or DEACTIVATED — see UserAccessService. */
+    record AccountNotActive(com.setu.identity.domain.UserStatus status) implements PasskeyAuthOutcome {
+    }
 }

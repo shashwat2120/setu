@@ -15,6 +15,37 @@ const inputStyle = {
   background: 'var(--bg-elev)', color: 'var(--ink)',
 };
 
+function GradeCell({ submission, onGraded }: { submission: AssignmentSubmissionResponse; onGraded: () => void }) {
+  const [marks, setMarks] = useState(submission.marks != null ? String(submission.marks) : '');
+  const [feedback, setFeedback] = useState(submission.feedback ?? '');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+
+  const submit = async () => {
+    setBusy(true); setError('');
+    try {
+      await apiFetch(`/learning/submissions/${submission.id}/grade`, {
+        method: 'POST', body: { marks: marks === '' ? null : Number(marks), feedback: feedback || null },
+      });
+      onGraded();
+    } catch (e) { setError(e instanceof Error ? e.message : 'Could not save grade.'); }
+    finally { setBusy(false); }
+  };
+
+  return (
+    <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+      <input aria-label="Marks" placeholder="Marks" value={marks} onChange={(e) => setMarks(e.target.value)}
+        style={{ ...inputStyle, width: 70, padding: '4px 6px', fontSize: 12 }} />
+      <input aria-label="Feedback" placeholder="Feedback" value={feedback} onChange={(e) => setFeedback(e.target.value)}
+        style={{ ...inputStyle, width: 160, padding: '4px 6px', fontSize: 12 }} />
+      <button type="button" className="btn btn-ghost" style={{ padding: '4px 10px', fontSize: 12 }} disabled={busy} onClick={submit}>
+        {busy ? 'Saving…' : submission.status === 'GRADED' ? 'Update' : 'Grade'}
+      </button>
+      {error && <span style={{ fontSize: 11, color: 'var(--flag)' }}>{error}</span>}
+    </div>
+  );
+}
+
 function Submissions({ assignmentId }: { assignmentId: string }) {
   const submissions = useApiQuery<AssignmentSubmissionResponse[]>(`/learning/submissions?assignmentId=${assignmentId}`);
   const columns: Column<AssignmentSubmissionResponse>[] = [
@@ -22,6 +53,7 @@ function Submissions({ assignmentId }: { assignmentId: string }) {
     { key: 'attempt', header: 'Attempt', render: (s) => s.attemptNo },
     { key: 'status', header: 'Status', render: (s) => <StatusBadge value={s.status} /> },
     { key: 'submittedAt', header: 'Submitted', render: (s) => (s.submittedAt ? new Date(s.submittedAt).toLocaleString() : '—') },
+    { key: 'grade', header: 'Marks / feedback', render: (s) => <GradeCell submission={s} onGraded={submissions.refetch} /> },
   ];
   return (
     <div style={{ padding: '4px 0 16px' }}>

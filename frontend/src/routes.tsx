@@ -3,6 +3,7 @@ import App from './App';
 import LoginPage from './pages/LoginPage';
 import ForgotPasswordPage from './pages/ForgotPasswordPage';
 import ResetPasswordPage from './pages/ResetPasswordPage';
+import SecurityPage from './pages/SecurityPage';
 import AppShell from './layouts/AppShell';
 import { ProtectedRoute } from './auth/ProtectedRoute';
 import { useAuth } from './auth/AuthContext';
@@ -39,14 +40,17 @@ import InstitutionPage from './pages/admin/InstitutionPage';
 import DepartmentsPage from './pages/admin/DepartmentsPage';
 import EnrollmentPage from './pages/admin/EnrollmentPage';
 import AttendancePage from './pages/admin/AttendancePage';
+import StaffAttendancePage from './pages/admin/StaffAttendancePage';
 import AssessmentsPage from './pages/admin/AssessmentsPage';
 import GradesPage from './pages/admin/GradesPage';
 import FinancePage from './pages/admin/FinancePage';
 import CareerPage from './pages/admin/CareerPage';
 import StudentSuccessPage from './pages/admin/StudentSuccessPage';
+import AuditLogPage from './pages/admin/AuditLogPage';
 import FacultySectionsPage from './pages/faculty/FacultySectionsPage';
 import FacultyStudentsPage from './pages/faculty/FacultyStudentsPage';
 import FacultyAttendancePage from './pages/faculty/FacultyAttendancePage';
+import FacultyMyAttendancePage from './pages/faculty/FacultyMyAttendancePage';
 import FacultyCoursesPage from './pages/faculty/FacultyCoursesPage';
 import FacultyAssignmentsPage from './pages/faculty/FacultyAssignmentsPage';
 import FacultyAssessmentsPage from './pages/faculty/FacultyAssessmentsPage';
@@ -71,6 +75,7 @@ export default function AppRoutes() {
       <Route element={<ProtectedRoute />}>
         <Route path="/app" element={<AppShell />}>
           <Route index element={<AppIndexRedirect />} />
+          <Route path="security" element={<SecurityPage />} />
           <Route element={<ProtectedRoute allow={['SUPER_ADMIN']} />}>
             <Route path="super-admin" element={<SuperAdminDashboard />} />
             <Route path="super-admin/colleges" element={<SuperAdminCollegesPage />} />
@@ -90,17 +95,20 @@ export default function AppRoutes() {
             <Route path="admin/departments" element={<DepartmentsPage />} />
             <Route path="admin/enrollment" element={<EnrollmentPage />} />
             <Route path="admin/attendance" element={<AttendancePage />} />
+            <Route path="admin/staff-attendance" element={<StaffAttendancePage />} />
             <Route path="admin/assessments" element={<AssessmentsPage />} />
             <Route path="admin/grades" element={<GradesPage />} />
             <Route path="admin/finance" element={<FinancePage />} />
             <Route path="admin/career" element={<CareerPage />} />
             <Route path="admin/student-success" element={<StudentSuccessPage />} />
+            <Route path="admin/audit-log" element={<AuditLogPage />} />
           </Route>
           <Route element={<ProtectedRoute allow={['FACULTY']} />}>
             <Route path="faculty" element={<FacultyDashboard />} />
             <Route path="faculty/sections" element={<FacultySectionsPage />} />
             <Route path="faculty/students" element={<FacultyStudentsPage />} />
             <Route path="faculty/attendance" element={<FacultyAttendancePage />} />
+            <Route path="faculty/my-attendance" element={<FacultyMyAttendancePage />} />
             <Route path="faculty/courses" element={<FacultyCoursesPage />} />
             <Route path="faculty/assignments" element={<FacultyAssignmentsPage />} />
             <Route path="faculty/assessments" element={<FacultyAssessmentsPage />} />

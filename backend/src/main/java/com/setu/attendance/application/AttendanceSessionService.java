@@ -71,7 +71,7 @@ public class AttendanceSessionService {
      */
     private static final String MANAGE_PERMISSION = "MANAGE_ATTENDANCE_ALL_SECTIONS";
     /** No documented QR rotation interval exists anywhere in the canonical spec ("short-lived" is qualitative only) — disclosed interim default, not an arbitrary invention: short enough that a screenshot/photo of the QR is useless within seconds, long enough for a real scan-and-submit round trip. */
-    private static final long QR_TTL_SECONDS = 20;
+    private static final long QR_TTL_SECONDS = 30;
 
     private final AttendanceSessionRepository attendanceSessionRepository;
     private final AttendanceQrSessionRepository attendanceQrSessionRepository;

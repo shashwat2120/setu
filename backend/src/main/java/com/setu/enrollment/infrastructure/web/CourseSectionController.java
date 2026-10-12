@@ -73,8 +73,8 @@ public class CourseSectionController {
     }
 
     @GetMapping("/{sectionId}")
-    public ResponseEntity<?> get(@PathVariable UUID sectionId) {
-        return courseSectionService.get(sectionId).map(s -> ResponseEntity.ok(toResponse(s)))
+    public ResponseEntity<?> get(@PathVariable UUID sectionId, @RequestParam(required = false) UUID guardianForStudentId) {
+        return courseSectionService.get(sectionId, guardianForStudentId).map(s -> ResponseEntity.ok(toResponse(s)))
             .orElse(ResponseEntity.status(HttpStatus.NOT_FOUND).build());
     }
 

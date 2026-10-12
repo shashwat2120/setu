@@ -35,8 +35,8 @@ function ComponentGrade({ enrollmentId, component }: { enrollmentId: string; com
   );
 }
 
-function AssessmentGradeBlock({ assessment, enrollmentId }: { assessment: AssessmentResponse; enrollmentId: string }) {
-  const components = useApiQuery<AssessmentComponentResponse[]>(`/assessment/components?assessmentId=${assessment.id}`);
+function AssessmentGradeBlock({ assessment, enrollmentId, studentId }: { assessment: AssessmentResponse; enrollmentId: string; studentId: string }) {
+  const components = useApiQuery<AssessmentComponentResponse[]>(`/assessment/components?assessmentId=${assessment.id}&guardianForStudentId=${studentId}`);
   return (
     <div className="card" style={{ marginBottom: 10, padding: 0, overflow: 'hidden' }}>
       <div style={{ padding: '10px 14px', borderBottom: '1px solid var(--rule)', display: 'flex', justifyContent: 'space-between' }}>
@@ -52,11 +52,11 @@ function AssessmentGradeBlock({ assessment, enrollmentId }: { assessment: Assess
   );
 }
 
-function GradesForSection({ enrollmentId, sectionId, tenantId }: { enrollmentId: string; sectionId: string; tenantId: string }) {
-  const assessments = useApiQuery<AssessmentResponse[]>(`/assessment/assessments?sectionId=${sectionId}&tenantId=${tenantId}`);
+function GradesForSection({ enrollmentId, sectionId, tenantId, studentId }: { enrollmentId: string; sectionId: string; tenantId: string; studentId: string }) {
+  const assessments = useApiQuery<AssessmentResponse[]>(`/assessment/assessments?sectionId=${sectionId}&tenantId=${tenantId}&guardianForStudentId=${studentId}`);
   if (assessments.loading) return <Skeleton height={40} />;
   if (!assessments.data || assessments.data.length === 0) return <p style={{ fontSize: 13, color: 'var(--ink-soft)' }}>No assessments yet.</p>;
-  return <>{assessments.data.map((a) => <AssessmentGradeBlock key={a.id} assessment={a} enrollmentId={enrollmentId} />)}</>;
+  return <>{assessments.data.map((a) => <AssessmentGradeBlock key={a.id} assessment={a} enrollmentId={enrollmentId} studentId={studentId} />)}</>;
 }
 
 export default function GuardianStudentPage() {
@@ -86,7 +86,7 @@ export default function GuardianStudentPage() {
     if (active.length === 0) { setRows([]); return; }
     let cancelled = false;
     Promise.all(active.map(async (enrollment) => {
-      const section = await apiFetch<CourseSectionResponse>(`/enrollment/course-sections/${enrollment.sectionId}`).catch(() => null);
+      const section = await apiFetch<CourseSectionResponse>(`/enrollment/course-sections/${enrollment.sectionId}?guardianForStudentId=${studentId}`).catch(() => null);
       const course = section ? await apiFetch<CourseResponse>(`/catalog/courses/${section.courseId}`).catch(() => null) : null;
       const percentage = has('VIEW_ATTENDANCE')
         ? await apiFetch<AttendancePercentageResponse>(`/attendance/enrollments/${enrollment.id}/percentage`).catch(() => null)
@@ -183,7 +183,7 @@ export default function GuardianStudentPage() {
           {rows.map((r) => (
             <div key={r.enrollment.id} style={{ marginBottom: 16 }}>
               <p style={{ fontSize: 13, fontWeight: 600, marginBottom: 6 }}>{r.course ? `${r.course.code} — ${r.course.title}` : r.section?.sectionCode}</p>
-              <GradesForSection enrollmentId={r.enrollment.id} sectionId={r.enrollment.sectionId} tenantId={r.enrollment.tenantId} />
+              <GradesForSection enrollmentId={r.enrollment.id} sectionId={r.enrollment.sectionId} tenantId={r.enrollment.tenantId} studentId={studentId ?? ''} />
             </div>
           ))}
         </>

@@ -34,6 +34,10 @@
 		<spring-ai.version>2.0.1</spring-ai.version>
 		<jedis.version>8.0.1</jedis.version>
 		<springdoc.version>3.1.1</springdoc.version>
+		<!-- Tests tagged live-gemini call the real, quota-limited Gemini API (they need GEMINI_API_KEY and spend its daily
+		     free quota), so a plain `mvn test` skips them. Run them on purpose with:
+		     ./mvnw test -DexcludedGroups=none -Dtest=AiChatGeminiTests -->
+		<excludedGroups>live-gemini</excludedGroups>
 	</properties>
 	<dependencies>
 		<dependency>

@@ -53,10 +53,10 @@ class AiChatIntegrationTests {
             assertThat(result.generatedAt()).isNotNull();
             assertThat(result.model()).isNotBlank();
             assertThat(result.correlationId()).isNotNull();
-            // Every reported source must be one of the seven real, known tool names — never a hallucinated one.
+            // Every reported source must be one of the nine real, known tool names — never a hallucinated one.
             assertThat(result.sources()).allSatisfy(name -> assertThat(name).isIn(
                 "getStudentAttendance", "getAcademicProgress", "getAssessmentResults", "getUpcomingDeadlines",
-                "getSkillGap", "searchCollegePolicy", "recommendLearningResources"));
+                "getSkillGap", "searchCollegePolicy", "recommendLearningResources", "getTranscript", "getFeeStatus"));
         } finally {
             TestAuthentication.clear();
         }

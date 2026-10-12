@@ -60,12 +60,16 @@ class MigrationIntegrationTests {
         // header comment). The 85-table Day 3 baseline is otherwise
         // untouched — see V53's header comment. +1 in Day 14
         // (institution.policy_documents, V70 — see that migration's own
-        // header comment for why institution owns it, no new schema).
+        // header comment for why institution owns it, no new schema). +1 for staff attendance
+        // (attendance.faculty_attendance, V73 — docs/erd/03-learning-assessment-records.md; owned by the existing
+        // attendance schema, no new schema). +1 for staff-attendance regularisation requests
+        // (attendance.faculty_attendance_regularisations, V74 — same ERD doc, same schema). +1 for the versioned staff
+        // attendance policy (attendance.staff_attendance_policies, V75 — same ERD doc, same schema).
         Integer count = jdbc.queryForObject(
             "SELECT count(*) FROM information_schema.tables " +
             "WHERE table_schema = ANY(?) AND table_type = 'BASE TABLE'",
             Integer.class, (Object) EXPECTED_SCHEMAS.toArray(new String[0]));
-        assertThat(count).isEqualTo(87);
+        assertThat(count).isEqualTo(90);
     }
 
     @Test

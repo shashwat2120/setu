@@ -57,10 +57,17 @@ class PasswordResetServiceTests {
     UserRegistrationService userRegistrationService;
     @Autowired
     RecordingEmailService recordingEmailService;
+    @Autowired
+    SessionService sessionService;
+    @Autowired
+    com.setu.identity.infrastructure.SessionRepository sessionRepository;
+
+    private UUID registeredUserId;
 
     private String registerUser() {
         String email = "reset-test-" + UUID.randomUUID() + "@example.com";
-        userRegistrationService.register(email);
+        var outcome = (UserRegistrationService.Outcome.Created) userRegistrationService.register(email);
+        registeredUserId = outcome.userId();
         return email;
     }
 
@@ -78,6 +85,56 @@ class PasswordResetServiceTests {
         var result = passwordResetService.complete(token, "NewPassword#2025!");
 
         assertThat(result).isEqualTo(PasswordResetService.CompletionResult.SUCCESS);
+    }
+
+    @Test
+    void aWeakPasswordIsRejectedAndTheLinkIsNotConsumedSoTheyCanTryAgain() {
+        String email = registerUser();
+        String token = passwordResetService.initiate(email).orElseThrow();
+
+        assertThat(passwordResetService.complete(token, "short")).isEqualTo(PasswordResetService.CompletionResult.WEAK_PASSWORD);
+        assertThat(passwordResetService.complete(token, "password123")).isEqualTo(PasswordResetService.CompletionResult.WEAK_PASSWORD);
+        assertThat(passwordResetService.complete(token, email)).isEqualTo(PasswordResetService.CompletionResult.WEAK_PASSWORD);
+
+        // the same link still works with an acceptable password
+        assertThat(passwordResetService.complete(token, "AGoodNewPassword#7")).isEqualTo(PasswordResetService.CompletionResult.SUCCESS);
+    }
+
+    @Test
+    void completingAResetSignsOutEveryExistingSessionOfThatUser() {
+        String email = registerUser();
+        UUID userId = registeredUserId;
+        sessionService.startNewSession(userId, "{}");
+        sessionService.startNewSession(userId, "{}");
+        assertThat(sessionRepository.findByUserIdAndRevokedAtIsNull(userId)).hasSize(2);
+        String token = passwordResetService.initiate(email).orElseThrow();
+
+        assertThat(passwordResetService.complete(token, "AGoodNewPassword#7")).isEqualTo(PasswordResetService.CompletionResult.SUCCESS);
+
+        assertThat(sessionRepository.findByUserIdAndRevokedAtIsNull(userId)).isEmpty();
+    }
+
+    @Test
+    void aRejectedWeakPasswordDoesNotSignAnyoneOut() {
+        String email = registerUser();
+        UUID userId = registeredUserId;
+        sessionService.startNewSession(userId, "{}");
+        String token = passwordResetService.initiate(email).orElseThrow();
+
+        assertThat(passwordResetService.complete(token, "short")).isEqualTo(PasswordResetService.CompletionResult.WEAK_PASSWORD);
+
+        assertThat(sessionRepository.findByUserIdAndRevokedAtIsNull(userId)).hasSize(1);
+    }
+
+    @Test
+    void anOlderStillValidLinkStopsWorkingOnceANewerOneHasBeenUsed() {
+        String email = registerUser();
+        String older = passwordResetService.initiate(email).orElseThrow();
+        String newer = passwordResetService.initiate(email).orElseThrow();
+
+        assertThat(passwordResetService.complete(newer, "AGoodNewPassword#7")).isEqualTo(PasswordResetService.CompletionResult.SUCCESS);
+
+        assertThat(passwordResetService.complete(older, "AnotherGoodOne#8")).isEqualTo(PasswordResetService.CompletionResult.INVALID_OR_EXPIRED_TOKEN);
     }
 
     @Test

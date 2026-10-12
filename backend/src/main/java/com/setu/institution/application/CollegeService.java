@@ -229,6 +229,25 @@ public class CollegeService {
      * unparseable means no cap is enforced (never an invented arbitrary
      * number). Disclosed in the Day 8 report.
      */
+    /**
+     * The college's own timezone, with NO authorization check — a plain cross-module read so other modules can decide
+     * "what calendar day is it for this college" (e.g. a faculty member's daily attendance). Falls back to UTC if the
+     * college is missing or its stored timezone is not a valid zone id.
+     */
+    @Transactional(readOnly = true)
+    public java.time.ZoneId timeZoneFor(UUID collegeId) {
+        return collegeRepository.findById(collegeId)
+            .map(College::timezone)
+            .<java.time.ZoneId>map(tz -> {
+                try {
+                    return java.time.ZoneId.of(tz);
+                } catch (Exception e) {
+                    return java.time.ZoneOffset.UTC;
+                }
+            })
+            .orElse(java.time.ZoneOffset.UTC);
+    }
+
     @Transactional(readOnly = true)
     public Optional<java.math.BigDecimal> maxCreditsPerPeriod(UUID collegeId) {
         return collegeRepository.findById(collegeId)

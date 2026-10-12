@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { apiFetch, setAccessToken, setUnauthorizedHandler } from '../api/client';
 import type { CurrentUser } from './types';
+import { signInWithPasskey } from './passkeyLogin';
 
 interface LoginResponse {
   accessToken: string;
@@ -11,6 +12,8 @@ interface AuthState {
   /** True while the initial session-restore attempt (silent refresh + /identity/me) is in flight. */
   loading: boolean;
   login: (email: string, password: string) => Promise<void>;
+  /** Sign in with a registered passkey (WebAuthn) instead of a password; `email` is optional (see signInWithPasskey). */
+  loginWithPasskey: (email?: string) => Promise<void>;
   logout: () => Promise<void>;
 }
 
@@ -77,6 +80,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [loadCurrentUser],
   );
 
+  const loginWithPasskey = useCallback(
+    async (email?: string) => {
+      const accessToken = await signInWithPasskey(email);
+      setAccessToken(accessToken);
+      await loadCurrentUser();
+    },
+    [loadCurrentUser],
+  );
+
   const logout = useCallback(async () => {
     try {
       await apiFetch('/auth/logout', { method: 'POST' });
@@ -86,7 +98,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  const value = useMemo(() => ({ user, loading, login, logout }), [user, loading, login, logout]);
+  const value = useMemo(
+    () => ({ user, loading, login, loginWithPasskey, logout }),
+    [user, loading, login, loginWithPasskey, logout],
+  );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

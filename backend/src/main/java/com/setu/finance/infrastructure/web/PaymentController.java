@@ -3,14 +3,17 @@ package com.setu.finance.infrastructure.web;
 import com.setu.finance.application.PaymentService;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.math.BigDecimal;
+import java.util.List;
 import java.util.UUID;
 
 /** Day 12 §Finance: payments — see PaymentService's javadoc. */
@@ -47,6 +50,17 @@ public class PaymentController {
             case PaymentService.InitiateResult.StillProcessing ignored -> ResponseEntity.status(HttpStatus.CONFLICT)
                 .body(new ErrorResponse("a request with this Idempotency-Key is still being processed; retry shortly"));
         };
+    }
+
+    public record PaymentResponse(UUID id, UUID tenantId, BigDecimal amount, String currency, String method, String status) {
+    }
+
+    /** Admin-only (MANAGE_FINANCE) — see PaymentService#listForStudent's javadoc. */
+    @GetMapping
+    public ResponseEntity<List<PaymentResponse>> listForStudent(@RequestParam UUID tenantId, @RequestParam UUID studentId) {
+        return ResponseEntity.ok(paymentService.listForStudent(tenantId, studentId).stream()
+            .map(p -> new PaymentResponse(p.id(), p.tenantId(), p.amount(), p.currency(), p.method(), p.status().name()))
+            .toList());
     }
 
     public record WebhookRequest(String providerEventId, String eventType, String payloadJson) {

@@ -3,7 +3,7 @@ import { useAuth } from '../../auth/AuthContext';
 import { tenantForRole } from '../../auth/types';
 import { apiFetch } from '../../api/client';
 import { useApiQuery } from '../../api/useApiQuery';
-import type { AssessmentResponse, AssessmentComponentResponse } from '../../api/types';
+import type { AssessmentResponse, AssessmentComponentResponse, QuestionResponse } from '../../api/types';
 import { PageHeader } from '../../components/ui/PageHeader';
 import { DataTable, type Column } from '../../components/ui/DataTable';
 import { StatusBadge } from '../../components/ui/StatusBadge';
@@ -18,17 +18,146 @@ const NEXT_ACTION: Record<string, { label: string; endpoint: string } | undefine
   CLOSED: { label: 'Publish', endpoint: 'publish' },
 };
 
-function AssessmentComponents({ assessmentId }: { assessmentId: string }) {
+const QUESTION_TYPES = ['MCQ_SINGLE', 'TRUE_FALSE', 'SHORT_ANSWER', 'ESSAY'] as const;
+
+function ComponentQuestions({ componentId, isDraft }: { componentId: string; isDraft: boolean }) {
+  const questions = useApiQuery<QuestionResponse[]>(`/assessment/questions?componentId=${componentId}`);
+  const [prompt, setPrompt] = useState('');
+  const [type, setType] = useState<typeof QUESTION_TYPES[number]>('MCQ_SINGLE');
+  const [points, setPoints] = useState('1');
+  const [metadataJson, setMetadataJson] = useState('');
+  const [message, setMessage] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  const create = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault(); setBusy(true); setMessage('');
+    try {
+      await apiFetch('/assessment/questions', {
+        method: 'POST',
+        body: { componentId, type, prompt, points: Number(points), difficulty: null, skillId: null, metadataJson: metadataJson || null },
+      });
+      setPrompt(''); setMetadataJson('');
+      questions.refetch();
+    } catch (e) { setMessage(e instanceof Error ? e.message : 'Could not create question.'); }
+    finally { setBusy(false); }
+  };
+
+  const remove = async (questionId: string) => {
+    setBusy(true); setMessage('');
+    try { await apiFetch(`/assessment/questions/${questionId}`, { method: 'DELETE' }); questions.refetch(); }
+    catch (e) { setMessage(e instanceof Error ? e.message : 'Could not delete question.'); }
+    finally { setBusy(false); }
+  };
+
+  return (
+    <div style={{ padding: '10px 14px', background: 'var(--bg-elev)' }}>
+      {questions.data && questions.data.length > 0 ? (
+        <table className="data-table" style={{ marginBottom: 12 }}>
+          <thead><tr><th scope="col">Prompt</th><th scope="col">Type</th><th scope="col">Points</th>{isDraft && <th scope="col" /> }</tr></thead>
+          <tbody>
+            {questions.data.map((q) => (
+              <tr key={q.id}>
+                <td data-label="Prompt">{q.prompt}</td>
+                <td data-label="Type" className="mono">{q.type}</td>
+                <td data-label="Points">{q.points}</td>
+                {isDraft && <td><button type="button" className="btn btn-ghost" style={{ padding: '2px 8px', fontSize: 11 }} disabled={busy} onClick={() => remove(q.id)}>Delete</button></td>}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      ) : <p style={{ fontSize: 12, color: 'var(--ink-soft)', marginBottom: 12 }}>No questions yet.</p>}
+      {isDraft && (
+        <form onSubmit={create} style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+          <div className="form-field" style={{ marginBottom: 0, flex: 1, minWidth: 160 }}>
+            <label htmlFor={`q-prompt-${componentId}`} style={{ fontSize: 11 }}>Prompt</label>
+            <input id={`q-prompt-${componentId}`} value={prompt} onChange={(e) => setPrompt(e.target.value)} required style={{ fontSize: 12, padding: '5px 8px' }} />
+          </div>
+          <div className="form-field" style={{ marginBottom: 0 }}>
+            <label htmlFor={`q-type-${componentId}`} style={{ fontSize: 11 }}>Type</label>
+            <select id={`q-type-${componentId}`} value={type} onChange={(e) => setType(e.target.value as typeof QUESTION_TYPES[number])} style={{ fontSize: 12, padding: '5px 8px' }}>
+              {QUESTION_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+            </select>
+          </div>
+          <div className="form-field" style={{ marginBottom: 0, width: 70 }}>
+            <label htmlFor={`q-points-${componentId}`} style={{ fontSize: 11 }}>Points</label>
+            <input id={`q-points-${componentId}`} type="number" min="0" step="0.5" value={points} onChange={(e) => setPoints(e.target.value)} style={{ fontSize: 12, padding: '5px 8px' }} />
+          </div>
+          <div className="form-field" style={{ marginBottom: 0, flex: 1, minWidth: 160 }}>
+            <label htmlFor={`q-meta-${componentId}`} style={{ fontSize: 11 }}>Answer key (JSON, e.g. options/correct answer)</label>
+            <input id={`q-meta-${componentId}`} value={metadataJson} onChange={(e) => setMetadataJson(e.target.value)}
+              placeholder='{"options":["A","B"],"correctIndex":0}' style={{ fontSize: 12, padding: '5px 8px' }} />
+          </div>
+          <button type="submit" className="btn btn-primary" style={{ padding: '6px 12px', fontSize: 12 }} disabled={busy || !prompt}>
+            {busy ? 'Adding…' : 'Add question'}
+          </button>
+        </form>
+      )}
+      {message && <p role="status" style={{ fontSize: 11, color: 'var(--flag)', marginTop: 8 }}>{message}</p>}
+    </div>
+  );
+}
+
+function AssessmentComponents({ assessmentId, isDraft }: { assessmentId: string; isDraft: boolean }) {
   const components = useApiQuery<AssessmentComponentResponse[]>(`/assessment/components?assessmentId=${assessmentId}`);
+  const [code, setCode] = useState('');
+  const [maxMarks, setMaxMarks] = useState('');
+  const [weight, setWeight] = useState('');
+  const [message, setMessage] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [expandedComponent, setExpandedComponent] = useState<string | null>(null);
+
+  const create = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault(); setBusy(true); setMessage('');
+    try {
+      await apiFetch('/assessment/components', {
+        method: 'POST',
+        body: { assessmentId, code, maxMarks: Number(maxMarks), weight: Number(weight), orderNo: (components.data?.length ?? 0) + 1 },
+      });
+      setCode(''); setMaxMarks(''); setWeight('');
+      components.refetch();
+    } catch (e) { setMessage(e instanceof Error ? e.message : 'Could not create component.'); }
+    finally { setBusy(false); }
+  };
+
   const columns: Column<AssessmentComponentResponse>[] = [
     { key: 'code', header: 'Component', render: (c) => <span className="mono">{c.code}</span> },
     { key: 'maxMarks', header: 'Max marks', render: (c) => c.maxMarks },
     { key: 'weight', header: 'Weight', render: (c) => `${c.weight}%` },
+    {
+      key: 'questions', header: 'Questions', render: (c) => (
+        <button type="button" className="btn btn-ghost" style={{ padding: '4px 10px', fontSize: 12 }}
+          onClick={() => setExpandedComponent(expandedComponent === c.id ? null : c.id)}>
+          {expandedComponent === c.id ? 'Hide questions' : 'Questions'}
+        </button>
+      ),
+    },
   ];
   return (
     <div style={{ padding: '4px 0 16px' }}>
       <DataTable columns={columns} rows={components.data} loading={components.loading} error={components.error}
         onRetry={components.refetch} emptyTitle="No components" rowKey={(c) => c.id} />
+      {expandedComponent && <ComponentQuestions componentId={expandedComponent} isDraft={isDraft} />}
+      {isDraft && (
+        <form onSubmit={create} style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'flex-end', marginTop: 10 }}>
+          <div className="form-field" style={{ marginBottom: 0 }}>
+            <label htmlFor={`c-code-${assessmentId}`} style={{ fontSize: 12 }}>Code</label>
+            <input id={`c-code-${assessmentId}`} value={code} onChange={(e) => setCode(e.target.value)} required style={{ fontSize: 13, padding: '6px 8px' }} />
+          </div>
+          <div className="form-field" style={{ marginBottom: 0, width: 100 }}>
+            <label htmlFor={`c-marks-${assessmentId}`} style={{ fontSize: 12 }}>Max marks</label>
+            <input id={`c-marks-${assessmentId}`} type="number" min="0" step="0.5" value={maxMarks} onChange={(e) => setMaxMarks(e.target.value)} required style={{ fontSize: 13, padding: '6px 8px' }} />
+          </div>
+          <div className="form-field" style={{ marginBottom: 0, width: 100 }}>
+            <label htmlFor={`c-weight-${assessmentId}`} style={{ fontSize: 12 }}>Weight %</label>
+            <input id={`c-weight-${assessmentId}`} type="number" min="0" max="100" step="0.5" value={weight} onChange={(e) => setWeight(e.target.value)} required style={{ fontSize: 13, padding: '6px 8px' }} />
+          </div>
+          <button type="submit" className="btn btn-primary" style={{ padding: '7px 14px', fontSize: 13 }} disabled={busy || !code}>
+            {busy ? 'Adding…' : 'Add component'}
+          </button>
+        </form>
+      )}
+      {!isDraft && <p style={{ fontSize: 12, color: 'var(--ink-soft)', marginTop: 8 }}>Components and questions can only be added while this assessment is DRAFT.</p>}
+      {message && <p role="status" style={{ fontSize: 12, color: 'var(--flag)', marginTop: 8 }}>{message}</p>}
     </div>
   );
 }
@@ -117,7 +246,10 @@ export default function FacultyAssessmentsPage() {
           </form>
           <DataTable columns={columns} rows={assessments.data} loading={assessments.loading} error={assessments.error}
             onRetry={assessments.refetch} emptyTitle="No assessments" emptyDescription="No assessments have been created for this section yet." rowKey={(a) => a.id} />
-          {expanded && <AssessmentComponents assessmentId={expanded} />}
+          {expanded && (
+            <AssessmentComponents assessmentId={expanded}
+              isDraft={assessments.data?.find((a) => a.id === expanded)?.status === 'DRAFT'} />
+          )}
         </>
       )}
     </div>

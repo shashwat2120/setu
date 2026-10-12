@@ -135,6 +135,17 @@ public class PasskeyAuthenticationService {
             return new PasskeyAuthOutcome.UnknownCredential();
         }
 
+        // Checked before the (expensive) cryptographic ceremony verification below, same as the revoked-credential
+        // check just above it: a suspended/deactivated account must not authenticate, regardless of whether the
+        // ceremony would otherwise have verified correctly.
+        User user = userRepository.findById(passkey.userId()).orElseThrow(
+            () -> new IllegalStateException("passkey " + passkey.id() + " references a nonexistent user"));
+        if (!user.isActive()) {
+            auditLogWriter.write(null, user.id(), "PASSKEY_AUTH_FAILURE", "identity.passkeys", passkey.id(),
+                java.util.Map.of("reason", "account_" + user.status().name().toLowerCase()));
+            return new PasskeyAuthOutcome.AccountNotActive(user.status());
+        }
+
         PasskeyCeremonyVerifier.VerifiedAuthentication verified;
         try {
             verified = verifier.verifyAuthentication(authenticationResponseJson, challenge.challenge(),

@@ -6,7 +6,9 @@ import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import jakarta.persistence.Version;
 
+import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.UUID;
 
@@ -48,6 +50,21 @@ public class AssignmentSubmission {
 
     @Column(name = "content_ref")
     private String contentRef;
+
+    @Column(name = "marks")
+    private BigDecimal marks;
+
+    @Column(name = "feedback")
+    private String feedback;
+
+    @Column(name = "graded_by")
+    private UUID gradedBy;
+
+    @Column(name = "graded_at")
+    private Instant gradedAt;
+
+    @Version
+    private int version;
 
     protected AssignmentSubmission() {
     }
@@ -93,5 +110,30 @@ public class AssignmentSubmission {
 
     public String contentRef() {
         return contentRef;
+    }
+
+    public BigDecimal marks() {
+        return marks;
+    }
+
+    public String feedback() {
+        return feedback;
+    }
+
+    public UUID gradedBy() {
+        return gradedBy;
+    }
+
+    public Instant gradedAt() {
+        return gradedAt;
+    }
+
+    /** Only from SUBMITTED/LATE — grading a DRAFT or already-GRADED row is a caller error the service layer rejects before ever reaching here. */
+    public void grade(BigDecimal marks, String feedback, UUID gradedBy, Instant now) {
+        this.marks = marks;
+        this.feedback = feedback;
+        this.gradedBy = gradedBy;
+        this.gradedAt = now;
+        this.status = AssignmentSubmissionStatus.GRADED;
     }
 }

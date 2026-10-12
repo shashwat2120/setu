@@ -44,6 +44,12 @@ total**. `tenant_id` follows the envelope rule above (NULL only for the
 identity-level events marked *platform*); every other row carries the tenant
 shown implicitly by its aggregate. `event_version` is `1` for every row.
 
+> **Added with staff attendance (9 further rows, implemented):** `FacultyCheckedIn`, `FacultyCheckedOut`,
+> `FacultyAttendanceMarked`, `FacultyAttendanceCorrected`, the four `FacultyRegularisation*` events and `FacultyAttendancePolicyChanged` — aggregate `faculty_attendance`, topic `setu.faculty_attendance`, written
+> to the outbox in the same transaction as the change. They carry the standard envelope (event id, tenant id, correlation id,
+> `event_version` 1); `previous_status`, `actor_user_id` and `reason` are present only on the two administrator events. The
+> consumers listed are the intended Sprint 6B ones; none exist yet.
+
 | Event | Producer | Consumers | Aggregate | Ordering key | Payload essentials |
 |---|---|---|---|---|---|
 | `UserSuspended` | Identity | Notification, Analytics | `users` | `user_id` | `user_id, reason, actor_user_id` |
@@ -80,6 +86,15 @@ shown implicitly by its aggregate. `event_version` is `1` for every row.
 | `AttendanceSessionClosed` 🆕 | Attendance | Realtime/WebSocket relay | `attendance_sessions` | `attendance_session_id` | `session_id, section_id, closed_at` |
 | `AttendanceRecorded` | Attendance | Realtime/WebSocket relay, Student Success, Analytics | `attendance_records` | `attendance_session_id` (per-session order matters for the live board) | `attendance_record_id, session_id, enrollment_id, status, marked_at` |
 | `AttendanceCorrected` | Attendance | Realtime relay, Student Success, Analytics | `attendance_records` | `attendance_session_id` | `attendance_record_id, old_status, new_status, corrected_by, reason` |
+| `FacultyCheckedIn` | Attendance | Analytics | `faculty_attendance` | `faculty_id` | `faculty_attendance_id, faculty_id, attendance_date, status, check_in_at, actor_user_id` |
+| `FacultyCheckedOut` | Attendance | Analytics | `faculty_attendance` | `faculty_id` | `faculty_attendance_id, faculty_id, attendance_date, status, check_in_at, check_out_at, actor_user_id` |
+| `FacultyAttendanceMarked` | Attendance | Notification, Analytics | `faculty_attendance` | `faculty_id` | `faculty_attendance_id, faculty_id, attendance_date, status, actor_user_id, reason` |
+| `FacultyAttendanceCorrected` | Attendance | Notification, Analytics | `faculty_attendance` | `faculty_id` | `faculty_attendance_id, faculty_id, attendance_date, previous_status, status, actor_user_id, reason` |
+| `FacultyAttendancePolicyChanged` | Attendance | Notification, Analytics | `faculty_attendance_policy` | `tenant_id` | `policy_version, shift_start, shift_end, grace_minutes, full_day_minutes, half_day_minutes, actor_user_id` |
+| `FacultyRegularisationRequested` | Attendance | Notification, Analytics | `faculty_attendance` | `faculty_id` | `regularisation_id, faculty_id, attendance_date, requested_status, actor_user_id, reason` |
+| `FacultyRegularisationApproved` | Attendance | Notification, Analytics | `faculty_attendance` | `faculty_id` | `regularisation_id, faculty_id, attendance_date, requested_status, actor_user_id, note` |
+| `FacultyRegularisationRejected` | Attendance | Notification, Analytics | `faculty_attendance` | `faculty_id` | `regularisation_id, faculty_id, attendance_date, requested_status, actor_user_id, note` |
+| `FacultyRegularisationWithdrawn` | Attendance | Analytics | `faculty_attendance` | `faculty_id` | `regularisation_id, faculty_id, attendance_date, requested_status, actor_user_id` |
 | `AssignmentSubmitted` | Learning | Notification | `assignment_submissions` | `assignment_id` | `submission_id, assignment_id, student_id, attempt_no` |
 | `AssignmentGraded` | Learning | Assessment (feeds grade production), Notification | `assignment_submissions` | `assignment_id` | `submission_id, grade_id` |
 | `AssessmentPublished` | Assessment | Notification, Analytics | `assessments` | `assessment_id` | `assessment_id, section_id` |

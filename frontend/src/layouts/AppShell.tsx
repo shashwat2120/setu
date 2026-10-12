@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { NavLink, Outlet } from 'react-router-dom';
+import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
 import { NAV_BY_ROLE } from './navConfig';
 import '../styles/app.css';
@@ -57,6 +57,17 @@ export default function AppShell() {
 
 function UserMenu({ name, onLogout }: { name: string; onLogout: () => void }) {
   const [open, setOpen] = useState(false);
+  const navigate = useNavigate();
+  const itemStyle: React.CSSProperties = {
+    width: '100%',
+    textAlign: 'left',
+    padding: '10px 14px',
+    background: 'transparent',
+    border: 'none',
+    fontSize: 14,
+    fontWeight: 600,
+    color: 'var(--ink)',
+  };
   return (
     <div style={{ position: 'relative' }}>
       <button
@@ -87,17 +98,16 @@ function UserMenu({ name, onLogout }: { name: string; onLogout: () => void }) {
           <button
             role="menuitem"
             type="button"
+            onClick={() => { setOpen(false); navigate('/app/security'); }}
+            style={itemStyle}
+          >
+            Security
+          </button>
+          <button
+            role="menuitem"
+            type="button"
             onClick={onLogout}
-            style={{
-              width: '100%',
-              textAlign: 'left',
-              padding: '10px 14px',
-              background: 'transparent',
-              border: 'none',
-              fontSize: 14,
-              fontWeight: 600,
-              color: 'var(--ink)',
-            }}
+            style={{ ...itemStyle, borderTop: '1px solid var(--rule)' }}
           >
             Sign out
           </button>

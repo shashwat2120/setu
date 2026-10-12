@@ -49,7 +49,10 @@ import java.util.Locale;
  * Run with: {@code mvn -q test -Dtest=LiveDevBridge#serve} (left running; stop with Ctrl+C or by killing the
  * process). Point the frontend's Vite dev server proxy at {@code http://localhost:8089}.
  */
-@SpringBootTest
+@SpringBootTest(properties = {
+    "spring.ai.model.chat=${AI_PROVIDER:google-genai}",
+    "spring.ai.google.genai.chat.options.model=${GEMINI_MODEL:gemini-3.8-flash}"
+})
 @AutoConfigureMockMvc
 @TestPropertySource(properties = "app.demo-data.enabled=true")
 class LiveDevBridge {
@@ -184,9 +187,14 @@ class LiveDevBridge {
             }
 
             System.out.println("BRIDGE_DISPATCHING: " + method + " " + target);
-            MockHttpServletResponse response = mockMvc.perform(builder).andReturn().getResponse();
+            org.springframework.test.web.servlet.MvcResult mvcResult = mockMvc.perform(builder).andReturn();
+            MockHttpServletResponse response = mvcResult.getResponse();
             System.out.println("BRIDGE_DISPATCHED: " + method + " " + target + " -> " + response.getStatus());
-            writeResponse(out, response);
+            if (mvcResult.getRequest().isAsyncStarted()) {
+                relayAsync(out, mvcResult, response);
+            } else {
+                writeResponse(out, response);
+            }
         } catch (Exception e) {
             System.out.println("BRIDGE_HANDLE_ERROR: " + e);
             e.printStackTrace(System.out);
@@ -228,6 +236,68 @@ class LiveDevBridge {
         head.append("Connection: close\r\n\r\n");
         out.write(head.toString().getBytes(StandardCharsets.ISO_8859_1));
         out.write(body);
+        out.flush();
+    }
+
+    /**
+     * Server-sent events: MockMvc returns as soon as the handler starts the async response, and the emitter keeps
+     * appending to the mock response afterwards. Send the head right away as chunked, forward each new slice of the
+     * body as it appears, and finish once the async result is set (the emitter completed).
+     */
+    private void relayAsync(OutputStream out, org.springframework.test.web.servlet.MvcResult mvcResult,
+                            MockHttpServletResponse response) throws Exception {
+        StringBuilder head = new StringBuilder();
+        head.append("HTTP/1.1 ").append(response.getStatus()).append(' ').append(reason(response.getStatus())).append("\r\n");
+        boolean sawContentType = false;
+        for (String name : response.getHeaderNames()) {
+            if (name.equalsIgnoreCase("Content-Length") || name.equalsIgnoreCase("Transfer-Encoding")) {
+                continue;
+            }
+            for (String value : response.getHeaders(name)) {
+                head.append(name).append(": ").append(value).append("\r\n");
+            }
+            if (name.equalsIgnoreCase("Content-Type")) {
+                sawContentType = true;
+            }
+        }
+        if (!sawContentType && response.getContentType() != null) {
+            head.append("Content-Type: ").append(response.getContentType()).append("\r\n");
+        }
+        head.append("Cache-Control: no-cache\r\nTransfer-Encoding: chunked\r\nConnection: close\r\n\r\n");
+        out.write(head.toString().getBytes(StandardCharsets.ISO_8859_1));
+        out.flush();
+
+        java.util.concurrent.atomic.AtomicBoolean done = new java.util.concurrent.atomic.AtomicBoolean(false);
+        Thread waiter = new Thread(() -> {
+            try {
+                mvcResult.getAsyncResult(180_000);
+            } catch (Exception ignored) {
+                // timed out or failed — fall through and end the stream
+            } finally {
+                done.set(true);
+            }
+        }, "bridge-async-waiter");
+        waiter.setDaemon(true);
+        waiter.start();
+
+        int sent = 0;
+        while (true) {
+            boolean finished = done.get(); // read BEFORE the slice so the last bytes are never missed
+            byte[] all = response.getContentAsByteArray();
+            if (all.length > sent) {
+                out.write(Integer.toHexString(all.length - sent).getBytes(StandardCharsets.ISO_8859_1));
+                out.write("\r\n".getBytes(StandardCharsets.ISO_8859_1));
+                out.write(all, sent, all.length - sent);
+                out.write("\r\n".getBytes(StandardCharsets.ISO_8859_1));
+                out.flush();
+                sent = all.length;
+            }
+            if (finished) {
+                break;
+            }
+            Thread.sleep(25);
+        }
+        out.write("0\r\n\r\n".getBytes(StandardCharsets.ISO_8859_1));
         out.flush();
     }
 

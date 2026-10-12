@@ -82,4 +82,34 @@ class PasswordAuthenticationServiceTests {
         var outcomeAfterLockout = passwordAuthenticationService.authenticate(email, "correct-password-123");
         assertThat(outcomeAfterLockout).isInstanceOf(PasswordAuthOutcome.AccountLocked.class);
     }
+
+    @Test
+    void suspendedAccountCannotAuthenticateEvenWithTheCorrectPassword() {
+        String email = "suspended-login-" + UUID.randomUUID() + "@example.com";
+        UUID userId = registerUserWithPassword(email, "correct-password-123");
+        var user = userRepository.findById(userId).orElseThrow();
+        user.suspend();
+        userRepository.save(user);
+
+        var outcome = passwordAuthenticationService.authenticate(email, "correct-password-123");
+
+        assertThat(outcome).isInstanceOf(PasswordAuthOutcome.AccountNotActive.class);
+        assertThat(((PasswordAuthOutcome.AccountNotActive) outcome).status())
+            .isEqualTo(com.setu.identity.domain.UserStatus.SUSPENDED);
+    }
+
+    @Test
+    void deactivatedAccountCannotAuthenticateEvenWithTheCorrectPassword() {
+        String email = "deactivated-login-" + UUID.randomUUID() + "@example.com";
+        UUID userId = registerUserWithPassword(email, "correct-password-123");
+        var user = userRepository.findById(userId).orElseThrow();
+        user.deactivate();
+        userRepository.save(user);
+
+        var outcome = passwordAuthenticationService.authenticate(email, "correct-password-123");
+
+        assertThat(outcome).isInstanceOf(PasswordAuthOutcome.AccountNotActive.class);
+        assertThat(((PasswordAuthOutcome.AccountNotActive) outcome).status())
+            .isEqualTo(com.setu.identity.domain.UserStatus.DEACTIVATED);
+    }
 }

@@ -125,6 +125,75 @@ export async function apiFetch<T>(path: string, options: ApiFetchOptions = {}): 
   return json as T;
 }
 
+export interface SseHandlers {
+  onEvent: (event: string, data: unknown) => void;
+}
+
+/**
+ * POSTs `body` and reads the response as server-sent events, calling `onEvent` for each one as it arrives.
+ * Same auth behavior as `apiFetch` (bearer token, one silent refresh-and-retry on 401). A non-2xx answer is thrown
+ * as an `ApiError` before any event is delivered; a stream that ends or breaks mid-way is the caller's to detect
+ * (it never saw a terminal event).
+ */
+export async function apiStream(path: string, body: unknown, handlers: SseHandlers, signal?: AbortSignal): Promise<void> {
+  const doFetch = async (): Promise<Response> =>
+    fetch(path, {
+      method: 'POST',
+      credentials: 'include',
+      signal,
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'text/event-stream',
+        ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+      },
+      body: JSON.stringify(body),
+    });
+
+  let response = await doFetch();
+  if (response.status === 401) {
+    if (await refreshAccessToken()) {
+      response = await doFetch();
+    } else {
+      onUnauthorized?.();
+      throw new ApiError(401, 'Session expired');
+    }
+  }
+  if (!response.ok) {
+    const text = await response.text();
+    const json = (text ? safeJsonParse(text) : undefined) as (ErrorEnvelope & { reason?: string }) | undefined;
+    throw new ApiError(response.status, json?.message ?? json?.reason ?? response.statusText, json?.code, json?.requestId, json?.errors);
+  }
+  if (!response.body) {
+    throw new ApiError(502, 'Streaming is not supported by this connection');
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  const dispatch = (block: string) => {
+    let event = 'message';
+    const dataLines: string[] = [];
+    for (const line of block.split('\n')) {
+      if (line.startsWith('event:')) event = line.slice(6).trim();
+      else if (line.startsWith('data:')) dataLines.push(line.slice(5).replace(/^ /, ''));
+    }
+    if (dataLines.length === 0) return;
+    const raw = dataLines.join('\n');
+    handlers.onEvent(event, safeJsonParse(raw) ?? raw);
+  };
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true }).replace(/\r\n/g, '\n');
+    let sep: number;
+    while ((sep = buffer.indexOf('\n\n')) >= 0) {
+      dispatch(buffer.slice(0, sep));
+      buffer = buffer.slice(sep + 2);
+    }
+  }
+  if (buffer.trim()) dispatch(buffer);
+}
+
 function safeJsonParse(text: string): unknown {
   try {
     return JSON.parse(text);

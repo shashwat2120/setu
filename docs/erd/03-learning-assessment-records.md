@@ -38,6 +38,63 @@ Part of [../ERD.md](../ERD.md) — global conventions apply unless stated otherw
   in practice, but modeled here since the canonical spec lists them as a table).
 - **Transaction boundary / owning module**: `attendance`
 
+### `faculty_attendance`
+
+- **Purpose**: a faculty member's **own** daily attendance (staff check-in / check-out), separate from `attendance_records`,
+  which records *students* in a class meeting. One row per faculty member per calendar day.
+- **PK**: `id UUID`
+- **FK**: `tenant_id → colleges NOT NULL`, `faculty_id → faculty_profiles NOT NULL`, `corrected_by → users NULL`
+- **Columns**: `attendance_date DATE NOT NULL` (the day in the **college's own timezone**, not UTC), `status TEXT NOT NULL`
+  (`PRESENT`/`HALF_DAY`/`ABSENT`/`ON_LEAVE`), `check_in_at TIMESTAMPTZ NULL`, `check_out_at TIMESTAMPTZ NULL`,
+  `source TEXT NOT NULL` (`SELF`/`ADMIN`), `correction_reason TEXT NULL`, `created_at`, `updated_at`, `version INT NOT NULL DEFAULT 0`
+- **Composite unique**: `(faculty_id, attendance_date)` — the one-record-per-day guard, DB-enforced so two concurrent check-ins
+  cannot both insert
+- **Checks**: `check_out_at IS NULL OR check_in_at IS NOT NULL`; `check_out_at >= check_in_at`; `ABSENT`/`ON_LEAVE` rows carry no
+  check-in/out times; a row with `source = 'ADMIN'` must have `corrected_by` and `correction_reason`
+- **Indexes**: `(tenant_id, attendance_date)` for the admin day view; `(faculty_id, attendance_date DESC)` for own history
+- **Version/locking**: yes — a faculty check-out and an admin correction can race on the same row
+- **Policy-derived metrics** (V75): `late_minutes INT NULL` (minutes after shift start, only when beyond the grace period),
+  `worked_minutes INT NULL` (check-out minus check-in), `policy_version INT NULL` (the policy version used), `short_hours BOOLEAN NOT NULL
+  DEFAULT FALSE` (worked less than the half-day minimum). NULL on rows evaluated before the policy existed, and always NULL on
+  `ABSENT`/`ON_LEAVE`. There is no `LATE` *status*: late is `late_minutes > 0` on a `PRESENT`/`HALF_DAY` day. `HALF_DAY` is set by an
+  administrator **or** automatically at self check-out when fewer than the policy's full-day minutes were worked
+- **Owning module**: `attendance`
+
+### `staff_attendance_policies`
+
+- **Purpose**: a college's rules for judging faculty (staff) attendance — shift, grace period and the hours that make a full or half
+  day. **Append-only versions**: changing the rules inserts a new row; old rows are never edited, so every attendance record can cite
+  the exact policy version it was judged under and past days are never silently re-judged.
+- **PK**: `id UUID`
+- **FK**: `tenant_id → colleges NOT NULL`, `created_by → users NOT NULL`
+- **Columns**: `version INT NOT NULL` (1, 2, … per college), `shift_start_minute INT`, `shift_end_minute INT` (college-local wall-clock times as
+  minutes since midnight, 0-1439 — an integer, not a `TIME`, so a non-UTC server's JDBC time-zone handling can never shift them),
+  `grace_minutes INT`, `full_day_minutes INT`, `half_day_minutes INT`, `created_at`
+- **Composite unique**: `(tenant_id, version)` — two administrators saving at once cannot both take the same version
+- **Checks**: `shift_start_minute < shift_end_minute`; `0 <= grace_minutes <= 120`; `0 < half_day_minutes < full_day_minutes <= 1440`
+- **Current policy** = the highest `version` for the college. A college with no row uses the built-in defaults (**version 0**,
+  not stored): shift 09:00–17:00, 15 minutes' grace, 480 minutes for a full day, 240 for a half day.
+- **Owning module**: `attendance`
+
+### `faculty_attendance_regularisations`
+
+- **Purpose**: a faculty member's request to correct a past day of their OWN attendance (for example a forgotten check-in or
+  check-out), decided by an administrator. Approval applies the correction to `faculty_attendance`; the request itself is the
+  permanent record of who asked, why, and who decided.
+- **PK**: `id UUID`
+- **FK**: `tenant_id → colleges NOT NULL`, `faculty_id → faculty_profiles NOT NULL`, `decided_by → users NULL`
+- **Columns**: `attendance_date DATE NOT NULL` (college timezone, strictly before today), `requested_status TEXT NOT NULL`
+  (`PRESENT`/`HALF_DAY`/`ON_LEAVE`), `requested_check_in_at`/`requested_check_out_at TIMESTAMPTZ NULL`, `reason TEXT NOT NULL`,
+  `status TEXT NOT NULL DEFAULT 'PENDING'` (`PENDING`/`APPROVED`/`REJECTED`/`WITHDRAWN`), `decided_at TIMESTAMPTZ NULL`,
+  `decision_note TEXT NULL`, `created_at`, `updated_at`, `version INT NOT NULL DEFAULT 0`
+- **Partial unique**: `(faculty_id, attendance_date) WHERE status = 'PENDING'` — at most one open request per faculty member per day,
+  DB-enforced
+- **Checks**: times only on `PRESENT`/`HALF_DAY`; `requested_check_out_at > requested_check_in_at`; a check-out needs a check-in;
+  `decided_by`/`decided_at` are set exactly when status is `APPROVED` or `REJECTED`; a rejection carries a `decision_note`
+- **Indexes**: `(tenant_id, status, created_at)` for the admin queue; `(faculty_id, created_at DESC)` for a member's own list
+- **Version/locking**: yes — two administrators deciding the same request, or the member withdrawing while an admin decides
+- **Owning module**: `attendance`
+
 ### `attendance_records`
 
 - **Purpose**: the actual per-student check-in — the **only** source for
@@ -83,8 +140,8 @@ Part of [../ERD.md](../ERD.md) — global conventions apply unless stated otherw
 | Table | PK | FK | Key columns | Constraints |
 |---|---|---|---|---|
 | `course_modules` | `id` | `tenant_id`, `section_id → course_sections NOT NULL` | `title, sequence INT, status` | `(section_id, sequence)` unique |
-| `lessons` | `id` | `module_id → course_modules NOT NULL` | `title, type, content_ref TEXT, sequence INT, duration_minutes INT` | `(module_id, sequence)` unique |
-| `lesson_resources` | `id` | `lesson_id → lessons NOT NULL` | `media_ref TEXT NOT NULL, type TEXT NOT NULL` | binary media **outside Postgres** — `media_ref` is an object-storage key/URL, never bytes in this table (canonical spec §15) |
+| `lessons` | `id` | `module_id → course_modules NOT NULL` | `title, type, content_ref TEXT, sequence INT, duration_minutes INT` | `(module_id, sequence)` unique; `content_ref` must be `https://…` (e.g. a YouTube video), `ref://…` or `s3://…` — enforced by `ContentReferences` |
+| `lesson_resources` | `id` | `lesson_id → lessons NOT NULL` | `media_ref TEXT NOT NULL, type TEXT NOT NULL, title TEXT NULL` | binary media **outside Postgres** — `media_ref` is an object-storage key/URL, never bytes in this table (canonical spec §15). `title` (V76) is an optional display name, 1–200 chars. `media_ref` accepts only `https://` (host required, no credentials, no whitespace, ≤2048 chars), `ref://` or `s3://`; `javascript:`, `data:`, `file:` and plain `http://` are refused at write time. A YouTube `content_ref` is shown to students as an embedded player (privacy-enhanced domain) with a plain link beneath it. |
 | `learning_progress` | `id` | `lesson_id → lessons NOT NULL`, `student_id → student_profiles NOT NULL` | `state TEXT, percent NUMERIC(5,2), started_at, completed_at, last_position JSONB` | `(lesson_id, student_id)` unique; `CHECK (percent BETWEEN 0 AND 100)`; progress is **evidence, not a grade** unless a tenant explicitly configures a module to count it as one (application-level policy, not a schema flag) |
 | `assignments` | `id` | `tenant_id`, `section_id → course_sections NOT NULL` | `title, max_marks NUMERIC(6,2), due_at TIMESTAMPTZ, late_policy JSONB, status` | ownership flows through `section_id`, not a direct module link |
 | `assignment_submissions` | `id` | `assignment_id → assignments NOT NULL`, `student_id → student_profiles NOT NULL`, `grade_id → grades NULL` | `attempt_no INT NOT NULL DEFAULT 1, submitted_at, status, content_ref TEXT` | `(assignment_id, student_id, attempt_no)` unique |

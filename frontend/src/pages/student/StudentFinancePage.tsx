@@ -38,13 +38,19 @@ function ChargeRow({ charge, studentId, onPaid }: { charge: StudentChargeRespons
       <td data-label="Due">{charge.dueDate}</td>
       <td data-label="Status"><StatusBadge value={charge.status} /></td>
       <td data-label="Actions">
-        {charge.status === 'PENDING' || charge.status === 'OVERDUE' ? (
+        {(charge.status === 'PENDING' || charge.status === 'OVERDUE') && !paymentId && (
           <button type="button" className="btn btn-primary" style={{ padding: '6px 12px', fontSize: 12 }} disabled={paying} onClick={pay}>
             {paying ? 'Processing…' : 'Pay'}
           </button>
-        ) : charge.status === 'PAID' && paymentId ? (
+        )}
+        {(charge.status === 'PENDING' || charge.status === 'OVERDUE') && paymentId && (
+          <p style={{ fontSize: 11, color: 'var(--ink-soft)' }}>
+            Payment initiated — awaiting the provider&apos;s confirmation webhook.
+          </p>
+        )}
+        {charge.status === 'PAID' && paymentId && (
           receipt.data ? <span style={{ fontSize: 12, color: 'var(--ink-soft)' }}>Receipt {receipt.data.receiptNo}</span> : null
-        ) : null}
+        )}
         {error && <div style={{ fontSize: 12, color: 'var(--flag)' }}>{error}</div>}
       </td>
     </tr>

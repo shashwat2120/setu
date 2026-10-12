@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useAuth } from '../../auth/AuthContext';
 import { tenantForRole } from '../../auth/types';
+import { apiFetch } from '../../api/client';
 import { useApiQuery } from '../../api/useApiQuery';
 import type { AttendanceSessionResponse, AttendanceRecordResponse } from '../../api/types';
 import { PageHeader } from '../../components/ui/PageHeader';
@@ -8,16 +9,48 @@ import { DataTable, type Column } from '../../components/ui/DataTable';
 import { StatusBadge } from '../../components/ui/StatusBadge';
 import { SectionSelect, useSectionOptions } from '../../components/ui/SectionSelect';
 
-function SessionRecords({ sessionId, tenantId, studentNameForEnrollment }: { sessionId: string; tenantId: string; studentNameForEnrollment: (enrollmentId: string) => string }) {
+const RECORD_STATUSES = ['PRESENT', 'LATE', 'ABSENT', 'EXCUSED'] as const;
+
+function SessionRecords({ sessionId, tenantId, sessionOpen, studentNameForEnrollment }: { sessionId: string; tenantId: string; sessionOpen: boolean; studentNameForEnrollment: (enrollmentId: string) => string }) {
   const records = useApiQuery<AttendanceRecordResponse[]>(`/attendance/sessions/${sessionId}/records?tenantId=${tenantId}`);
+  const [message, setMessage] = useState('');
+
+  const correct = async (recordId: string, status: typeof RECORD_STATUSES[number]) => {
+    setMessage('');
+    try {
+      await apiFetch(`/attendance/records/${recordId}/correct`, { method: 'POST', body: { status, reason: `Corrected to ${status} by college administrator` } });
+      records.refetch();
+    } catch (e) { setMessage(e instanceof Error ? e.message : 'Could not correct this record.'); }
+  };
+
   const columns: Column<AttendanceRecordResponse>[] = [
     { key: 'student', header: 'Student (by enrollment)', render: (r) => studentNameForEnrollment(r.enrollmentId) },
     { key: 'status', header: 'Status', render: (r) => <StatusBadge value={r.status} /> },
     { key: 'markedAt', header: 'Marked at', render: (r) => new Date(r.markedAt).toLocaleString() },
     { key: 'source', header: 'Source', render: (r) => r.source },
+    ...(sessionOpen ? [] : [{
+      key: 'correct',
+      header: 'Correct',
+      render: (r: AttendanceRecordResponse) => (
+        <select
+          value=""
+          onChange={(e) => { if (e.target.value) correct(r.id, e.target.value as typeof RECORD_STATUSES[number]); }}
+          style={{ fontSize: 12, padding: '4px 6px' }}
+        >
+          <option value="">Change to…</option>
+          {RECORD_STATUSES.filter((s) => s !== r.status).map((s) => <option key={s} value={s}>{s}</option>)}
+        </select>
+      ),
+    } as Column<AttendanceRecordResponse>]),
   ];
   return (
     <div style={{ padding: '4px 0 16px' }}>
+      {sessionOpen && (
+        <p style={{ fontSize: 12, color: 'var(--ink-soft)', marginBottom: 8 }}>
+          Records can only be corrected once this session is closed.
+        </p>
+      )}
+      {message && <p role="status" style={{ fontSize: 12, color: 'var(--flag)', marginBottom: 8 }}>{message}</p>}
       <DataTable
         columns={columns}
         rows={records.data}
@@ -83,7 +116,9 @@ export default function AttendancePage() {
             rowKey={(s) => s.id}
           />
           {expandedSession && tenantId && (
-            <SessionRecords sessionId={expandedSession} tenantId={tenantId} studentNameForEnrollment={studentNameForEnrollment} />
+            <SessionRecords sessionId={expandedSession} tenantId={tenantId}
+              sessionOpen={sessions.data?.find((s) => s.id === expandedSession)?.status === 'OPEN'}
+              studentNameForEnrollment={studentNameForEnrollment} />
           )}
         </>
       )}

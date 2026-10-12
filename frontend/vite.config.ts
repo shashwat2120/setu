@@ -6,7 +6,7 @@ import { defineConfig } from 'vite'
 // LiveDevBridge (port 8089) rather than a normally-run backend on this machine.
 const BACKEND_PREFIXES = [
   '/auth', '/identity', '/institution', '/catalog', '/enrollment', '/directory', '/guardian-access',
-  '/attendance', '/learning', '/assessment', '/risk', '/finance', '/career', '/ai', '/governance',
+  '/attendance', '/staff-attendance', '/learning', '/assessment', '/risk', '/finance', '/career', '/ai', '/governance', '/record',
   '/actuator', '/v3/api-docs', '/swagger-ui', '/admin',
 ]
 

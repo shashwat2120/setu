@@ -3,6 +3,7 @@ package com.setu.identity.application;
 import com.setu.identity.domain.Session;
 import com.setu.identity.domain.SessionRevokedEvent;
 import com.setu.identity.infrastructure.SessionRepository;
+import com.setu.identity.infrastructure.UserRepository;
 import com.setu.identity.infrastructure.security.JwtService;
 import com.setu.identity.infrastructure.security.JwtProperties;
 import com.setu.identity.infrastructure.security.RefreshTokenHasher;
@@ -28,14 +29,17 @@ import java.util.UUID;
 public class SessionService {
 
     private final SessionRepository sessionRepository;
+    private final UserRepository userRepository;
     private final JwtService jwtService;
     private final JwtProperties jwtProperties;
     private final RefreshTokenHasher tokenHasher;
     private final OutboxEventWriter outboxEventWriter;
 
-    public SessionService(SessionRepository sessionRepository, JwtService jwtService, JwtProperties jwtProperties,
-                           RefreshTokenHasher tokenHasher, OutboxEventWriter outboxEventWriter) {
+    public SessionService(SessionRepository sessionRepository, UserRepository userRepository, JwtService jwtService,
+                           JwtProperties jwtProperties, RefreshTokenHasher tokenHasher,
+                           OutboxEventWriter outboxEventWriter) {
         this.sessionRepository = sessionRepository;
+        this.userRepository = userRepository;
         this.jwtService = jwtService;
         this.jwtProperties = jwtProperties;
         this.tokenHasher = tokenHasher;
@@ -70,6 +74,16 @@ public class SessionService {
         }
         if (session.isExpired(now)) {
             return new RefreshOutcome.Invalid("refresh token expired");
+        }
+        // Defense in depth: UserAccessService#suspend/#deactivate already revoke every session for a user in the
+        // same call, so this should never actually find a live session for a non-ACTIVE account — but a refresh
+        // is itself a re-authentication, and this is the cheapest possible place to make that guarantee absolute
+        // rather than relying solely on the revocation having already run to completion.
+        var user = userRepository.findById(session.userId());
+        if (user.isPresent() && !user.get().isActive()) {
+            session.revoke(now);
+            sessionRepository.save(session);
+            return new RefreshOutcome.Invalid("account is " + user.get().status().name().toLowerCase());
         }
         session.revoke(now);
         sessionRepository.save(session);

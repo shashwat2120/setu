@@ -241,6 +241,67 @@ class AiToolAuthorizationTests {
         assertThat(result).isInstanceOf(AiToolService.ToolError.class);
     }
 
+    // ---- transcript / fee tools: authorization is delegated to the owning service, so prove it still bites ----
+
+    @Test
+    void studentCanReadOwnTranscript() {
+        var s = day13Fixtures.provisionEnrolledScenario("AIT15");
+
+        Object result = callAs(s.student().userId(), () -> aiToolService.getTranscript(null));
+
+        assertThat(result).isInstanceOf(AiToolService.TranscriptResult.class);
+    }
+
+    @Test
+    void studentCannotReadAnotherStudentsTranscript() {
+        var s = day13Fixtures.provisionEnrolledScenario("AIT16");
+        var other = day8Fixtures.provisionStudentWithActiveProgram(s.tenant(), s.programId(), s.curriculumId(), "AIT16O");
+
+        Object result = callAs(other.userId(), () -> aiToolService.getTranscript(s.student().studentId().toString()));
+
+        assertThat(result).isInstanceOf(AiToolService.ToolError.class);
+    }
+
+    @Test
+    void guardianWithoutDelegationCannotReadTranscript() {
+        var s = day13Fixtures.provisionEnrolledScenario("AIT17");
+        var guardian = day10Fixtures.provisionGuardian(s.tenant(), "AIT17G");
+
+        Object result = callAs(guardian.guardianUserId(), () -> aiToolService.getTranscript(s.student().studentId().toString()));
+
+        assertThat(result).isInstanceOf(AiToolService.ToolError.class);
+    }
+
+    @Test
+    void studentCanReadOwnFeeStatus() {
+        var s = day13Fixtures.provisionEnrolledScenario("AIT18");
+
+        Object result = callAs(s.student().userId(), () -> aiToolService.getFeeStatus(null));
+
+        assertThat(result).isInstanceOf(AiToolService.FeeStatusResult.class);
+        assertThat(((AiToolService.FeeStatusResult) result).outstanding()).isEqualByComparingTo(BigDecimal.ZERO);
+    }
+
+    @Test
+    void studentCannotReadAnotherStudentsFeeStatus() {
+        var s = day13Fixtures.provisionEnrolledScenario("AIT19");
+        var other = day8Fixtures.provisionStudentWithActiveProgram(s.tenant(), s.programId(), s.curriculumId(), "AIT19O");
+
+        Object result = callAs(other.userId(), () -> aiToolService.getFeeStatus(s.student().studentId().toString()));
+
+        assertThat(result).isInstanceOf(AiToolService.ToolError.class);
+    }
+
+    @Test
+    void guardianWithoutDelegationCannotReadFeeStatus() {
+        var s = day13Fixtures.provisionEnrolledScenario("AIT20");
+        var guardian = day10Fixtures.provisionGuardian(s.tenant(), "AIT20G");
+
+        Object result = callAs(guardian.guardianUserId(), () -> aiToolService.getFeeStatus(s.student().studentId().toString()));
+
+        assertThat(result).isInstanceOf(AiToolService.ToolError.class);
+    }
+
     /**
      * Day 14 §5: "Guardian cannot access recommendations/interventions
      * merely because risk-score access exists." A VIEW_RISK_SCORE grant

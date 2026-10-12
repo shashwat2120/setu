@@ -57,8 +57,9 @@ public class AssessmentComponentController {
     }
 
     @GetMapping
-    public ResponseEntity<List<ComponentResponse>> listForAssessment(@RequestParam UUID assessmentId) {
-        return ResponseEntity.ok(assessmentComponentService.listForAssessment(assessmentId).stream()
+    public ResponseEntity<List<ComponentResponse>> listForAssessment(@RequestParam UUID assessmentId,
+                                                                     @RequestParam(required = false) UUID guardianForStudentId) {
+        return ResponseEntity.ok(assessmentComponentService.listForAssessment(assessmentId, guardianForStudentId).stream()
             .map(AssessmentComponentController::toResponse).toList());
     }
 

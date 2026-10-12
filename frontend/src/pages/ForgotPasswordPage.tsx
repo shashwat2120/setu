@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
 import { apiFetch } from '../api/client';
+import { isPlausibleEmail } from '../lib/passwordRules';
 
 /**
  * Always shows the same success state regardless of whether the email exists — the backend's own
@@ -10,12 +11,19 @@ import { apiFetch } from '../api/client';
 export default function ForgotPasswordPage() {
   const [email, setEmail] = useState('');
   const [status, setStatus] = useState<'idle' | 'submitting' | 'sent' | 'error'>('idle');
+  const [emailError, setEmailError] = useState<string | null>(null);
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
+    // A shape check only ("name@domain.tld"): whether the address belongs to an account is never revealed here.
+    if (!isPlausibleEmail(email)) {
+      setEmailError('Enter a valid email address, like name@college.edu.');
+      return;
+    }
+    setEmailError(null);
     setStatus('submitting');
     try {
-      await apiFetch('/auth/password/reset/initiate', { method: 'POST', body: { email }, skipAuthRetry: true });
+      await apiFetch('/auth/password/reset/initiate', { method: 'POST', body: { email: email.trim() }, skipAuthRetry: true });
       setStatus('sent');
     } catch {
       // Network/server failure only — never reachable for "email doesn't exist," which the backend answers
@@ -48,8 +56,11 @@ export default function ForgotPasswordPage() {
                 autoComplete="username"
                 required
                 value={email}
-                onChange={(e) => setEmail(e.target.value)}
+                aria-invalid={emailError ? true : undefined}
+                aria-describedby={emailError ? 'email-error' : undefined}
+                onChange={(e) => { setEmail(e.target.value); if (emailError) setEmailError(null); }}
               />
+              {emailError && <p id="email-error" role="alert" className="form-error" style={{ marginTop: 6 }}>{emailError}</p>}
             </div>
             {status === 'error' && (
               <p role="alert" className="form-error" style={{ marginBottom: 16 }}>

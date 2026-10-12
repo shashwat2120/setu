@@ -1,6 +1,7 @@
 package com.setu.identity.application;
 
 import com.setu.identity.application.email.EmailService;
+import com.setu.identity.domain.PasswordPolicy;
 import com.setu.identity.domain.PasswordResetToken;
 import com.setu.identity.domain.User;
 import com.setu.identity.infrastructure.PasswordResetTokenRepository;
@@ -45,19 +46,22 @@ public class PasswordResetService {
     private final RefreshTokenHasher tokenHasher; // SHA-256 opaque-token hashing is generic, reused here rather than duplicated
     private final Argon2PasswordService passwordService;
     private final AuditLogWriter auditLogWriter;
+    private final SessionService sessionService;
     private final EmailService emailService;
     private final PersonDirectory personDirectory;
     private final String frontendBaseUrl;
 
     public PasswordResetService(UserRepository userRepository, PasswordResetTokenRepository resetTokenRepository,
                                  RefreshTokenHasher tokenHasher, Argon2PasswordService passwordService,
-                                 AuditLogWriter auditLogWriter, EmailService emailService, PersonDirectory personDirectory,
+                                 AuditLogWriter auditLogWriter, SessionService sessionService, EmailService emailService,
+                                 PersonDirectory personDirectory,
                                  @Value("${app.frontend-base-url}") String frontendBaseUrl) {
         this.userRepository = userRepository;
         this.resetTokenRepository = resetTokenRepository;
         this.tokenHasher = tokenHasher;
         this.passwordService = passwordService;
         this.auditLogWriter = auditLogWriter;
+        this.sessionService = sessionService;
         this.emailService = emailService;
         this.personDirectory = personDirectory;
         this.frontendBaseUrl = frontendBaseUrl;
@@ -112,7 +116,8 @@ public class PasswordResetService {
         return rawToken;
     }
 
-    public enum CompletionResult {SUCCESS, INVALID_OR_EXPIRED_TOKEN}
+    /** {@code WEAK_PASSWORD}: the link is still valid and is NOT consumed, so the person can simply choose another password. */
+    public enum CompletionResult {SUCCESS, INVALID_OR_EXPIRED_TOKEN, WEAK_PASSWORD}
 
     @Transactional
     public CompletionResult complete(String rawToken, String newRawPassword) {
@@ -124,12 +129,25 @@ public class PasswordResetService {
         PasswordResetToken token = maybeToken.get();
         User user = userRepository.findById(token.userId())
             .orElseThrow(() -> new IllegalStateException("password_reset_tokens.user_id references a missing user"));
+        if (PasswordPolicy.violation(newRawPassword, user.email()).isPresent()) {
+            return CompletionResult.WEAK_PASSWORD;
+        }
         user.setPasswordHash(passwordService.hash(newRawPassword), now);
         user.recordSuccessfulLogin(now); // a successful reset also clears any existing lockout, same as a normal successful auth
         userRepository.save(user);
         token.markUsed(now);
         resetTokenRepository.save(token);
-        auditLogWriter.write(null, user.id(), "PASSWORD_RESET_COMPLETED", "identity.users", user.id(), null);
+        // Any other link this user was sent must stop working too: otherwise an older, still-valid email could be used
+        // to set the password again after the person has already chosen their new one.
+        for (PasswordResetToken other : resetTokenRepository.findByUserIdAndUsedAtIsNull(user.id())) {
+            other.markUsed(now);
+            resetTokenRepository.save(other);
+        }
+        // The reset is the owner's recovery action, so whoever may be holding an old session (a lost phone, a stolen cookie)
+        // must be signed out. The person signs in again with the new password.
+        int sessionsRevoked = sessionService.revokeAllSessionsForUser(user.id(), "PASSWORD_RESET");
+        auditLogWriter.write(null, user.id(), "PASSWORD_RESET_COMPLETED", "identity.users", user.id(),
+            java.util.Map.of("sessionsRevoked", sessionsRevoked));
         return CompletionResult.SUCCESS;
     }
 }

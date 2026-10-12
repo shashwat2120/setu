@@ -8,6 +8,30 @@ import { DataTable, type Column } from '../../components/ui/DataTable';
 import { SearchInput } from '../../components/ui/SearchInput';
 import { apiFetch } from '../../api/client';
 
+function AssignHod({ departmentId, onAssigned }: { departmentId: string; onAssigned: () => void }) {
+  const [hodUserId, setHodUserId] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [message, setMessage] = useState('');
+  const submit = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault(); setSubmitting(true); setMessage('');
+    try {
+      await apiFetch(`/institution/departments/${departmentId}/hod`, { method: 'POST', body: { hodUserId } });
+      setMessage('HOD assigned.'); setHodUserId(''); onAssigned();
+    } catch (e) { setMessage(e instanceof Error ? e.message : 'Could not assign HOD.'); }
+    finally { setSubmitting(false); }
+  };
+  return (
+    <form onSubmit={submit} style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+      <input value={hodUserId} onChange={(e) => setHodUserId(e.target.value)} placeholder="Faculty user ID (from their detail page)"
+        style={{ fontSize: 12, padding: '5px 8px', border: '1px solid var(--rule)', borderRadius: 4, width: 220 }} required />
+      <button type="submit" className="btn btn-ghost" style={{ padding: '5px 10px', fontSize: 12 }} disabled={submitting}>
+        {submitting ? 'Assigning…' : 'Assign'}
+      </button>
+      {message && <span style={{ fontSize: 11, color: 'var(--ink-soft)' }}>{message}</span>}
+    </form>
+  );
+}
+
 export default function DepartmentsPage() {
   const { user } = useAuth();
   const tenantId = tenantForRole(user, 'COLLEGE_ADMIN');
@@ -36,7 +60,13 @@ export default function DepartmentsPage() {
       header: 'Organization',
       render: (d) => organizations.data?.find((o) => o.id === d.organizationId)?.name ?? d.organizationId,
     },
-    { key: 'hod', header: 'Head of Department', render: (d) => d.hodUserId ?? '— not assigned —' },
+    {
+      key: 'hod',
+      header: 'Head of Department',
+      render: (d) => d.hodUserId
+        ? <span className="mono" style={{ fontSize: 12 }}>{d.hodUserId}</span>
+        : <AssignHod departmentId={d.id} onAssigned={departments.refetch} />,
+    },
   ];
 
   async function createDepartment(event: React.FormEvent<HTMLFormElement>) {

@@ -51,6 +51,8 @@ class PasskeyFullFlowTests {
     PasskeyAuthenticationService passkeyAuthenticationService;
     @Autowired
     WebAuthnProperties webAuthnProperties;
+    @Autowired
+    com.setu.identity.infrastructure.UserRepository userRepository;
 
     private final ObjectConverter objectConverter = new ObjectConverter();
 
@@ -160,5 +162,32 @@ class PasskeyFullFlowTests {
         var outcome = passkeyAuthenticationService.finishAuthentication(authChallenge.challengeId(), authJson);
 
         assertThat(outcome).isInstanceOf(PasskeyAuthOutcome.RevokedCredential.class);
+    }
+
+    @Test
+    void authenticatingWithAValidPasskeyOnASuspendedAccountIsRejected() {
+        String rpId = webAuthnProperties.getRpId();
+        String origin = webAuthnProperties.getAllowedOrigins().get(0);
+        UUID userId = newUser("suspended-account-passkey-" + UUID.randomUUID() + "@example.com");
+        var authenticator = new NoneAttestationAuthenticator();
+
+        var startResult = (PasskeyRegistrationService.StartRegistrationResult.Started)
+            passkeyRegistrationService.startRegistration(userId, Optional.empty());
+        String regJson = registrationResponseJson(authenticator, rpId, origin, startResult.challenge().challenge(),
+            startResult.challenge().userHandle());
+        var regOutcome = passkeyRegistrationService.finishRegistration(
+            userId, Optional.empty(), startResult.challenge().challengeId(), regJson);
+        assertThat(regOutcome).isInstanceOf(RegistrationOutcome.Success.class);
+
+        var user = userRepository.findById(userId).orElseThrow();
+        user.suspend();
+        userRepository.save(user);
+
+        var authChallenge = passkeyAuthenticationService.startAuthentication(Optional.empty());
+        String authJson = authenticationResponseJson(authenticator, rpId, origin, authChallenge.challenge());
+        var outcome = passkeyAuthenticationService.finishAuthentication(authChallenge.challengeId(), authJson);
+
+        assertThat(outcome).isInstanceOf(PasskeyAuthOutcome.AccountNotActive.class);
+        assertThat(((PasskeyAuthOutcome.AccountNotActive) outcome).status()).isEqualTo(com.setu.identity.domain.UserStatus.SUSPENDED);
     }
 }

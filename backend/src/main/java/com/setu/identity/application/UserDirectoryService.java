@@ -45,8 +45,8 @@ public class UserDirectoryService implements TenantMembership {
     }
 
     /**
-     * Same check, excluding GUARDIAN — for callers where "any tenant member may look this up, like a real
-     * roster lookup" is the right rule for every role EXCEPT guardian, whose access must only ever come through
+     * Same check, excluding GUARDIAN — for callers where any tenant member may look this up (like a real
+     * roster lookup) is the right rule for every role EXCEPT guardian, whose access must only ever come through
      * an explicit, scoped {@code guardianaccess.GuardianAccessGrant} (Day 6 §8), never blanket tenant membership.
      * {@link com.setu.directory.application.StudentProfileService#get} is the real caller this exists for: a
      * guardian holding the GUARDIAN role in a tenant must not be able to browse every OTHER student's basic
