@@ -80,7 +80,7 @@ export default function Spine() {
                   }}
                 >
                   <div style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--accent)" }}>{stage.n}</div>
-                  <h4 style={{ fontFamily: "var(--font-body)", fontWeight: 600, fontSize: 14, marginTop: 6 }}>{stage.label}</h4>
+                  <h3 style={{ fontFamily: "var(--font-body)", fontWeight: 600, fontSize: 14, marginTop: 6 }}>{stage.label}</h3>
                 </div>
                 {i < STAGES.length - 1 && <span style={{ color: "var(--rule)", padding: "0 16px", fontSize: 18 }}>→</span>}
               </div>

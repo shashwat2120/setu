@@ -8,6 +8,10 @@
   --accent-on: #ffffff;
   --verified: #2f6f63;
   --flag: #a93f30;
+  /* Text colour for tinted status badges: a shade darker than the base colour so the 12px label clears 4.5:1 on its own tint. */
+  --verified-ink: #24574d;
+  --flag-ink: #8f3326;
+  --accent-ink: #6f4a10;
   --shadow-ink: rgba(27, 36, 54, 0.12);
 
   --font-display: "Fraunces", Georgia, serif;
@@ -26,6 +30,9 @@
     --accent-on: #14161a;
     --verified: #4fa396;
     --flag: #e2685a;
+    --verified-ink: var(--verified);
+    --flag-ink: var(--flag);
+    --accent-ink: var(--accent);
     --shadow-ink: rgba(0, 0, 0, 0.4);
   }
 }
@@ -40,5 +47,8 @@
   --accent-on: #14161a;
   --verified: #4fa396;
   --flag: #e2685a;
+  --verified-ink: var(--verified);
+  --flag-ink: var(--flag);
+  --accent-ink: var(--accent);
   --shadow-ink: rgba(0, 0, 0, 0.4);
 }

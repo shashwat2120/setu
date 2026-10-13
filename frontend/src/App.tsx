@@ -16,16 +16,18 @@ export default function App() {
     <>
       <ProgressThread />
       <Nav />
-      <Hero />
-      <Memo />
-      <hr className="rule wrap" />
-      <RoleLedger />
-      <hr className="rule wrap" />
-      <Spine />
-      <PhotoBreak />
-      <Tally />
-      <FacultyQuote />
-      <Finale />
+      <main>
+        <Hero />
+        <Memo />
+        <hr className="rule wrap" />
+        <RoleLedger />
+        <hr className="rule wrap" />
+        <Spine />
+        <PhotoBreak />
+        <Tally />
+        <FacultyQuote />
+        <Finale />
+      </main>
       <Footer />
     </>
   );

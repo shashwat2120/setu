@@ -59,7 +59,7 @@ export default function LoginPage() {
   }
 
   return (
-    <div
+    <main
       style={{
         minHeight: '100vh',
         display: 'grid',
@@ -70,7 +70,7 @@ export default function LoginPage() {
     >
       <div style={{ width: '100%', maxWidth: 380 }}>
         <p style={{ fontFamily: 'var(--font-display)', fontSize: 24, fontWeight: 700, marginBottom: 4 }}>Setu</p>
-        <p className="eyebrow" style={{ marginBottom: 28 }}>Sign in</p>
+        <h1 className="eyebrow" style={{ marginBottom: 28, fontWeight: 400 }}>Sign in</h1>
 
         <form onSubmit={onSubmit} noValidate>
           <div className="form-field">
@@ -127,6 +127,6 @@ export default function LoginPage() {
           </p>
         </form>
       </div>
-    </div>
+    </main>
   );
 }
