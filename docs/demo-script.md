@@ -50,6 +50,13 @@ so for a demo either use an account whose address you control with Gmail SMTP or
 `EMAIL_PREVIEW_ENABLED=true` and read the code from the file written to `backend/target/demo-email-outbox`. A successful reset
 signs out every other session of that account.
 
+**New accounts get a code at once.** Admitting a student, or onboarding a faculty member, creates an account with no password and
+immediately emails that person the same kind of 6-digit code, as their "set your first password" email. So a freshly admitted
+address already has one valid code before anyone presses *Forgot password*. Asking for another code then cancels the first, so
+always use the **newest** email: an older code is refused with the usual "wrong or has expired" message. To demo this: as
+`admin.sit@demo.setu.local` admit a student with an address you can read, open the email, and use that code on the reset page to set
+the first password (do not press *Send code* first).
+
 ## 2. Live QR attendance
 
 Switch to `faculty.rao@demo.setu.local`. Attendance → select a section →
