@@ -6,7 +6,8 @@ import java.time.Instant;
  * Password-reset email delivery, abstracted behind an interface so {@link
  * com.setu.identity.application.PasswordResetService} depends on a contract, never a specific provider
  * (matching this codebase's existing Argon2/JWT-style ports-and-adapters pattern). {@link
- * com.setu.identity.infrastructure.email.BrevoEmailService} is the only implementation today.
+ * com.setu.identity.infrastructure.email.BrevoEmailService} (default) and {@link
+ * com.setu.identity.infrastructure.email.SmtpEmailService} are the implementations; {@code app.email.provider} picks one.
  * <p>
  * A failed send is never allowed to change what the caller (ultimately the HTTP client) sees — {@link
  * PasswordResetService#initiateAndEmail} intentionally ignores {@link SendResult#success()}: the response is

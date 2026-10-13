@@ -62,7 +62,9 @@ git-ignored `backend/.env.local` (it is loaded automatically); never commit keys
 | `OLLAMA_BASE_URL`, `OLLAMA_MODEL` | `http://localhost:11434`, `llama3.2:3b` | Local model, always the fallback |
 | `AI_PRIMARY_TIMEOUT_SECONDS`, `AI_REQUEST_TIMEOUT_SECONDS` | `25`, `60` | Budget for the Gemini attempt, and for the whole request |
 | `AI_RATE_LIMIT_MAX_REQUESTS` | `20` | Advisor requests per window per user |
+| `EMAIL_PROVIDER` | `brevo` | Which sender delivers the reset email: `brevo` or `smtp` |
 | `BREVO_API_KEY`, `MAIL_FROM_ADDRESS`, `MAIL_FROM_NAME` | none | Real password-reset email through Brevo; with no key nothing is sent |
+| `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_HOST`, `SMTP_PORT`, `SMTP_FROM_ADDRESS` | none, none, `smtp.gmail.com`, `587`, the user | Reset email over SMTP when `EMAIL_PROVIDER=smtp`; with no user or password nothing is sent |
 | `EMAIL_PREVIEW_ENABLED`, `EMAIL_PREVIEW_DIR` | `false`, `target/demo-email-outbox` | Also write each reset email to a local file |
 
 ### AI advisor
@@ -99,7 +101,18 @@ session and cancels the user's other codes. Requesting a code is rate limited (3
 (10 per email and 60 per IP per 15 minutes, answered with 429).
 
 Seeded accounts use `@demo.setu.local` addresses, which cannot receive mail. To receive a real reset email, use an account whose
-address you control and set `BREVO_API_KEY` and a `MAIL_FROM_ADDRESS` that is a verified sender in Brevo.
+address you control and configure one sender:
+
+- **Gmail (no domain or sender verification).** Turn on 2-step verification for the Gmail account, create an app password at
+  <https://myaccount.google.com/apppasswords>, then put these in the git-ignored `backend/.env.local`:
+  `EMAIL_PROVIDER=smtp`, `SMTP_USER=you@gmail.com`, `SMTP_PASSWORD=<the 16-character app password>`. Mail goes out from that Gmail
+  address over STARTTLS (port 587); Gmail only allows its own address, or a verified alias set in `SMTP_FROM_ADDRESS`, as the sender.
+  Any other SMTP server works with `SMTP_HOST` and `SMTP_PORT` (port 465 uses SSL), but Microsoft 365 often has SMTP login disabled
+  by the organisation's admin.
+- **Brevo.** Set `BREVO_API_KEY` and a `MAIL_FROM_ADDRESS` that is a verified sender in Brevo.
+
+A send that fails (wrong password, server unreachable, 10 second timeout) never changes what the visitor sees; it is logged with the
+address masked and never with the password.
 
 ## Tests
 

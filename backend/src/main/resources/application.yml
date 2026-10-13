@@ -129,6 +129,19 @@ app:
   # (${app.frontend-base-url}/reset-password, the page where the emailed code is typed). Never hard-code localhost in a link a real email sends.
   frontend-base-url: ${FRONTEND_BASE_URL:http://localhost:5180}
   email:
+    # Which sender delivers the reset email: "brevo" (default, API key) or "smtp" (for example Gmail with an app password).
+    provider: ${EMAIL_PROVIDER:brevo}
+    smtp:
+      # Gmail: host smtp.gmail.com, port 587 (STARTTLS), username = the Gmail address, password = a 16-character Google
+      # "app password" (needs 2-step verification on that account). Never committed: set in the git-ignored backend/.env.local.
+      # Blank username or password means "not configured": SmtpEmailService then logs a warning and reports failure.
+      host: ${SMTP_HOST:smtp.gmail.com}
+      port: ${SMTP_PORT:587}
+      username: ${SMTP_USER:}
+      password: ${SMTP_PASSWORD:}
+      # Blank means "send from the SMTP username". Gmail only allows its own address or a verified alias here.
+      from-address: ${SMTP_FROM_ADDRESS:}
+      from-name: ${MAIL_FROM_NAME:Setu College}
     brevo:
       # Never committed — real value only via the BREVO_API_KEY env var. Blank means "not configured":
       # BrevoEmailService then logs a warning and reports failure instead of sending, rather than throwing.

@@ -46,7 +46,7 @@ automated browser here (the server side is covered by the ceremony tests).
 **Forgot password (emailed code):** on the sign-in page choose *Forgot password*, enter an account email and press **Send code**,
 then **Enter the code** and type the 6-digit code plus a new password. The code expires after 15 minutes, works once, and stops
 working after 5 wrong tries; **Send a new code** cancels the older one. Seeded `@demo.setu.local` addresses cannot receive mail,
-so for a demo either use an account whose address you control with Brevo configured, or start the backend with
+so for a demo either use an account whose address you control with Gmail SMTP or Brevo configured, or start the backend with
 `EMAIL_PREVIEW_ENABLED=true` and read the code from the file written to `backend/target/demo-email-outbox`. A successful reset
 signs out every other session of that account.
 

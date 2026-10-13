@@ -132,6 +132,13 @@
 			<groupId>org.springframework.boot</groupId>
 			<artifactId>spring-boot-starter-kafka</artifactId>
 		</dependency>
+		<!-- Password-reset email over plain SMTP (SmtpEmailService, used when app.email.provider=smtp, e.g. Gmail with an app
+		     password). The starter's mail autoconfiguration stays inactive: it only acts when spring.mail.host is set, and
+		     SmtpEmailService builds its own sender from app.email.smtp.*. -->
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-mail</artifactId>
+		</dependency>
 		<!-- Day 15 §9: the smallest production-appropriate API documentation —
 		     auto-generates an OpenAPI 3 spec from the 39 existing @RestController
 		     classes' own request/response DTOs and security scheme, plus a
