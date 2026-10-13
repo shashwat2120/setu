@@ -39,10 +39,24 @@ class AuthRateLimiterTests {
     }
 
     private AuthRateLimiter limiter(int loginPerEmail, int loginPerIp, int resetPerEmail, int resetPerIp) {
-        return new AuthRateLimiter(redisTemplate, loginPerEmail, loginPerIp, 60, resetPerEmail, resetPerIp, 900);
+        return new AuthRateLimiter(redisTemplate, loginPerEmail, loginPerIp, 60, resetPerEmail, resetPerIp, 900, 3, 20, 900);
     }
 
     // ---- limiter ----
+
+    @Test
+    void enteringAResetCodeHasItsOwnLimitSeparateFromRequestingOne() {
+        var limiter = limiter(1000, 1000, 1000, 1000); // the confirm limit in this helper is 3 per email
+        String email = uniqueEmail();
+        String ip = uniqueIp();
+
+        for (int i = 0; i < 3; i++) {
+            assertThat(limiter.checkPasswordResetConfirm(email, ip).allowed()).isTrue();
+        }
+
+        assertThat(limiter.checkPasswordResetConfirm(email, ip).allowed()).isFalse();
+        assertThat(limiter.checkPasswordReset(email, ip).allowed()).as("requesting a code is a separate counter").isTrue();
+    }
 
     @Test
     void emailLimitBlocksTheNextAttemptAndReportsRetryAfter() {

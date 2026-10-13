@@ -35,15 +35,15 @@ class PasswordResetServiceTests {
     }
 
     static class RecordingEmailService implements EmailService {
-        record Call(String toEmail, String displayName, String resetUrl, Instant expiresAt) {
+        record Call(String toEmail, String displayName, String resetUrl, String code, Instant expiresAt) {
         }
 
         final List<Call> calls = new ArrayList<>();
         final AtomicInteger failNext = new AtomicInteger(0);
 
         @Override
-        public SendResult sendPasswordResetEmail(String toEmail, String displayName, String resetUrl, Instant expiresAt) {
-            calls.add(new Call(toEmail, displayName, resetUrl, expiresAt));
+        public SendResult sendPasswordResetEmail(String toEmail, String displayName, String resetUrl, String code, Instant expiresAt) {
+            calls.add(new Call(toEmail, displayName, resetUrl, code, expiresAt));
             if (failNext.getAndUpdate(n -> Math.max(0, n - 1)) > 0) {
                 return SendResult.failure("simulated provider outage");
             }
@@ -154,39 +154,204 @@ class PasswordResetServiceTests {
         assertThat(reuseResult).isEqualTo(PasswordResetService.CompletionResult.INVALID_OR_EXPIRED_TOKEN);
     }
 
-    @Test
-    void initiateAndEmailSendsToTheRealEmailServiceWithAWorkingResetUrlAndExpiry() {
-        String email = registerUser();
-        recordingEmailService.calls.clear();
+    private static final String GOOD_PASSWORD = "AGoodNewPassword#7";
 
-        Optional<String> token = passwordResetService.initiateAndEmail(email);
+    @Autowired
+    org.springframework.jdbc.core.JdbcTemplate jdbc;
 
-        assertThat(token).isPresent();
-        assertThat(recordingEmailService.calls).hasSize(1);
-        RecordingEmailService.Call call = recordingEmailService.calls.get(0);
-        assertThat(call.toEmail()).isEqualTo(email);
-        assertThat(call.resetUrl()).contains("/reset-password?token=" + token.get());
-        assertThat(call.expiresAt()).isAfter(Instant.now());
+    private String lastEmailedCode() {
+        return recordingEmailService.calls.get(recordingEmailService.calls.size() - 1).code();
+    }
+
+    private static String wrongCodeFor(String right) {
+        return right.equals("000000") ? "000001" : "000000";
     }
 
     @Test
-    void initiateAndEmailStillReturnsTheTokenWhenTheEmailProviderFails() {
+    void initiateAndEmailSendsASixDigitCodeAndAPageAddressThatCarriesNoSecret() {
+        String email = registerUser();
+        recordingEmailService.calls.clear();
+
+        Optional<String> code = passwordResetService.initiateAndEmail(email);
+
+        assertThat(code).isPresent();
+        assertThat(recordingEmailService.calls).hasSize(1);
+        RecordingEmailService.Call call = recordingEmailService.calls.get(0);
+        assertThat(call.toEmail()).isEqualTo(email);
+        assertThat(call.code()).matches("\\d{6}").isEqualTo(code.get());
+        assertThat(call.resetUrl()).endsWith("/reset-password").doesNotContain("?").doesNotContain(call.code());
+        assertThat(call.expiresAt()).isAfter(Instant.now().plusSeconds(14 * 60)).isBefore(Instant.now().plusSeconds(16 * 60));
+    }
+
+    @Test
+    void initiateAndEmailStillCreatesAWorkingCodeWhenTheEmailProviderFails() {
         String email = registerUser();
         recordingEmailService.failNext.set(1);
 
-        Optional<String> token = passwordResetService.initiateAndEmail(email);
+        Optional<String> code = passwordResetService.initiateAndEmail(email);
 
-        assertThat(token).isPresent();
-        var result = passwordResetService.complete(token.get(), "StillWorks#2025!");
-        assertThat(result).isEqualTo(PasswordResetService.CompletionResult.SUCCESS);
+        assertThat(code).isPresent();
+        assertThat(passwordResetService.completeWithCode(email, code.get(), GOOD_PASSWORD))
+            .isEqualTo(PasswordResetService.CompletionResult.SUCCESS);
     }
 
     @Test
     void initiateAndEmailSendsNothingForAnUnknownEmail() {
         recordingEmailService.calls.clear();
-        Optional<String> token = passwordResetService.initiateAndEmail("no-such-account-" + UUID.randomUUID() + "@example.com");
+        Optional<String> code = passwordResetService.initiateAndEmail("no-such-account-" + UUID.randomUUID() + "@example.com");
 
-        assertThat(token).isEmpty();
+        assertThat(code).isEmpty();
         assertThat(recordingEmailService.calls).isEmpty();
+    }
+
+    @Test
+    void theEmailedCodeSetsANewPasswordAndWorksOnlyOnce() {
+        String email = registerUser();
+        passwordResetService.initiateAndEmail(email);
+        String code = lastEmailedCode();
+
+        assertThat(passwordResetService.completeWithCode(email, code, GOOD_PASSWORD)).isEqualTo(PasswordResetService.CompletionResult.SUCCESS);
+        assertThat(passwordResetService.completeWithCode(email, code, "AnotherGoodOne#8"))
+            .isEqualTo(PasswordResetService.CompletionResult.INVALID_OR_EXPIRED_TOKEN);
+    }
+
+    @Test
+    void wrongGuessesAreRejectedButTheRightCodeStillWorksWithinTheBudget() {
+        String email = registerUser();
+        passwordResetService.initiateAndEmail(email);
+        String code = lastEmailedCode();
+
+        for (int i = 0; i < PasswordResetService.MAX_CODE_ATTEMPTS - 1; i++) {
+            assertThat(passwordResetService.completeWithCode(email, wrongCodeFor(code), GOOD_PASSWORD))
+                .isEqualTo(PasswordResetService.CompletionResult.INVALID_OR_EXPIRED_TOKEN);
+        }
+
+        assertThat(passwordResetService.completeWithCode(email, code, GOOD_PASSWORD)).isEqualTo(PasswordResetService.CompletionResult.SUCCESS);
+    }
+
+    @Test
+    void afterTheGuessBudgetIsSpentEvenTheRightCodeIsRefused() {
+        String email = registerUser();
+        passwordResetService.initiateAndEmail(email);
+        String code = lastEmailedCode();
+        for (int i = 0; i < PasswordResetService.MAX_CODE_ATTEMPTS; i++) {
+            passwordResetService.completeWithCode(email, wrongCodeFor(code), GOOD_PASSWORD);
+        }
+
+        assertThat(passwordResetService.completeWithCode(email, code, GOOD_PASSWORD))
+            .as("a code that has absorbed its five guesses is dead, so brute force cannot win")
+            .isEqualTo(PasswordResetService.CompletionResult.INVALID_OR_EXPIRED_TOKEN);
+    }
+
+    @Test
+    void aWeakPasswordCostsNoGuessAndDoesNotUseTheCodeUp() {
+        String email = registerUser();
+        passwordResetService.initiateAndEmail(email);
+        String code = lastEmailedCode();
+
+        for (int i = 0; i < PasswordResetService.MAX_CODE_ATTEMPTS + 2; i++) {
+            assertThat(passwordResetService.completeWithCode(email, code, "short")).isEqualTo(PasswordResetService.CompletionResult.WEAK_PASSWORD);
+        }
+
+        assertThat(passwordResetService.completeWithCode(email, code, GOOD_PASSWORD)).isEqualTo(PasswordResetService.CompletionResult.SUCCESS);
+    }
+
+    @Test
+    void anExpiredCodeIsRefused() {
+        String email = registerUser();
+        passwordResetService.initiateAndEmail(email);
+        String code = lastEmailedCode();
+        jdbc.update("update identity.password_reset_codes set expires_at = now() - interval '1 minute' where user_id = ?", registeredUserId);
+
+        assertThat(passwordResetService.completeWithCode(email, code, GOOD_PASSWORD))
+            .isEqualTo(PasswordResetService.CompletionResult.INVALID_OR_EXPIRED_TOKEN);
+    }
+
+    @Test
+    void requestingANewCodeReplacesTheOldOne() {
+        String email = registerUser();
+        passwordResetService.initiateAndEmail(email);
+        String first = lastEmailedCode();
+        passwordResetService.initiateAndEmail(email);
+        String second = lastEmailedCode();
+        org.junit.jupiter.api.Assumptions.assumeTrue(!first.equals(second), "astronomically unlikely collision of two random codes");
+
+        assertThat(passwordResetService.completeWithCode(email, first, GOOD_PASSWORD))
+            .isEqualTo(PasswordResetService.CompletionResult.INVALID_OR_EXPIRED_TOKEN);
+        assertThat(passwordResetService.completeWithCode(email, second, GOOD_PASSWORD)).isEqualTo(PasswordResetService.CompletionResult.SUCCESS);
+    }
+
+    @Test
+    void anUnknownEmailAndMalformedCodesAreIndistinguishableFromAWrongCode() {
+        String email = registerUser();
+        passwordResetService.initiateAndEmail(email);
+
+        assertThat(passwordResetService.completeWithCode("nobody-" + UUID.randomUUID() + "@example.com", "123456", GOOD_PASSWORD))
+            .isEqualTo(PasswordResetService.CompletionResult.INVALID_OR_EXPIRED_TOKEN);
+        for (String malformed : java.util.Arrays.asList(null, "", "abc123", "12345", "1234567", "12 34 56")) {
+            assertThat(passwordResetService.completeWithCode(email, malformed, GOOD_PASSWORD)).as("code: %s", malformed)
+                .isEqualTo(PasswordResetService.CompletionResult.INVALID_OR_EXPIRED_TOKEN);
+        }
+    }
+
+    @Test
+    void aCodeIsBoundToItsOwnerAndCannotResetSomeoneElse() {
+        String ownerEmail = registerUser();
+        passwordResetService.initiateAndEmail(ownerEmail);
+        String ownersCode = lastEmailedCode();
+        String otherEmail = registerUser();
+        passwordResetService.initiateAndEmail(otherEmail);
+
+        assertThat(passwordResetService.completeWithCode(otherEmail, ownersCode, GOOD_PASSWORD))
+            .isEqualTo(PasswordResetService.CompletionResult.INVALID_OR_EXPIRED_TOKEN);
+    }
+
+    @Test
+    void aSuccessfulCodeResetSignsOutEverySessionAndCancelsOtherCodes() {
+        String email = registerUser();
+        UUID userId = registeredUserId;
+        sessionService.startNewSession(userId, "{}");
+        sessionService.startNewSession(userId, "{}");
+        passwordResetService.initiateAndEmail(email);
+        String code = lastEmailedCode();
+
+        assertThat(passwordResetService.completeWithCode(email, code, GOOD_PASSWORD)).isEqualTo(PasswordResetService.CompletionResult.SUCCESS);
+
+        assertThat(sessionRepository.findByUserIdAndRevokedAtIsNull(userId)).isEmpty();
+        assertThat(jdbc.queryForObject("select count(*) from identity.password_reset_codes where user_id = ? and used_at is null", Integer.class, userId))
+            .isZero();
+    }
+
+    @Test
+    void theCodeIsNeverStoredInPlainText() {
+        String email = registerUser();
+        passwordResetService.initiateAndEmail(email);
+        String code = lastEmailedCode();
+
+        String stored = jdbc.queryForObject("select code_hash from identity.password_reset_codes where user_id = ?", String.class, registeredUserId);
+
+        assertThat(stored).isNotEqualTo(code).doesNotContain(code).matches("[0-9a-f]{64}");
+    }
+
+    @Test
+    void parallelGuessesCanNeverSpendMoreThanTheBudget() throws Exception {
+        String email = registerUser();
+        passwordResetService.initiateAndEmail(email);
+        String code = lastEmailedCode();
+        var pool = java.util.concurrent.Executors.newFixedThreadPool(12);
+        try {
+            var futures = new java.util.ArrayList<java.util.concurrent.Future<PasswordResetService.CompletionResult>>();
+            for (int i = 0; i < 24; i++) {
+                futures.add(pool.submit(() -> passwordResetService.completeWithCode(email, wrongCodeFor(code), GOOD_PASSWORD)));
+            }
+            for (var f : futures) {
+                assertThat(f.get()).isEqualTo(PasswordResetService.CompletionResult.INVALID_OR_EXPIRED_TOKEN);
+            }
+        } finally {
+            pool.shutdownNow();
+        }
+
+        Integer attempts = jdbc.queryForObject("select attempts from identity.password_reset_codes where user_id = ?", Integer.class, registeredUserId);
+        assertThat(attempts).as("24 parallel guesses, but only five were ever accepted").isEqualTo(PasswordResetService.MAX_CODE_ATTEMPTS);
     }
 }

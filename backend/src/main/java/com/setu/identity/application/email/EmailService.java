@@ -25,5 +25,9 @@ public interface EmailService {
         }
     }
 
-    SendResult sendPasswordResetEmail(String toEmail, String displayName, String resetUrl, Instant expiresAt);
+    /**
+     * Sends the six-digit reset {@code code}. {@code resetPageUrl} is the page where the code is entered: it carries no secret
+     * (the code is the secret), so a link in a forwarded or logged email cannot be used on its own.
+     */
+    SendResult sendPasswordResetEmail(String toEmail, String displayName, String resetPageUrl, String code, Instant expiresAt);
 }

@@ -55,7 +55,7 @@ git-ignored `backend/.env.local` (it is loaded automatically); never commit keys
 | `KAFKA_BOOTSTRAP_SERVERS` | `localhost:9092` | Outbox publishing |
 | `SERVER_PORT` | `8080` | HTTP port (the dev bridge uses 8089) |
 | `JWT_SECRET` | dev-only value | **Must** be overridden in any real deployment |
-| `FRONTEND_BASE_URL` | `http://localhost:5180` | Origin used to build the password-reset link in emails |
+| `FRONTEND_BASE_URL` | `http://localhost:5180` | Origin used to build the link to the reset page in emails |
 | `DEMO_DATA_ENABLED` | `false` | Seed the demo colleges, people and content |
 | `AI_PROVIDER` | `ollama` | `google-genai` for Gemini as the primary provider |
 | `GEMINI_API_KEY`, `GEMINI_MODEL` | none, `gemini-3.8-flash` | Gemini credentials and model |
@@ -88,10 +88,15 @@ Free-tier keys are also rate limited and can return 503 under load; the fallback
 
 ### Password reset and email
 
-`POST /auth/password/reset/initiate` always answers the same way whether or not the account exists. A reset link is valid for 30
-minutes and works once. Completing a reset requires a password of 8 to 128 characters that is not on a small common-password list and
-is not the account's own email; a rejected password does not use up the link. A successful reset signs out every existing session and
-cancels the user's other outstanding links. Reset attempts are rate limited (3 per 15 minutes).
+`POST /auth/password/reset/initiate` always answers the same way whether or not the account exists, and emails a 6-digit code. The
+code is valid for 15 minutes, works once, and allows 5 wrong guesses; asking for a new code cancels the older ones. Only a keyed
+hash of the code is stored (`identity.password_reset_codes`), and each guess and the final use are single guarded UPDATEs, so
+parallel requests cannot exceed the guess budget or use a code twice. `POST /auth/password/reset/confirm` takes `{email, code,
+newPassword}` and answers 204, or a 400 that is identical for an unknown email, a wrong code, an expired code and a used code.
+A password of 8 to 128 characters that is not on a small common-password list and is not the account's own email is required;
+a rejected password is reported separately (`password_too_weak`) and costs no guess. A successful reset signs out every existing
+session and cancels the user's other codes. Requesting a code is rate limited (3 per 15 minutes) and entering codes too
+(10 per email and 60 per IP per 15 minutes, answered with 429).
 
 Seeded accounts use `@demo.setu.local` addresses, which cannot receive mail. To receive a real reset email, use an account whose
 address you control and set `BREVO_API_KEY` and a `MAIL_FROM_ADDRESS` that is a verified sender in Brevo.

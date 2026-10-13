@@ -60,6 +60,9 @@ Small conventions that are easy to get wrong:
 - **Links from the backend are rendered only if they are `https://`.** Lesson and resource references can also be internal
   `ref://` or `s3://` strings, which are shown as plain text. A YouTube link on a lesson is embedded through
   `youtube-nocookie.com` after the video id is validated (`lib/lessonContent.ts`).
+- **Forgot password is an emailed 6-digit code.** The forgot-password page hands the email address to the reset page through
+  router state (never the URL), and the reset page keeps only digits in the code box so a pasted "482 916" works. A wrong code and
+  an unknown email get the same message.
 - **The reset-password page shows the rules but the server decides.** `lib/passwordRules.ts` mirrors the backend password policy
   so people see problems early; very common passwords are rejected only by the server.
 - **The advisor streams.** The student advisor page uses `POST /ai/chat/stream` (server-sent events), so the answer appears as it

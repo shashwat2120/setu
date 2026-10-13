@@ -17,6 +17,7 @@ questions from that round. `api_clients` is removed entirely (decision E).
 | `sessions` | `identity` | Identity |
 | `passkeys` | `identity` | Identity |
 | `password_reset_tokens` | `identity` **(added Sprint 5B Day 3 — V51)** | Identity |
+| `password_reset_codes` | `identity` **(added with the emailed-code reset — V77)** | Identity |
 | `webauthn_challenges` | `identity` **(added Sprint 5B Day 3 — V52)** | Identity |
 | `persons` | `identity` **(moved from `directory` — H1)** | Identity |
 | `student_profiles` | `directory` | Institution/Academic |

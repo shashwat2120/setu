@@ -29,6 +29,14 @@ export function looksLikeEmail(password: string, email: string | null | undefine
   return p === e || (local.length >= 4 && p === local);
 }
 
+/** The emailed reset code: six digits, valid this many minutes (mirrors the server). */
+export const RESET_CODE_LENGTH = 6;
+export const RESET_CODE_MINUTES = 15;
+
+export function isValidResetCode(value: string): boolean {
+  return new RegExp(`^\\d{${RESET_CODE_LENGTH}}$`).test(value);
+}
+
 /** A basic shape check ("something@something.something"); the server decides whether an address really exists. */
 export function isPlausibleEmail(value: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());

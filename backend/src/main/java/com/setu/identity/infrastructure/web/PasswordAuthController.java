@@ -120,7 +120,7 @@ public class PasswordAuthController {
     public record ResetInitiateRequest(String email) {
     }
 
-    public record ResetInitiateResponse(String devOnlyResetToken) {
+    public record ResetInitiateResponse(String devOnlyResetCode) {
     }
 
     @PostMapping("/password/reset/initiate")
@@ -130,25 +130,32 @@ public class PasswordAuthController {
         if (!limit.allowed()) {
             return tooManyRequests(limit, "PASSWORD_RESET_RATE_LIMITED", request.email(), httpRequest, response);
         }
-        var rawToken = passwordResetService.initiateAndEmail(request.email());
+        var resetCode = passwordResetService.initiateAndEmail(request.email());
         // Same 200 response whether the email exists or not — a reset endpoint
         // that answers differently for known vs. unknown emails is a
         // user-enumeration oracle.
-        String exposed = (exposeResetTokenForDev && rawToken.isPresent()) ? rawToken.get() : null;
+        String exposed = (exposeResetTokenForDev && resetCode.isPresent()) ? resetCode.get() : null;
         return ResponseEntity.ok(new ResetInitiateResponse(exposed));
     }
 
-    public record ResetCompleteRequest(String token, String newPassword) {
+    public record ResetConfirmRequest(String email, String code, String newPassword) {
     }
 
-    @PostMapping("/password/reset/complete")
-    public ResponseEntity<?> resetComplete(@RequestBody ResetCompleteRequest request) {
-        var result = passwordResetService.complete(request.token(), request.newPassword());
+    /** Sets a new password with the six-digit code that was emailed. Unknown email, wrong, expired and used codes all answer the same 400. */
+    @PostMapping("/password/reset/confirm")
+    public ResponseEntity<?> resetConfirm(@RequestBody ResetConfirmRequest request, HttpServletRequest httpRequest,
+                                          HttpServletResponse response) {
+        String email = request.email() == null ? "" : request.email().trim();
+        var limit = authRateLimiter.checkPasswordResetConfirm(email, clientIp(httpRequest));
+        if (!limit.allowed()) {
+            return tooManyRequests(limit, "PASSWORD_RESET_RATE_LIMITED", email, httpRequest, response);
+        }
+        var result = passwordResetService.completeWithCode(email, request.code(), request.newPassword());
         return switch (result) {
             case SUCCESS -> ResponseEntity.noContent().build();
             case INVALID_OR_EXPIRED_TOKEN ->
-                ResponseEntity.status(HttpStatus.BAD_REQUEST).body(new ErrorResponse("invalid or expired reset token"));
-            // A distinct message so the page can say "choose a stronger password" instead of "your link expired".
+                ResponseEntity.status(HttpStatus.BAD_REQUEST).body(new ErrorResponse("invalid or expired code"));
+            // A distinct message so the page can say "choose a stronger password" instead of "your code is wrong".
             case WEAK_PASSWORD -> ResponseEntity.status(HttpStatus.BAD_REQUEST).body(new ErrorResponse(
                 "password_too_weak: use " + com.setu.identity.domain.PasswordPolicy.MIN_LENGTH + " to "
                     + com.setu.identity.domain.PasswordPolicy.MAX_LENGTH + " characters, and avoid a very common password or your email address"));

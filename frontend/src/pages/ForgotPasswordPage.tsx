@@ -1,12 +1,12 @@
 import { useState, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
 import { apiFetch } from '../api/client';
-import { isPlausibleEmail } from '../lib/passwordRules';
+import { isPlausibleEmail, RESET_CODE_LENGTH, RESET_CODE_MINUTES } from '../lib/passwordRules';
 
 /**
  * Always shows the same success state regardless of whether the email exists — the backend's own
  * non-enumeration contract (identical response either way) only holds if this page doesn't undermine it by,
- * say, showing a different message for "invalid email" vs "email sent."
+ * say, showing a different message for "invalid email" vs "code sent."
  */
 export default function ForgotPasswordPage() {
   const [email, setEmail] = useState('');
@@ -41,13 +41,22 @@ export default function ForgotPasswordPage() {
         {status === 'sent' ? (
           <div>
             <p style={{ marginBottom: 16 }}>
-              If an account exists for <strong>{email}</strong>, we've sent a password reset link to it. The
-              link expires in 30 minutes.
+              If an account exists for <strong>{email.trim()}</strong>, we've emailed a {RESET_CODE_LENGTH}-digit code to it. The
+              code expires in {RESET_CODE_MINUTES} minutes and works once.
             </p>
-            <Link to="/login" className="btn btn-ghost">Back to sign in</Link>
+            {/* The address travels in router state, never in the URL. */}
+            <Link to="/reset-password" state={{ email: email.trim() }} className="btn btn-primary" style={{ width: '100%', justifyContent: 'center' }}>
+              Enter the code
+            </Link>
+            <p style={{ marginTop: 16, fontSize: 13 }}>
+              <Link to="/login">Back to sign in</Link>
+            </p>
           </div>
         ) : (
           <form onSubmit={onSubmit} noValidate>
+            <p style={{ marginBottom: 16, fontSize: 14, color: 'var(--ink-soft)' }}>
+              Enter the email address of your account and we'll email you a {RESET_CODE_LENGTH}-digit code to choose a new password.
+            </p>
             <div className="form-field">
               <label htmlFor="email">Email</label>
               <input
@@ -68,7 +77,7 @@ export default function ForgotPasswordPage() {
               </p>
             )}
             <button type="submit" className="btn btn-primary" style={{ width: '100%', justifyContent: 'center' }} disabled={status === 'submitting'}>
-              {status === 'submitting' ? 'Sending…' : 'Send reset link'}
+              {status === 'submitting' ? 'Sending…' : 'Send code'}
             </button>
             <p style={{ marginTop: 16, fontSize: 13 }}>
               <Link to="/login">Back to sign in</Link>

@@ -70,10 +70,10 @@ public class BrevoEmailService implements EmailService {
     }
 
     @Override
-    public SendResult sendPasswordResetEmail(String toEmail, String displayName, String resetUrl, Instant expiresAt) {
+    public SendResult sendPasswordResetEmail(String toEmail, String displayName, String resetUrl, String code, Instant expiresAt) {
         String greeting = (displayName == null || displayName.isBlank()) ? "there" : displayName;
         String expiryText = EXPIRY_FORMAT.format(expiresAt);
-        String html = htmlBody(greeting, resetUrl, expiryText);
+        String html = htmlBody(greeting, resetUrl, code, expiryText);
 
         // Local-only, gated behind app.email.preview.enabled (DEMO_EMAIL_PREVIEW=true — never on in production,
         // never wired to any HTTP endpoint). Written BEFORE the real Brevo call and independent of its outcome,
@@ -93,9 +93,9 @@ public class BrevoEmailService implements EmailService {
         BrevoRequest request = new BrevoRequest(
             Map.of("email", fromAddress, "name", fromName),
             List.of(Map.of("email", toEmail)),
-            "Reset your Setu College password",
+            "Your Setu College password reset code",
             html,
-            textBody(greeting, resetUrl, expiryText));
+            textBody(greeting, resetUrl, code, expiryText));
 
         try {
             BrevoResponse response = restClient.post()
@@ -124,7 +124,7 @@ public class BrevoEmailService implements EmailService {
             String safeLocalPart = toEmail.replaceAll("[^A-Za-z0-9.+_-]", "_");
             Path file = previewDir.resolve(stamp + "-" + safeLocalPart + ".html");
             Files.writeString(file, html, StandardCharsets.UTF_8);
-            log.info("DEMO email preview written for {} -> {} (reset link expires {}): {}",
+            log.info("DEMO email preview written for {} -> {} (reset code expires {}): {}",
                 maskEmail(toEmail), file.toAbsolutePath(), expiryText, resetUrl);
         } catch (IOException e) {
             log.warn("Could not write demo email preview for {}: {}", maskEmail(toEmail), e.getMessage());
@@ -138,7 +138,7 @@ public class BrevoEmailService implements EmailService {
         return email.charAt(0) + "***" + email.substring(at);
     }
 
-    private static String htmlBody(String greeting, String resetUrl, String expiryText) {
+    private static String htmlBody(String greeting, String resetUrl, String code, String expiryText) {
         return """
             <!DOCTYPE html>
             <html>
@@ -147,39 +147,40 @@ public class BrevoEmailService implements EmailService {
                   <p style="font-size: 20px; font-weight: 700; margin: 0 0 24px;">Setu College</p>
                   <p style="margin: 0 0 16px;">Hi %s,</p>
                   <p style="margin: 0 0 16px;">
-                    We received a request to reset the password for your Setu College account. Click the button
-                    below to choose a new password.
+                    We received a request to reset the password for your Setu College account. Use this code to choose a new password:
                   </p>
-                  <p style="margin: 24px 0;">
-                    <a href="%s" style="display: inline-block; background: #8a5d18; color: #ffffff; text-decoration: none;
-                       padding: 12px 24px; border-radius: 4px; font-weight: 600;">Reset Password</a>
-                  </p>
-                  <p style="margin: 0 0 16px; font-size: 13px; color: #52596b;">
-                    If the button doesn't work, copy and paste this link into your browser:<br>
+                  <p style="margin: 24px 0; font-family: Consolas, Menlo, monospace; font-size: 34px; font-weight: 700;
+                     letter-spacing: 8px; color: #8a5d18;">%s</p>
+                  <p style="margin: 0 0 16px;">
+                    Enter it, with your email address, on the reset page:<br>
                     <a href="%s" style="color: #8a5d18;">%s</a>
                   </p>
-                  <p style="margin: 0 0 16px; font-size: 13px; color: #52596b;">This link expires on %s.</p>
+                  <p style="margin: 0 0 16px; font-size: 13px; color: #52596b;">
+                    This code expires on %s and works once. Never share it with anyone: Setu staff will never ask you for it.
+                  </p>
                   <p style="margin: 24px 0 0; font-size: 13px; color: #52596b;">
-                    If you did not request this, you can safely ignore this email.
+                    If you did not request this, you can safely ignore this email. Your password stays as it is.
                   </p>
                 </div>
               </body>
             </html>
-            """.formatted(escapeHtml(greeting), resetUrl, resetUrl, resetUrl, expiryText);
+            """.formatted(escapeHtml(greeting), code, resetUrl, resetUrl, expiryText);
     }
 
-    private static String textBody(String greeting, String resetUrl, String expiryText) {
+    private static String textBody(String greeting, String resetUrl, String code, String expiryText) {
         return """
             Hi %s,
 
             We received a request to reset the password for your Setu College account.
 
-            Reset your password: %s
+            Your reset code: %s
 
-            This link expires on %s.
+            Enter it, with your email address, here: %s
 
-            If you did not request this, you can safely ignore this email.
-            """.formatted(greeting, resetUrl, expiryText);
+            This code expires on %s and works once. Never share it with anyone: Setu staff will never ask you for it.
+
+            If you did not request this, you can safely ignore this email. Your password stays as it is.
+            """.formatted(greeting, code, resetUrl, expiryText);
     }
 
     private static String escapeHtml(String s) {

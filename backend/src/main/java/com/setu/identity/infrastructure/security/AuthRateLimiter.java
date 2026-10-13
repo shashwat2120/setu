@@ -43,6 +43,9 @@ public class AuthRateLimiter {
     private final int resetPerEmail;
     private final int resetPerIp;
     private final Duration resetWindow;
+    private final int confirmPerEmail;
+    private final int confirmPerIp;
+    private final Duration confirmWindow;
 
     public AuthRateLimiter(StringRedisTemplate redisTemplate,
                             @Value("${app.security.rate-limit.login.per-email:10}") int loginPerEmail,
@@ -50,7 +53,10 @@ public class AuthRateLimiter {
                             @Value("${app.security.rate-limit.login.window-seconds:60}") long loginWindowSeconds,
                             @Value("${app.security.rate-limit.password-reset.per-email:3}") int resetPerEmail,
                             @Value("${app.security.rate-limit.password-reset.per-ip:20}") int resetPerIp,
-                            @Value("${app.security.rate-limit.password-reset.window-seconds:900}") long resetWindowSeconds) {
+                            @Value("${app.security.rate-limit.password-reset.window-seconds:900}") long resetWindowSeconds,
+                            @Value("${app.security.rate-limit.password-reset-confirm.per-email:10}") int confirmPerEmail,
+                            @Value("${app.security.rate-limit.password-reset-confirm.per-ip:60}") int confirmPerIp,
+                            @Value("${app.security.rate-limit.password-reset-confirm.window-seconds:900}") long confirmWindowSeconds) {
         this.redisTemplate = redisTemplate;
         this.loginPerEmail = loginPerEmail;
         this.loginPerIp = loginPerIp;
@@ -58,6 +64,9 @@ public class AuthRateLimiter {
         this.resetPerEmail = resetPerEmail;
         this.resetPerIp = resetPerIp;
         this.resetWindow = Duration.ofSeconds(resetWindowSeconds);
+        this.confirmPerEmail = confirmPerEmail;
+        this.confirmPerIp = confirmPerIp;
+        this.confirmWindow = Duration.ofSeconds(confirmWindowSeconds);
     }
 
     public Decision checkLogin(String email, String clientIp) {
@@ -66,6 +75,11 @@ public class AuthRateLimiter {
 
     public Decision checkPasswordReset(String email, String clientIp) {
         return check("pwreset", email, clientIp, resetPerEmail, resetPerIp, resetWindow);
+    }
+
+    /** Entering a reset code: a second, independent ceiling on top of the five guesses each code allows. */
+    public Decision checkPasswordResetConfirm(String email, String clientIp) {
+        return check("pwresetconfirm", email, clientIp, confirmPerEmail, confirmPerIp, confirmWindow);
     }
 
     private Decision check(String scope, String email, String clientIp, int perEmail, int perIp, Duration window) {

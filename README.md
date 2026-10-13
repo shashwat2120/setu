@@ -109,8 +109,9 @@ backend log at startup, and the click-through is in [docs/demo-script.md](docs/d
 ## What is built
 
 - **Identity:** passkey and Argon2id password sign-in, rotating refresh tokens, rate-limited login and password reset, and a
-  password-reset flow with a server-side password policy (8 to 128 characters, no very common passwords or the account's own
-  email). A completed reset signs out every existing session and cancels the user's other reset links.
+  password reset by emailed 6-digit code (15 minutes, one use, 5 guesses) with a server-side password policy (8 to 128 characters,
+  no very common passwords or the account's own email). A completed reset signs out every existing session and cancels the
+  user's other codes.
 - **Academic core:** institutions, programs and curricula, courses and sections, enrollment with waitlists and overrides,
   credit-weighted GPA, degree requirements.
 - **Attendance:** rotating signed QR attendance over STOMP; faculty (staff) attendance with check-in/out, a versioned policy

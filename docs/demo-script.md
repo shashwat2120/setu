@@ -41,7 +41,14 @@ flow: sign in with the password, open Security → register a passkey (Windows H
 automated browser here (the server side is covered by the ceremony tests).
 
 **Rate limiting:** after 10 attempts in a minute for the same email the login returns 429 with `Retry-After`
-(per email and per IP; password reset: 3 per 15 minutes). The attempt is audited once as `LOGIN_RATE_LIMITED`.
+(per email and per IP; asking for a reset code: 3 per 15 minutes). The attempt is audited once as `LOGIN_RATE_LIMITED`.
+
+**Forgot password (emailed code):** on the sign-in page choose *Forgot password*, enter an account email and press **Send code**,
+then **Enter the code** and type the 6-digit code plus a new password. The code expires after 15 minutes, works once, and stops
+working after 5 wrong tries; **Send a new code** cancels the older one. Seeded `@demo.setu.local` addresses cannot receive mail,
+so for a demo either use an account whose address you control with Brevo configured, or start the backend with
+`EMAIL_PREVIEW_ENABLED=true` and read the code from the file written to `backend/target/demo-email-outbox`. A successful reset
+signs out every other session of that account.
 
 ## 2. Live QR attendance
 

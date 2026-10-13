@@ -126,7 +126,7 @@ management:
 
 app:
   # The origin the frontend is actually served from — used only to build the password-reset link
-  # (${app.frontend-base-url}/reset-password?token=...). Never hard-code localhost in a link a real email sends.
+  # (${app.frontend-base-url}/reset-password, the page where the emailed code is typed). Never hard-code localhost in a link a real email sends.
   frontend-base-url: ${FRONTEND_BASE_URL:http://localhost:5180}
   email:
     brevo:
