@@ -129,8 +129,7 @@ app:
   # (${app.frontend-base-url}/reset-password, the page where the emailed code is typed). Never hard-code localhost in a link a real email sends.
   frontend-base-url: ${FRONTEND_BASE_URL:http://localhost:5180}
   email:
-    # Which sender delivers the reset email: "brevo" (default, API key) or "smtp" (for example Gmail with an app password).
-    provider: ${EMAIL_PROVIDER:brevo}
+    # The reset email is sent over SMTP by SmtpEmailService, for example through Gmail with an app password.
     smtp:
       # Gmail: host smtp.gmail.com, port 587 (STARTTLS), username = the Gmail address, password = a 16-character Google
       # "app password" (needs 2-step verification on that account). Never committed: set in the git-ignored backend/.env.local.
@@ -142,17 +141,11 @@ app:
       # Blank means "send from the SMTP username". Gmail only allows its own address or a verified alias here.
       from-address: ${SMTP_FROM_ADDRESS:}
       from-name: ${MAIL_FROM_NAME:Setu College}
-    brevo:
-      # Never committed — real value only via the BREVO_API_KEY env var. Blank means "not configured":
-      # BrevoEmailService then logs a warning and reports failure instead of sending, rather than throwing.
-      api-key: ${BREVO_API_KEY:}
-      from-address: ${MAIL_FROM_ADDRESS:no-reply@setu.local}
-      from-name: ${MAIL_FROM_NAME:Setu College}
     preview:
       # Off by default — never true in production. Opt in only via the gitignored backend/.env.local's
       # EMAIL_PREVIEW_ENABLED for a local demo/review run where the reviewer's own inbox isn't reachable
-      # (e.g. Gmail blocked on a locked-down network): BrevoEmailService then ALSO writes the exact rendered
-      # reset email to a local file, in addition to (never instead of) the real Brevo send.
+      # (e.g. Gmail blocked on a locked-down network): SmtpEmailService then ALSO writes the exact rendered
+      # reset email to a local file, in addition to (never instead of) the real send.
       enabled: ${EMAIL_PREVIEW_ENABLED:false}
       dir: ${EMAIL_PREVIEW_DIR:target/demo-email-outbox}
   demo-data:

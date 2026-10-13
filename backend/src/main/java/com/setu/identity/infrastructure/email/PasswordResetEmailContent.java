@@ -12,7 +12,7 @@ import java.time.format.DateTimeFormatter;
 import java.util.Locale;
 
 /**
- * What a password-reset email says and how it is previewed locally, shared by every sender (Brevo, SMTP) so the wording, the
+ * What a password-reset email says and how it is previewed locally, shared by every sender so the wording, the
  * expiry format and the preview file are identical whichever provider is configured. Nothing here talks to a provider.
  */
 final class PasswordResetEmailContent {

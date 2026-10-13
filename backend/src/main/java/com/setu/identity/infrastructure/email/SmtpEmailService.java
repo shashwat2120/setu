@@ -7,7 +7,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.mail.MailException;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.mail.javamail.JavaMailSenderImpl;
@@ -22,18 +21,16 @@ import java.util.Properties;
 import static com.setu.identity.infrastructure.email.PasswordResetEmailContent.maskEmail;
 
 /**
- * Sends the reset email over plain SMTP, for example through Gmail ({@code smtp.gmail.com:587}, a Google "app password"). Active when
- * {@code app.email.provider=smtp}; {@link BrevoEmailService} is the default alternative. The email itself is identical to Brevo's
- * ({@link PasswordResetEmailContent}).
+ * Sends the reset email over plain SMTP, for example through Gmail ({@code smtp.gmail.com:587}, a Google "app password"). The email text is built by
+ * {@link PasswordResetEmailContent}.
  * <p>
- * JavaMail uses ordinary blocking sockets, which is the one socket style that works on this dev machine (see {@link BrevoEmailService}).
+ * JavaMail uses ordinary blocking sockets, which is the one socket style that works on this dev machine (the same reason the dev bridge exists).
  * The send runs inside the reset request's transaction, so every phase has a short timeout: a slow mail server delays the answer by
  * seconds at most and never holds the database connection for long. The SMTP password is read once from configuration, handed only
  * to the mail session, and never logged or placed in any message built here. A failed send is reported as a failed {@link SendResult},
  * never thrown, so what the caller shows the visitor does not depend on delivery.
  */
 @Service
-@ConditionalOnProperty(name = "app.email.provider", havingValue = "smtp")
 public class SmtpEmailService implements EmailService {
 
     private static final Logger log = LoggerFactory.getLogger(SmtpEmailService.class);

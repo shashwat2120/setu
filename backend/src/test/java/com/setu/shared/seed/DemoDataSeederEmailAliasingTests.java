@@ -22,7 +22,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * password-reset token flow still resolves each aliased address back to its own, correct account — never a
  * different seeded user. Runs in its OWN {@code @SpringBootTest} context (a different email-base property than
  * {@link DemoDataSeederVerificationTests}, so Spring can't share a cached context between them), with a fake,
- * non-deliverable base address — this class never touches Brevo and never needs a real API key.
+ * non-deliverable base address — this class never sends email.
  */
 @SpringBootTest
 @TestPropertySource(properties = {"app.demo-data.enabled=true", "app.demo-data.email-base=alias.demo.test@example.com"})

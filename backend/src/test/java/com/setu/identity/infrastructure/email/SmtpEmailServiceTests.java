@@ -12,12 +12,8 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.slf4j.LoggerFactory;
-import org.springframework.boot.test.context.runner.ApplicationContextRunner;
-import org.springframework.context.annotation.Configuration;
-import org.springframework.context.annotation.Import;
 import org.springframework.mail.MailAuthenticationException;
 import org.springframework.mail.javamail.JavaMailSenderImpl;
-import org.springframework.web.client.RestClient;
 
 import java.io.ByteArrayOutputStream;
 import java.nio.file.Files;
@@ -31,7 +27,7 @@ import java.util.stream.Stream;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * The SMTP sender builds the same email as the Brevo sender and never lets a delivery problem escape or leak the password. A
+ * The SMTP sender builds the reset email and never lets a delivery problem escape or leak the password. A
  * recording {@link JavaMailSenderImpl} stands in for the mail server, so no network call is made except in the one test that
  * deliberately connects to a closed local port.
  */
@@ -168,27 +164,4 @@ class SmtpEmailServiceTests {
         assertThat(logged).contains("delivery failed").doesNotContain(PASSWORD);
     }
 
-    @Configuration
-    @Import({BrevoEmailService.class, SmtpEmailService.class})
-    static class BothSenders {
-    }
-
-    @Test
-    void theConfiguredProviderPicksExactlyOneSenderAndBrevoIsTheDefault() {
-        ApplicationContextRunner runner = new ApplicationContextRunner()
-            .withUserConfiguration(BothSenders.class)
-            .withBean(RestClient.Builder.class, RestClient::builder)
-            .withPropertyValues("app.email.brevo.from-address=no-reply@setu.local", "app.email.brevo.from-name=Setu College");
-
-        runner.run(ctx -> {
-            assertThat(ctx).hasSingleBean(EmailService.class);
-            assertThat(ctx).hasSingleBean(BrevoEmailService.class);
-        });
-        runner.withPropertyValues("app.email.provider=brevo").run(ctx -> assertThat(ctx).hasSingleBean(BrevoEmailService.class));
-        runner.withPropertyValues("app.email.provider=smtp").run(ctx -> {
-            assertThat(ctx).hasSingleBean(EmailService.class);
-            assertThat(ctx).hasSingleBean(SmtpEmailService.class);
-            assertThat(ctx).doesNotHaveBean(BrevoEmailService.class);
-        });
-    }
 }

@@ -138,9 +138,7 @@ Secrets and local overrides live in the git-ignored `backend/.env.local`; nothin
 | `AI_PROVIDER` | `google-genai` (Gemini primary) or `ollama` (default, used by tests) |
 | `GEMINI_API_KEY`, `GEMINI_MODEL` | Gemini credentials and model. Pick a model that actually answers for your key: see [backend/README.md](backend/README.md#ai-advisor) |
 | `AI_PRIMARY_TIMEOUT_SECONDS` | How long Gemini may take before the local fallback is tried (default 25) |
-| `EMAIL_PROVIDER` | `brevo` (default) or `smtp` |
-| `BREVO_API_KEY`, `MAIL_FROM_ADDRESS` | Real password-reset email delivery through Brevo. Without a key the email is not sent |
-| `SMTP_USER`, `SMTP_PASSWORD` | Real delivery over SMTP when `EMAIL_PROVIDER=smtp`, for example Gmail with an app password: see [backend/README.md](backend/README.md#password-reset-and-email) |
+| `SMTP_USER`, `SMTP_PASSWORD` | Real password-reset email delivery over SMTP, for example Gmail with an app password. Without them the email is not sent: see [backend/README.md](backend/README.md#password-reset-and-email) |
 | `EMAIL_PREVIEW_ENABLED` | Also write each reset email to `backend/target/demo-email-outbox` for local inspection |
 
 ## Testing

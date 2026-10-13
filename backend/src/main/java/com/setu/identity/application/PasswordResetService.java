@@ -108,8 +108,8 @@ public class PasswordResetService {
      * {@code @Transactional} here (not just on {@link #initiate}) is deliberate: {@link #initiate} is called via
      * plain self-invocation (bypassing this class's own transactional proxy), so without an ambient transaction
      * already active on this thread its {@code @Transactional} would be silently ignored. The one accepted
-     * tradeoff, disclosed: the outbound Brevo call runs inside that same transaction, holding a pooled DB
-     * connection for the duration of one external HTTP call — acceptable for a low-volume flow like password
+     * tradeoff, disclosed: the outbound mail call runs inside that same transaction, holding a pooled DB
+     * connection for the duration of one external mail call — acceptable for a low-volume flow like password
      * reset, not something this method's design tries to optimize away.
      */
     @Transactional
