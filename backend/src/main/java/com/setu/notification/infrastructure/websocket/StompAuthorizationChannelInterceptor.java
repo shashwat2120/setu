@@ -2,7 +2,7 @@ package com.setu.notification.infrastructure.websocket;
 
 import com.setu.identity.application.TokenAuthenticationService;
 import com.setu.shared.websocket.StompDestinationAuthorizer;
-import org.springframework.lang.NonNull;
+import org.jspecify.annotations.NonNull;
 import org.springframework.messaging.Message;
 import org.springframework.messaging.MessageChannel;
 import org.springframework.messaging.simp.stomp.StompCommand;

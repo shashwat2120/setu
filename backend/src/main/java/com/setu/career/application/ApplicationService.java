@@ -5,7 +5,6 @@ import com.setu.career.domain.ApplicationStatus;
 import com.setu.career.domain.Job;
 import com.setu.career.domain.JobSkill;
 import com.setu.career.domain.ProficiencyLevel;
-import com.setu.career.domain.Skill;
 import com.setu.career.domain.StudentSkill;
 import com.setu.career.infrastructure.ApplicationInsertGuard;
 import com.setu.career.infrastructure.ApplicationRepository;

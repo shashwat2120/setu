@@ -1,7 +1,6 @@
 package com.setu.finance.infrastructure.web;
 
 import com.setu.finance.application.StudentAccountService;
-import com.setu.finance.domain.StudentAccount;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;

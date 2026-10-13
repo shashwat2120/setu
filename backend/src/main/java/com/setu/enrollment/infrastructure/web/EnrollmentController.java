@@ -2,7 +2,6 @@ package com.setu.enrollment.infrastructure.web;
 
 import com.setu.enrollment.application.EnrollmentService;
 import com.setu.enrollment.domain.Enrollment;
-import com.setu.enrollment.domain.EnrollmentAction;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.http.HttpStatus;

@@ -152,6 +152,9 @@ public class AiChatConfig {
      * Reuses the same {@link #ollamaApi} bean (and therefore the same Windows-Selector-safe
      * {@code RestClient} configuration) the primary Ollama path would use if selected.
      */
+    // OllamaChatModel.Builder.toolCallingManager(...) is flagged deprecated by Spring AI's current release; the fallback model still
+    // needs the shared ToolCallingManager so the same application-owned tools are available on the fallback path.
+    @SuppressWarnings({"deprecation", "removal"})
     @Bean
     public ChatClient fallbackChatClient(OllamaApi ollamaApi, ToolCallingManager toolCallingManager,
                                           @Value("${spring.ai.ollama.chat.options.model:llama3.2:3b}") String fallbackModel) {

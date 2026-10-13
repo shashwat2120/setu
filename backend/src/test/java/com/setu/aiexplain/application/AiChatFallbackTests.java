@@ -42,6 +42,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * "working" side is the real local Ollama every other AI test in this module already relies
  * on being installed and running.
  */
+@SuppressWarnings({"deprecation", "removal"}) // Spring AI: Builder#toolCallingManager and ChatModel#getDefaultOptions, see AiChatConfig
 @SpringBootTest
 class AiChatFallbackTests {
 

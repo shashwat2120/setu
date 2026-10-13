@@ -258,6 +258,9 @@ public class AiChatService {
      * thread this class never created, so there the context is carried by {@link ContextCarryingToolCallback}
      * around each individual tool call instead of by the outer task alone.
      */
+    // ChatClient.toolCallbacks(ToolCallback...) is flagged deprecated by Spring AI's current release, but its replacement path is
+    // not the same API and this is the call that carries the per-request, security-context-aware tool wrappers.
+    @SuppressWarnings({"deprecation", "removal"})
     private ChatResult attempt(ChatClient client, String message, String modelForResult, boolean stream,
                                 long timeoutSeconds, StreamListener listener, List<Message> history,
                                 Optional<UUID> tenantId, UUID userId, UUID correlationId) throws Exception {

@@ -13,7 +13,6 @@ import com.webauthn4j.data.ResidentKeyRequirement;
 import com.webauthn4j.data.UserVerificationRequirement;
 import com.webauthn4j.data.attestation.statement.COSEAlgorithmIdentifier;
 import com.webauthn4j.data.client.Origin;
-import com.webauthn4j.data.client.challenge.Challenge;
 import com.webauthn4j.data.client.challenge.DefaultChallenge;
 import com.webauthn4j.test.authenticator.webauthn.NoneAttestationAuthenticator;
 import com.webauthn4j.test.authenticator.webauthn.WebAuthnAuthenticatorAdaptor;
@@ -34,6 +33,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  * sends, so PasskeyCeremonyVerifier's public JSON-string entry point is
  * tested end-to-end, the same path the web controllers actually call.
  */
+@SuppressWarnings("deprecation") // webauthn4j ObjectConverter#getJsonConverter: see PasskeyCeremonyVerifier
 class PasskeyCeremonyVerifierTests {
 
     private static final String LEGITIMATE_RP_ID = "setu.app";

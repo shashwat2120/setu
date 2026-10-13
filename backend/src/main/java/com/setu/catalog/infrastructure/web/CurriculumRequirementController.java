@@ -2,7 +2,6 @@ package com.setu.catalog.infrastructure.web;
 
 import com.setu.catalog.application.CurriculumRequirementService;
 import com.setu.catalog.domain.CurriculumRequirement;
-import com.setu.catalog.domain.CurriculumRequirementCourse;
 import com.setu.catalog.domain.RequirementRole;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;

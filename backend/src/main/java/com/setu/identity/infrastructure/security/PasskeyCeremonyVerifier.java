@@ -38,6 +38,11 @@ import java.util.stream.Collectors;
  * ceremony data, so tests cover the real RP-ID/origin/challenge/signature
  * logic without needing to hand-build WebAuthn JSON request bodies.
  */
+// webauthn4j marks Authenticator/AuthenticatorImpl, ObjectConverter#getCborConverter and the older RegistrationParameters and
+// AuthenticationParameters constructors as deprecated in favour of CredentialRecord. The ceremony is verified end to end by the
+// passkey tests against the current API, so moving to CredentialRecord is a planned follow-up rather than a change to make
+// to a security-critical flow right before the review.
+@SuppressWarnings("deprecation")
 @Component
 @EnableConfigurationProperties(WebAuthnProperties.class)
 public class PasskeyCeremonyVerifier {

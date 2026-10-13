@@ -3,7 +3,6 @@ package com.setu.enrollment.application;
 import com.setu.catalog.application.AcademicPeriodService;
 import com.setu.catalog.application.CourseService;
 import com.setu.catalog.application.RoomService;
-import com.setu.catalog.domain.CourseStatus;
 import com.setu.enrollment.domain.CourseSection;
 import com.setu.enrollment.domain.CourseSectionStatus;
 import com.setu.enrollment.domain.ClassTenantLookup;

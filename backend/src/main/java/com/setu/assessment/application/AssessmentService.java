@@ -299,10 +299,6 @@ public class AssessmentService {
     }
 
     /** Returns true when the caller is assigned faculty or a permitted admin. */
-    private boolean assertRead(UUID sectionId, UUID tenantId) {
-        return assertRead(sectionId, tenantId, null);
-    }
-
     private boolean assertRead(UUID sectionId, UUID tenantId, UUID guardianForStudentId) {
         ResourceRef scoped = accessSupport.sectionScoped("assessment", UUID.randomUUID(), tenantId, sectionId);
         if (authorizationContext.can(MANAGE_PERMISSION, scoped).isAllowed()) {

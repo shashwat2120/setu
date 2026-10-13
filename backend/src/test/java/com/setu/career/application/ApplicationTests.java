@@ -1,9 +1,7 @@
 package com.setu.career.application;
 
-import com.setu.career.domain.ApplicationStatus;
 import com.setu.career.domain.ProficiencyLevel;
 import com.setu.identity.TestAuthentication;
-import com.setu.identity.domain.RoleCode;
 import com.setu.testsupport.Day12TestFixtures;
 import com.setu.testsupport.Day7TestFixtures;
 import com.setu.testsupport.Day8TestFixtures;

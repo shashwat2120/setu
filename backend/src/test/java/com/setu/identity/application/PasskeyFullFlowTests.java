@@ -39,6 +39,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * authenticator whose credential store persists across both ceremonies, the
  * same way a real device's passkey would. Runs against the real Postgres.
  */
+@SuppressWarnings("deprecation") // webauthn4j ObjectConverter#getJsonConverter: see PasskeyCeremonyVerifier
 @SpringBootTest
 @Transactional
 class PasskeyFullFlowTests {
