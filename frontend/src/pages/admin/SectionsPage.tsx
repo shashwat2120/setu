@@ -1,7 +1,7 @@
 import { useAuth } from '../../auth/AuthContext';
 import { tenantForRole } from '../../auth/types';
 import { usePagedQuery } from '../../api/usePagedQuery';
-import type { CourseSectionResponse } from '../../api/types';
+import type { CourseSectionResponse, PageResponse } from '../../api/types';
 import { PageHeader } from '../../components/ui/PageHeader';
 import { DataTable, type Column } from '../../components/ui/DataTable';
 import { Pagination } from '../../components/ui/Pagination';
@@ -53,11 +53,11 @@ function SectionScheduling({ sectionId, tenantId }: { sectionId: string; tenantI
     { key: 'room', header: 'Room', render: (p) => roomLabelFor(p.roomId) },
   ];
 
-  const faculty = useApiQuery<FacultyResponse[]>(`/directory/faculty?tenantId=${tenantId}&size=500`);
+  const faculty = useApiQuery<PageResponse<FacultyResponse>>(`/directory/faculty?tenantId=${tenantId}&size=500`);
   const assignments = useApiQuery<FacultyAssignmentResponse[]>(`/enrollment/faculty-assignments?sectionId=${sectionId}&tenantId=${tenantId}`);
   const [assignForm, setAssignForm] = useState({ facultyId: '', role: 'PRIMARY' as typeof ASSIGNMENT_ROLES[number], allocationPct: '100', startsAt: '' });
   const [assignMessage, setAssignMessage] = useState('');
-  const facultyNameFor = (id: string) => faculty.data?.find((f) => f.id === id)?.fullName ?? id;
+  const facultyNameFor = (id: string) => faculty.data?.content.find((f) => f.id === id)?.fullName ?? id;
   async function createAssignment(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault(); setAssignMessage('');
     try {
@@ -118,7 +118,7 @@ function SectionScheduling({ sectionId, tenantId }: { sectionId: string; tenantI
           <label htmlFor="assign-faculty">Faculty</label>
           <select id="assign-faculty" value={assignForm.facultyId} onChange={(e) => setAssignForm({ ...assignForm, facultyId: e.target.value })} required>
             <option value="">Choose faculty</option>
-            {faculty.data?.map((f) => <option key={f.id} value={f.id}>{f.fullName ?? f.email}</option>)}
+            {faculty.data?.content.map((f) => <option key={f.id} value={f.id}>{f.fullName ?? f.email}</option>)}
           </select>
         </div>
         <div className="form-field" style={{ margin: 0 }}>
@@ -159,16 +159,31 @@ export default function SectionsPage() {
     catch (e) { setMessage(e instanceof Error ? e.message : 'Could not create section.'); }
   }
 
+  async function openRegistration(sectionId: string) {
+    try {
+      await apiFetch(`/enrollment/course-sections/${sectionId}/status`, { method: 'POST', body: { status: 'OPEN' } });
+      setMessage('Registration is open: students can now enroll in this section.');
+      refetch();
+    } catch (e) { setMessage(e instanceof Error ? e.message : 'Could not open registration.'); }
+  }
+
   const columns: Column<CourseSectionResponse>[] = [
     { key: 'code', header: 'Section', render: (s) => <span className="mono">{s.sectionCode}</span> },
     { key: 'capacity', header: 'Capacity', render: (s) => s.capacity },
     { key: 'status', header: 'Status', render: (s) => <StatusBadge value={s.status} /> },
     {
       key: 'actions', header: '', render: (s) => (
-        <button type="button" className="btn btn-ghost" style={{ padding: '6px 10px', fontSize: 12 }}
-          onClick={() => setExpandedSection(expandedSection === s.id ? null : s.id)}>
-          {expandedSection === s.id ? 'Hide scheduling' : 'Scheduling'}
-        </button>
+        <span style={{ display: 'inline-flex', gap: 8 }}>
+          {s.status === 'DRAFT' && (
+            <button type="button" className="btn btn-primary" style={{ padding: '6px 10px', fontSize: 12 }} onClick={() => openRegistration(s.id)}>
+              Open registration
+            </button>
+          )}
+          <button type="button" className="btn btn-ghost" style={{ padding: '6px 10px', fontSize: 12 }}
+            onClick={() => setExpandedSection(expandedSection === s.id ? null : s.id)}>
+            {expandedSection === s.id ? 'Hide scheduling' : 'Scheduling'}
+          </button>
+        </span>
       ),
     },
   ];

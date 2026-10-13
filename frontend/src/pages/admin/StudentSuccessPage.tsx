@@ -88,6 +88,7 @@ export default function StudentSuccessPage() {
   const { user } = useAuth();
   const tenantId = tenantForRole(user, 'COLLEGE_ADMIN');
   const [expanded, setExpanded] = useState<string | null>(null);
+  const [message, setMessage] = useState('');
 
   const scores = useApiQuery<RiskScoreResponse[]>(tenantId ? `/risk/scores?tenantId=${tenantId}` : null);
   const students = useApiQuery<PageResponse<StudentResponse>>(
@@ -97,6 +98,15 @@ export default function StudentSuccessPage() {
     students.data?.content.find((s) => s.id === studentId)?.fullName
     ?? students.data?.content.find((s) => s.id === studentId)?.email
     ?? studentId;
+
+  async function recalculate(studentId: string) {
+    setMessage('');
+    try {
+      const result = await apiFetch<{ band: string; bandChanged: boolean }>(`/risk/scores/recalculate?studentId=${studentId}`, { method: 'POST' });
+      setMessage(`Risk recalculated for ${studentNameFor(studentId)}: ${result.band}${result.bandChanged ? ' (the band changed)' : ' (same band)'}.`);
+      scores.refetch();
+    } catch (e) { setMessage(e instanceof Error ? e.message : 'Could not recalculate.'); }
+  }
 
   const sorted = scores.data ? [...scores.data].sort((a, b) => b.score - a.score) : null;
 
@@ -109,10 +119,16 @@ export default function StudentSuccessPage() {
       key: 'actions',
       header: '',
       render: (r) => (
-        <button type="button" className="btn btn-ghost" style={{ padding: '6px 10px', fontSize: 12 }}
-          onClick={() => setExpanded(expanded === r.id ? null : r.id)}>
-          {expanded === r.id ? 'Hide' : 'Details'}
-        </button>
+        <span style={{ display: 'inline-flex', gap: 8 }}>
+          <button type="button" className="btn btn-ghost" style={{ padding: '6px 10px', fontSize: 12 }}
+            onClick={() => setExpanded(expanded === r.id ? null : r.id)}>
+            {expanded === r.id ? 'Hide' : 'Details'}
+          </button>
+          <button type="button" className="btn btn-ghost" style={{ padding: '6px 10px', fontSize: 12 }}
+            onClick={() => recalculate(r.studentId)}>
+            Recalculate
+          </button>
+        </span>
       ),
     },
   ];
@@ -120,6 +136,7 @@ export default function StudentSuccessPage() {
   return (
     <div>
       <PageHeader title="Student Success" subtitle="Deterministic risk scores, recommendations, and interventions — never AI-decided." />
+      {message && <p role="status" style={{ marginBottom: 12 }}>{message}</p>}
       <DataTable
         columns={columns}
         rows={sorted}
