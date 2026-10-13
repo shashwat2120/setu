@@ -117,7 +117,15 @@ public class PasskeyAuthenticationService {
             return new PasskeyAuthOutcome.ChallengeExpiredOrUnknown();
         }
 
-        byte[] claimedCredentialId = verifier.parseAuthentication(authenticationResponseJson).getCredentialId();
+        byte[] claimedCredentialId;
+        try {
+            claimedCredentialId = verifier.parseAuthentication(authenticationResponseJson).getCredentialId();
+        } catch (PasskeyVerificationException e) {
+            // A response that cannot even be parsed is an ordinary rejection (401 at the endpoints), not a server error.
+            auditLogWriter.write(null, challenge.userId(), "PASSKEY_AUTH_FAILURE", "identity.passkeys", null,
+                java.util.Map.of("reason", "malformed_response"));
+            return new PasskeyAuthOutcome.VerificationFailed("malformed passkey response");
+        }
         Optional<Passkey> maybePasskey = passkeyRepository.findByCredentialId(claimedCredentialId);
         if (maybePasskey.isEmpty()) {
             auditLogWriter.write(null, challenge.userId(), "PASSKEY_AUTH_FAILURE", "identity.passkeys", null,

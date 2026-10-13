@@ -122,4 +122,35 @@ class PasskeyCeremonyVerifierTests {
         assertThatThrownBy(() -> verifier.verifyRegistration(responseJson, challenge))
             .isInstanceOf(PasskeyVerificationException.class);
     }
+
+    /** Responses that are not valid WebAuthn JSON in different ways: every one must be a PasskeyVerificationException, nothing else. */
+    private static final List<String> MALFORMED_RESPONSES = java.util.Arrays.asList(
+        null,
+        "",
+        "not json at all",
+        "{}",
+        "[]",
+        "{\"id\":42}",
+        "{\"id\":\"AAAAAAAAAAA\",\"rawId\":\"AAAAAAAAAAA\",\"type\":\"public-key\",\"response\":{\"clientDataJSON\":\"AAAAAAAAAAA\",\"authenticatorData\":\"AAAAAAAAAAA\",\"signature\":\"AAAAAAAAAAA\",\"userHandle\":null},\"clientExtensionResults\":{}}",
+        "{\"id\":\"!!not base64!!\",\"rawId\":\"!!\",\"type\":\"public-key\",\"response\":{\"clientDataJSON\":\"!!\"}}");
+
+    @Test
+    void everyKindOfMalformedAuthenticationResponseIsAPasskeyVerificationExceptionNeverAnythingElse() {
+        var verifier = new PasskeyCeremonyVerifier(propertiesFor(LEGITIMATE_RP_ID, LEGITIMATE_ORIGIN));
+        for (String malformed : MALFORMED_RESPONSES) {
+            assertThatThrownBy(() -> verifier.parseAuthentication(malformed)).as("parse: %s", malformed)
+                .isInstanceOf(PasskeyVerificationException.class);
+            assertThatThrownBy(() -> verifier.verifyAuthentication(malformed, randomChallenge(), new byte[]{1}, new byte[]{1}, 0))
+                .as("verify: %s", malformed).isInstanceOf(PasskeyVerificationException.class);
+        }
+    }
+
+    @Test
+    void everyKindOfMalformedRegistrationResponseIsAPasskeyVerificationExceptionNeverAnythingElse() {
+        var verifier = new PasskeyCeremonyVerifier(propertiesFor(LEGITIMATE_RP_ID, LEGITIMATE_ORIGIN));
+        for (String malformed : MALFORMED_RESPONSES) {
+            assertThatThrownBy(() -> verifier.verifyRegistration(malformed, randomChallenge())).as("register: %s", malformed)
+                .isInstanceOf(PasskeyVerificationException.class);
+        }
+    }
 }

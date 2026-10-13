@@ -61,7 +61,11 @@ public class PasskeyCeremonyVerifier {
         RegistrationData data;
         try {
             data = webAuthnManager.parseRegistrationResponseJSON(registrationResponseJson);
-        } catch (com.webauthn4j.converter.exception.DataConversionException e) {
+        } catch (RuntimeException e) {
+            // Anything that fails while turning client-supplied JSON into WebAuthn data is a malformed response, not a server
+            // fault. The library only wraps its own DataConversionException: other failures (for example a Jackson
+            // StreamReadException when a field decodes to non-JSON bytes, or an IllegalArgumentException from bad base64)
+            // used to escape as an HTTP 500.
             throw new PasskeyVerificationException("Malformed passkey registration response", e);
         }
         return verifyRegistration(data, serverProperty(expectedChallenge));
@@ -111,7 +115,8 @@ public class PasskeyCeremonyVerifier {
     public AuthenticationData parseAuthentication(String authenticationResponseJson) {
         try {
             return webAuthnManager.parseAuthenticationResponseJSON(authenticationResponseJson);
-        } catch (com.webauthn4j.converter.exception.DataConversionException e) {
+        } catch (RuntimeException e) {
+            // See verifyRegistration: any parse failure of client-supplied data is a malformed response, never a server fault.
             throw new PasskeyVerificationException("Malformed passkey authentication response", e);
         }
     }

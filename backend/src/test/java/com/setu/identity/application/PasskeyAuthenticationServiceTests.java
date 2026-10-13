@@ -103,4 +103,17 @@ class PasskeyAuthenticationServiceTests {
 
         assertThat(result).isEqualTo(PasskeyAuthenticationService.RevocationResult.NOT_FOUND);
     }
+
+    @Test
+    void aMalformedAssertionIsAnOrdinaryRejectionNotAnException() {
+        UUID userId = newUser();
+        for (String malformed : java.util.Arrays.asList(null, "", "not json", "{}",
+            "{\"id\":\"AAAAAAAAAAA\",\"rawId\":\"AAAAAAAAAAA\",\"type\":\"public-key\",\"response\":{\"clientDataJSON\":\"AAAAAAAAAAA\",\"authenticatorData\":\"AAAAAAAAAAA\",\"signature\":\"AAAAAAAAAAA\",\"userHandle\":null},\"clientExtensionResults\":{}}")) {
+            var challenge = authenticationService.startStepUpAuthentication(userId);
+
+            var outcome = authenticationService.finishAuthentication(challenge.challengeId(), malformed);
+
+            assertThat(outcome).as("outcome for: %s", malformed).isInstanceOf(PasskeyAuthOutcome.VerificationFailed.class);
+        }
+    }
 }
