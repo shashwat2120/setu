@@ -37,6 +37,7 @@ public class Passkey {
     @Column(name = "sign_count", nullable = false)
     private long signCount;
 
+    @SuppressWarnings("unused") // mapped column: written by JPA, not read in Java yet
     private UUID aaguid;
 
     @JdbcTypeCode(SqlTypes.ARRAY)

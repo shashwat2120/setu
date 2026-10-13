@@ -256,7 +256,7 @@ class CourseSectionTests {
         var tenant = fixtures.provisionTenant("SEC13");
         UUID dept = fixtures.provisionDepartment(tenant, "SEC13D");
         UUID programId = fixtures.provisionProgram(tenant, dept, "SEC13P");
-        UUID curriculumId = fixtures.provisionCurriculum(tenant, programId, "v1", LocalDate.of(2025, 1, 1), null);
+        fixtures.provisionCurriculum(tenant, programId, "v1", LocalDate.of(2025, 1, 1), null);
         UUID courseId = fixtures.provisionCourse(tenant, dept, "SEC13C");
         UUID periodId = day8Fixtures.provisionOpenPeriod(tenant, "SEC13PR");
         UUID sectionId = day8Fixtures.provisionOpenSection(tenant, courseId, periodId, "S1", 30, null);

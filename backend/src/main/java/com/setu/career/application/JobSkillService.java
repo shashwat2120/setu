@@ -17,7 +17,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
-import java.util.Optional;
 
 /** Day 12 §Career: job_skills — a job's required skills, together forming the deterministic eligibility criteria a student is checked against at application time (no separate "eligibility criteria" table exists in the canonical schema — see this class's own eligibility helper, used by ApplicationService). Placement-officer/admin managed (MANAGE_CAREER_LISTINGS). */
 @org.springframework.modulith.NamedInterface // Day 15 §demo-data: com.setu.shared.seed.DemoDataSeeder needs this cross-module

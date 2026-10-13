@@ -45,6 +45,7 @@ public class Person {
 
     private LocalDate dob;
 
+    @SuppressWarnings("unused") // mapped column: written by JPA, not read in Java yet
     private String gender;
 
     @Column(columnDefinition = "citext")

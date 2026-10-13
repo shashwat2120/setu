@@ -51,7 +51,6 @@ import java.util.UUID;
 public class MeetingPatternService {
 
     private static final String MANAGE_PERMISSION = "MANAGE_SECTIONS";
-    private static final String VIEW_PERMISSION = "VIEW_TENANT_DATA";
 
     private final MeetingPatternRepository meetingPatternRepository;
     private final MeetingPatternWriteGuard meetingPatternWriteGuard;

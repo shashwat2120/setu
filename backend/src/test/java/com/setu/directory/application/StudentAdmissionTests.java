@@ -5,7 +5,6 @@ import com.setu.identity.application.PersonService;
 import com.setu.identity.application.UserRegistrationService;
 import com.setu.identity.domain.Person;
 import com.setu.identity.infrastructure.PersonRepository;
-import com.setu.directory.application.DirectoryService;
 import com.setu.directory.domain.StudentStatus;
 import com.setu.guardianaccess.application.GuardianAccessService;
 import com.setu.identity.domain.RoleCode;

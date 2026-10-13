@@ -35,6 +35,7 @@ public class AcademicOrganization {
     @Column(nullable = false)
     private String name;
 
+    @SuppressWarnings("unused") // mapped column: written by JPA, not read in Java yet
     private String type;
 
     @Column(name = "created_at", nullable = false)

@@ -25,8 +25,10 @@ public class Guardian {
     @Column(name = "person_id", nullable = false)
     private UUID personId;
 
+    @SuppressWarnings("unused") // mapped column: written by JPA, not read in Java yet
     private String occupation;
 
+    @SuppressWarnings("unused") // mapped column: written by JPA, not read in Java yet
     private String organization;
 
     @JdbcTypeCode(SqlTypes.JSON)

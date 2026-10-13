@@ -154,7 +154,7 @@ public class AiChatConfig {
      */
     // OllamaChatModel.Builder.toolCallingManager(...) is flagged deprecated by Spring AI's current release; the fallback model still
     // needs the shared ToolCallingManager so the same application-owned tools are available on the fallback path.
-    @SuppressWarnings({"deprecation", "removal"})
+    @SuppressWarnings("removal")
     @Bean
     public ChatClient fallbackChatClient(OllamaApi ollamaApi, ToolCallingManager toolCallingManager,
                                           @Value("${spring.ai.ollama.chat.options.model:llama3.2:3b}") String fallbackModel) {

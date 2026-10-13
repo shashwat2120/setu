@@ -127,6 +127,7 @@ class PasskeyFullFlowTests {
         // This authenticator's credential was never registered with the server.
         var strayAuthenticator = new NoneAttestationAuthenticator();
         UUID someUser = newUser("unknown-cred-" + UUID.randomUUID() + "@example.com");
+        @SuppressWarnings("unused")
         String regJson = registrationResponseJson(strayAuthenticator, rpId, origin, new byte[32],
             PasskeyRegistrationService.userHandleFor(someUser));
         // Register it against webauthn4j directly is skipped — we only need

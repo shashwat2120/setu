@@ -35,6 +35,7 @@ public class FacultyProfile {
     @Column(name = "employee_no", nullable = false)
     private String employeeNo;
 
+    @SuppressWarnings("unused") // mapped column: written by JPA, not read in Java yet
     private String designation;
 
     @Enumerated(EnumType.STRING)

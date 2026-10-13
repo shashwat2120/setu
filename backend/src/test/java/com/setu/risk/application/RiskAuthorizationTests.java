@@ -122,7 +122,7 @@ class RiskAuthorizationTests {
     void collegeAdminCanViewAndManageAnyStudentTenantWide() {
         var s = fixtures.provisionEnrolledScenario("RA5");
 
-        RiskScore score = recalcAsAdmin(s);
+        recalcAsAdmin(s);
 
         TestAuthentication.authenticateAs(s.tenant().adminUserId());
         try {

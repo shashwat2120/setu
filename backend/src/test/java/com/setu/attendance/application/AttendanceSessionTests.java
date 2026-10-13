@@ -99,7 +99,7 @@ class AttendanceSessionTests {
     @Test
     void studentCannotStartAttendance() {
         var s = setUp("ATT4");
-        var studentTenant = fixtures.provisionTenant("ATT4S");
+        fixtures.provisionTenant("ATT4S");
         UUID studentUserId = fixtures.provisionUserWithRole(s.tenant.tenantId(), RoleCode.STUDENT, "ATT4-STU");
         TestAuthentication.authenticateAs(studentUserId);
 

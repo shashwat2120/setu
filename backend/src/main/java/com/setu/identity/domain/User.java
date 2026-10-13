@@ -23,6 +23,7 @@ public class User {
     @Column(nullable = false, columnDefinition = "citext")
     private String email;
 
+    @SuppressWarnings("unused") // mapped column: written by JPA, not read in Java yet
     private String phone;
 
     @Column(columnDefinition = "citext")

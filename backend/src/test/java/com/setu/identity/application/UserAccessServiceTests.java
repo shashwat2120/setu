@@ -305,7 +305,7 @@ class UserAccessServiceTests {
     // --- a profile-status style change alone (simulated here without pulling in the directory module) never touches account status ---
     @Test
     void accountStatusIsIndependentOfNonAccountActions() {
-        UUID tenant = newTenant();
+        newTenant();
         UUID target = newUser("independence-check");
 
         // Nothing in this test calls accessService at all — the point is that a freshly

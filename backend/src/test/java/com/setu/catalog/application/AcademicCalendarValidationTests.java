@@ -174,6 +174,7 @@ class AcademicCalendarValidationTests {
         TestAuthentication.authenticateAs(admin);
         UUID yearId = academicYearService.createYear(tenant, "AY2026",
             LocalDate.of(2026, 6, 1), LocalDate.of(2027, 5, 31));
+        @SuppressWarnings("unused") // the cast asserts the period was created
         var period = (AcademicPeriodService.CreateResult.Success) academicPeriodService.createPeriod(
             yearId, "SEM1", "Semester 1", 1, LocalDate.of(2026, 6, 1), LocalDate.of(2026, 12, 1), null, null);
 

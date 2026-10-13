@@ -45,7 +45,6 @@ import java.util.UUID;
 public class StudentProfileService {
 
     private static final String MANAGE_PERMISSION = "MANAGE_STUDENTS";
-    private static final String VIEW_PERMISSION = "VIEW_PROFILE";
     private static final String ADMIN_VIEW_PERMISSION = "VIEW_TENANT_DATA";
 
     private final StudentProfileRepository studentProfileRepository;
@@ -54,7 +53,6 @@ public class StudentProfileService {
     private final TenantMembership tenantMembership;
     private final AuthorizationContext authorizationContext;
     private final AuditLogWriter auditLogWriter;
-    private final OutboxEventWriter outboxEventWriter;
 
     public StudentProfileService(StudentProfileRepository studentProfileRepository,
                                   StudentProfileInsertGuard studentProfileInsertGuard, PersonDirectory personDirectory,
@@ -67,7 +65,6 @@ public class StudentProfileService {
         this.tenantMembership = tenantMembership;
         this.authorizationContext = authorizationContext;
         this.auditLogWriter = auditLogWriter;
-        this.outboxEventWriter = outboxEventWriter;
     }
 
     public sealed interface AdmitResult {
