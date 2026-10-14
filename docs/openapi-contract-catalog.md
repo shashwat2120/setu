@@ -109,3 +109,13 @@ POST). The two worth calling out specifically:
 |---|---|
 | `POST /finance/payments/webhook` (provider callback) | **Not** bearer-authenticated like the rest — verified via the provider's own signature scheme instead. Idempotent on `payment_events.provider_event_id`. See "duplicate payment webhook" in the matrix. |
 | `POST /ai/explain` | `STUDENT` (self) or `FACULTY`/`COLLEGE_ADMIN` (advisee, via tool scope). Returns `202 Accepted` + a job id (async — canonical spec §14 "AI: asynchronous queued/running/completed"), not a synchronous answer; client polls or subscribes via WebSocket for the `AIJobCompleted` status. |
+
+### Notifications (implemented)
+
+Any signed-in person; the caller is always the owner, no user or college id is accepted anywhere.
+
+| Method & path | Notes |
+|---|---|
+| `GET /notifications?unreadOnly=false&limit=20` | The caller's own notifications, newest first (`limit` 1 to 50). Returns `{items:[{id,type,title,message,link,createdAt,readAt}], unreadCount}`; `unreadCount` covers all unread, not only the page. `link` is an in-app `/app/...` path or null. Inside a college only that college's rows are returned. |
+| `POST /notifications/{id}/read` | Marks one read (idempotent; the read time does not move). **404** if the id is not the caller's, exactly as for an id that does not exist. |
+| `POST /notifications/read-all` | Marks all of the caller's unread read; returns `{updated}`. |

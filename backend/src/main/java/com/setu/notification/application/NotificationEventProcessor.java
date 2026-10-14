@@ -86,25 +86,25 @@ public class NotificationEventProcessor {
                     throw new PoisonEventException("GradePublished tenant does not match enrollment " + enrollmentId);
                 }
                 yield Optional.of(student(enrollment.studentId(), tenantId, "GRADE_PUBLISHED", "A new grade has been published",
-                    "A grade for one of your courses is now available.", "/student/grades"));
+                    "A grade for one of your courses is now available.", "/app/student/grades"));
             }
             case "PaymentSuccessful" -> Optional.of(student(studentId(p), tenantId, "PAYMENT_RECEIVED", "Payment received",
-                "Your payment of " + amount(p) + " was received.", "/student/finance"));
+                "Your payment of " + amount(p) + " was received.", "/app/student/finance"));
             case "PaymentFailed" -> Optional.of(student(studentId(p), tenantId, "PAYMENT_FAILED", "Payment failed",
-                "A payment attempt did not go through. Nothing was charged; you can try again.", "/student/finance"));
+                "A payment attempt did not go through. Nothing was charged; you can try again.", "/app/student/finance"));
             case "PaymentRefunded" -> Optional.of(student(studentId(p), tenantId, "PAYMENT_REFUNDED", "Payment refunded",
-                "A refund of " + amount(p) + " was issued for one of your payments.", "/student/finance"));
+                "A refund of " + amount(p) + " was issued for one of your payments.", "/app/student/finance"));
             case "PlacementRecorded" -> Optional.of(student(studentId(p), tenantId, "PLACEMENT_RECORDED", "Placement recorded",
-                "Your placement with " + text(p, "employer") + " has been recorded.", "/student/career"));
+                "Your placement with " + text(p, "employer") + " has been recorded.", "/app/student/career"));
             case "RecommendationCreated" -> Optional.of(student(studentId(p), tenantId, "RECOMMENDATION_AVAILABLE", "New study recommendation",
-                "There is a new recommendation to help you stay on track.", "/student/success"));
+                "There is a new recommendation to help you stay on track.", "/app/student/success"));
             case "StudentAdmitted" -> Optional.of(student(uuid(text(p, "studentId"), "studentId"), tenantId, "ADMISSION_CONFIRMED",
-                "Welcome to the college", "Your admission has been recorded. Your courses and schedule will appear here.", "/student"));
+                "Welcome to the college", "Your admission has been recorded. Your courses and schedule will appear here.", "/app/student"));
             case "InterventionCreated" -> {
                 // Addressed to the advisor who owns the intervention, not to the student it is about.
                 UUID owner = uuid(text(p, "ownerUserId"), "ownerUserId");
                 yield Optional.of(new Draft(owner, "INTERVENTION_ASSIGNED", "A student needs follow-up",
-                    "A student-success intervention has been assigned to you.", "/admin/student-success"));
+                    "A student-success intervention has been assigned to you.", null));
             }
             default -> Optional.empty();
         };

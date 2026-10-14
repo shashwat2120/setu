@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
+import NotificationBell from '../components/NotificationBell';
 import { NAV_BY_ROLE } from './navConfig';
 import '../styles/app.css';
 
@@ -45,6 +46,7 @@ export default function AppShell() {
           </button>
           <a href="#app-main-content" className="skip-link">Skip to content</a>
           <div style={{ flex: 1 }} />
+          <NotificationBell />
           <UserMenu name={user?.fullName ?? user?.email ?? 'Account'} onLogout={logout} />
         </header>
         <main id="app-main-content" className="app-content" tabIndex={-1}>

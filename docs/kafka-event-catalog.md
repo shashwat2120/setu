@@ -81,8 +81,8 @@ shown implicitly by its aggregate. `event_version` is `1` for every row.
   `setu_notification_events_dead_lettered_total{topic}`.
 - **Switches:** `app.notification.consumer.enabled` (default on; the test suite turns it off so only an explicit test consumes),
   `app.notification.consumer.group-id`, `app.notification.consumer.topic-prefix`, `app.notification.consumer.aggregates`.
-- **Not yet:** the notifications are stored but there is no API or screen that lists them to the user. Email and push delivery
-  (`notification.delivery_attempts`) are not built either.
+- **Shown to the user:** `GET /notifications` and the bell in the app header (see openapi-contract-catalog.md). Not built: email and
+  push delivery (`notification.delivery_attempts`).
 
 | Event | Producer | Consumers | Aggregate | Ordering key | Payload essentials |
 |---|---|---|---|---|---|

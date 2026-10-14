@@ -7,7 +7,7 @@ import { defineConfig } from 'vite'
 const BACKEND_PREFIXES = [
   '/auth', '/identity', '/institution', '/catalog', '/enrollment', '/directory', '/guardian-access',
   '/attendance', '/staff-attendance', '/learning', '/assessment', '/risk', '/finance', '/career', '/ai', '/governance', '/record',
-  '/actuator', '/v3/api-docs', '/swagger-ui', '/admin',
+  '/notifications', '/actuator', '/v3/api-docs', '/swagger-ui', '/admin',
 ]
 
 // https://vite.dev/config/
