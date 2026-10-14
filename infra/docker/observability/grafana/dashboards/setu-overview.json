@@ -605,7 +605,7 @@
     {
       "id": 12,
       "type": "timeseries",
-      "title": "JVM heap and non-heap",
+      "title": "Notification consumer: events by outcome (per minute)",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -613,6 +613,111 @@
       "gridPos": {
         "x": 0,
         "y": 28,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (event_type, outcome) (rate(setu_notification_events_total[5m])) * 60",
+          "legendFormat": "{{event_type}} · {{outcome}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 30,
+            "stacking": {
+              "mode": "normal"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
+    },
+    {
+      "id": 13,
+      "type": "timeseries",
+      "title": "Notification consumer: dead-lettered and errors (5 min)",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 28,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum(increase(setu_notification_events_dead_lettered_total[5m])) or vector(0)",
+          "legendFormat": "dead-lettered (DLQ)",
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum(increase(setu_notification_events_total{outcome=\"error\"}[5m])) or vector(0)",
+          "legendFormat": "failed attempts",
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "stacking": {
+              "mode": "none"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
+    },
+    {
+      "id": 14,
+      "type": "timeseries",
+      "title": "JVM heap and non-heap",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 36,
         "w": 8,
         "h": 8
       },
@@ -669,7 +774,7 @@
       }
     },
     {
-      "id": 13,
+      "id": 15,
       "type": "timeseries",
       "title": "JVM threads",
       "datasource": {
@@ -678,7 +783,7 @@
       },
       "gridPos": {
         "x": 8,
-        "y": 28,
+        "y": 36,
         "w": 8,
         "h": 8
       },
@@ -726,7 +831,7 @@
       }
     },
     {
-      "id": 14,
+      "id": 16,
       "type": "timeseries",
       "title": "Database connections (HikariCP)",
       "datasource": {
@@ -735,7 +840,7 @@
       },
       "gridPos": {
         "x": 16,
-        "y": 28,
+        "y": 36,
         "w": 8,
         "h": 8
       },
