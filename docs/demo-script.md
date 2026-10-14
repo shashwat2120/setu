@@ -197,8 +197,9 @@ Then do step 2 (scan attendance) or step 3 (publish a grade) and watch the event
 headers (`event_id`, `event_type`, `event_version`, `correlation_id`, `tenant_id`). `.\infra\scripts\kafka-demo.ps1 tail grades`
 prints the last events on one topic.
 
-**Known gap, stated plainly:** events are produced and durable, but no consumer reads them yet — Notification and
-Analytics consumers are Sprint 6B (per `docs/kafka-event-catalog.md`, each with a processed-event table and a DLQ).
+**Consumers, stated plainly:** one consumer exists, the notification module's (grade published, payments, placement, recommendation,
+intervention, admission become rows in `notification.notifications`; see `docs/kafka-event-catalog.md`). Nothing shows them in the
+UI yet. The Analytics consumer and the others in the catalog are Sprint 6B.
 
 **Startup delay on this dev machine:** a Windows JDK NIO defect ("Unable to establish loopback connection") stops any
 Java Kafka client from starting for a while after the bridge launches (reproducible with a 5-line

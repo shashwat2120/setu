@@ -48,7 +48,41 @@ shown implicitly by its aggregate. `event_version` is `1` for every row.
 > `FacultyAttendanceMarked`, `FacultyAttendanceCorrected`, the four `FacultyRegularisation*` events and `FacultyAttendancePolicyChanged` — aggregate `faculty_attendance`, topic `setu.faculty_attendance`, written
 > to the outbox in the same transaction as the change. They carry the standard envelope (event id, tenant id, correlation id,
 > `event_version` 1); `previous_status`, `actor_user_id` and `reason` are present only on the two administrator events. The
-> consumers listed are the intended Sprint 6B ones; none exist yet.
+> consumers listed are the intended Sprint 6B ones; the only one built so far is Notification's (next section).
+
+## Consumers that exist
+
+**Notification** (`com.setu.notification`, built in the monolith, same contract it will keep when extracted). Consumer group
+`setu-notification`, reading `setu.grades`, `setu.payments`, `setu.placement_records`, `setu.recommendations`,
+`setu.interventions` and `setu.student_profiles` from the earliest offset. It turns these events into rows in
+`notification.notifications`; every other event type on those topics is acknowledged and left alone.
+
+| Event | Notification for | Type |
+|---|---|---|
+| `GradePublished` | the student who owns the enrollment | `GRADE_PUBLISHED` |
+| `PaymentSuccessful` / `PaymentFailed` / `PaymentRefunded` | the student | `PAYMENT_RECEIVED` / `PAYMENT_FAILED` / `PAYMENT_REFUNDED` |
+| `PlacementRecorded` | the student | `PLACEMENT_RECORDED` |
+| `RecommendationCreated` | the student | `RECOMMENDATION_AVAILABLE` |
+| `StudentAdmitted` | the student | `ADMISSION_CONFIRMED` |
+| `InterventionCreated` | the intervention's owner (advisor), not the student | `INTERVENTION_ASSIGNED` |
+
+- **Idempotency:** the event id (`event_id` header) is inserted into `notification.processed_events` in the same transaction as the
+  notification; a redelivery hits the primary key and does nothing. If the notification cannot be written, the id rolls back with it,
+  so the retry is not mistaken for a duplicate.
+- **Recipient:** derived server-side from the event's ids (student to user through `directory`, enrollment to student through
+  `enrollment`), never from anything in the message about a person. The tenant in the event must equal the tenant of the person it
+  resolves to, and the `tenant_id` header must equal the payload's; otherwise the event is poison.
+- **Retry and DLQ:** a transient failure is delivered 3 times in all (backoff 0.5 s, then 1 s), then published to `{topic}.DLQ`. Malformed
+  JSON, a missing field, an unknown student/enrollment, a tenant mismatch or a constraint violation is poison: straight to the DLQ,
+  no retries. A dead-lettered record keeps its original key and value, plus the failure in Kafka's standard `kafka_dlt-*` headers.
+- **Does not block the application:** the listener is started after the application is up and retried every 10 s if the Kafka client
+  cannot be created. On this Windows machine that can take minutes; until then events wait on the topic.
+- **Metrics:** `setu_notification_events_total{event_type, outcome}` (outcome `created`, `duplicate`, `ignored`, `error`) and
+  `setu_notification_events_dead_lettered_total{topic}`.
+- **Switches:** `app.notification.consumer.enabled` (default on; the test suite turns it off so only an explicit test consumes),
+  `app.notification.consumer.group-id`, `app.notification.consumer.topic-prefix`, `app.notification.consumer.aggregates`.
+- **Not yet:** the notifications are stored but there is no API or screen that lists them to the user. Email and push delivery
+  (`notification.delivery_attempts`) are not built either.
 
 | Event | Producer | Consumers | Aggregate | Ordering key | Payload essentials |
 |---|---|---|---|---|---|

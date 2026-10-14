@@ -126,8 +126,11 @@ backend log at startup, and the click-through is in [docs/demo-script.md](docs/d
   application-owned, authorization-checked tools and cites its sources.
 - **Platform:** transactional outbox to Kafka, per-module Flyway migrations, an audit log, Actuator health and Modulith endpoints, and Micrometer metrics scraped by Prometheus and drawn on a provisioned Grafana dashboard (see [infra/docker/README.md](infra/docker/README.md#observability)).
 
-Sprint 6 (service extraction) has not started: the system is still one Spring Modulith application, and nothing consumes the
-Kafka topics yet.
+- **Kafka consumer:** the notification module consumes the outbox events (grade published, payments, placement, recommendation, intervention,
+  admission) and writes in-app notifications, once per event id, with retry and a dead-letter topic (see
+  [docs/kafka-event-catalog.md](docs/kafka-event-catalog.md#consumers-that-exist)).
+
+Sprint 6 (service extraction) has not started: the system is still one Spring Modulith application.
 
 ## Configuration
 

@@ -92,8 +92,7 @@ spring:
           temperature: ${OLLAMA_TEMPERATURE:0.2}
 
   kafka:
-    # Day 15: the outbox publisher's producer only — no consumer group config
-    # (see OutboxPublisher's own javadoc for why no consumer exists yet).
+    # Day 15: the outbox publisher's producer; the notification consumer's settings follow below.
     # Port matches infra/docker/.env's KAFKA_PORT (9093 by default on this
     # machine, since 9092 is already taken by an unrelated project's own
     # Kafka/Redpanda — same pattern as DB_PORT/REDIS_PORT).
@@ -108,6 +107,16 @@ spring:
         max.block.ms: 5000
         request.timeout.ms: 5000
         delivery.timeout.ms: 6000
+    # The notification module's consumer (notification/infrastructure/kafka). A new group reads each topic from the start, so the
+    # first run catches up on everything already published; offsets are then committed by the listener container after each record.
+    consumer:
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      auto-offset-reset: earliest
+      enable-auto-commit: false
+    listener:
+      # A topic that has not been created yet (nothing published for that aggregate so far) must not stop the application starting.
+      missing-topics-fatal: false
 
 server:
   port: ${SERVER_PORT:8080}

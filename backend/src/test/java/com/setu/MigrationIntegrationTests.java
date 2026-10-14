@@ -64,11 +64,13 @@ class MigrationIntegrationTests {
         // the existing identity schema; the one-time six-digit code that replaces the emailed reset link). +1 for staff-attendance regularisation requests
         // (attendance.faculty_attendance_regularisations, V74 — same ERD doc, same schema). +1 for the versioned staff
         // attendance policy (attendance.staff_attendance_policies, V75 — same ERD doc, same schema).
+        // +1 for the notification consumer's own processed-event table (notification.processed_events, V78 — canonical spec §8: each consumer keeps its
+        // own idempotency table keyed on event_id; owned by the existing notification schema).
         Integer count = jdbc.queryForObject(
             "SELECT count(*) FROM information_schema.tables " +
             "WHERE table_schema = ANY(?) AND table_type = 'BASE TABLE'",
             Integer.class, (Object) EXPECTED_SCHEMAS.toArray(new String[0]));
-        assertThat(count).isEqualTo(91);
+        assertThat(count).isEqualTo(92);
     }
 
     @Test

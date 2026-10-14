@@ -32,12 +32,10 @@ import java.util.concurrent.TimeUnit;
  * KafkaTemplate#send} returns a broker-acknowledged result — but if the
  * process crashes between that acknowledgment and this transaction's
  * commit, the row is still {@code NEW} on restart and gets republished,
- * producing a genuine duplicate on the topic. No consumer exists yet in
- * this codebase to demonstrate idempotent consumption (confirmed by
- * audit: zero {@code @KafkaListener}s anywhere) — a future consumer MUST
- * dedupe by the payload's own {@code eventId} field (present in every
- * {@link com.setu.shared.events.DomainEvent}), per
- * docs/kafka-event-catalog.md's own idempotency note.
+ * producing a genuine duplicate on the topic. Every consumer MUST therefore
+ * be idempotent, deduping by the event id; the notification module's consumer
+ * ({@code notification.infrastructure.kafka}) does, with its own processed-event
+ * table, per docs/kafka-event-catalog.md's idempotency note.
  * <p>
  * <b>Retry, honestly stated</b>: a row that fails to publish (broker
  * unreachable, timeout) simply stays {@code NEW} and is retried on the

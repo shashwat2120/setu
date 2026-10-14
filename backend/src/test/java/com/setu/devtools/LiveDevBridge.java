@@ -57,7 +57,8 @@ import java.util.Locale;
 @AutoConfigureMockMvc
 // Spring Boot switches metrics export off in tests; the bridge serves /actuator/prometheus to the Prometheus container, so turn it back on.
 @AutoConfigureMetrics
-@TestPropertySource(properties = "app.demo-data.enabled=true")
+// The test suite switches the Kafka consumer off by default; the running application (and so this bridge) consumes the outbox events.
+@TestPropertySource(properties = {"app.demo-data.enabled=true", "app.notification.consumer.enabled=true"})
 class LiveDevBridge {
 
     private static final int PORT = 8089;

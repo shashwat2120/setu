@@ -63,7 +63,7 @@ module" column — each table's schema is its owning module's schema:
 | `finance` | `fee_structures, fee_components, student_charges, student_accounts, payments, payment_events, receipts` |
 | `career` | `skills, skill_categories, student_skills, jobs, job_skills, applications, placement_records` |
 | `risk` | `risk_scores, risk_factors, recommendations, interventions, intervention_actions` |
-| `notification` | `notifications, notification_preferences, delivery_attempts` |
+| `notification` | `notifications, notification_preferences, delivery_attempts, processed_events` |
 | `governance` | `audit_logs, outbox_events, idempotency_keys` |
 | *(none yet)* | `analytics` schema created empty in Sprint 5 — populated by read-model tables once the `analytics` module actually builds projections; not before |
 

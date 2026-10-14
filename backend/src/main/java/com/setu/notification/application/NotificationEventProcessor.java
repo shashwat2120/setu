@@ -1,0 +1,184 @@
+package com.setu.notification.application;
+
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.setu.directory.application.StudentProfileService;
+import com.setu.enrollment.application.EnrollmentService;
+import org.springframework.jdbc.core.simple.JdbcClient;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.util.Optional;
+import java.util.UUID;
+
+/**
+ * Turns one Kafka business event into at most one in-app notification, exactly once per event id.
+ * <p>
+ * <b>Idempotency</b> (canonical spec §8): the event id is inserted into {@code notification.processed_events} in the same transaction
+ * as the notification. Kafka delivers at least once, so a redelivery finds the id already there and does nothing. The insert is the
+ * guard, not a prior read, so two consumers racing on the same event cannot both create a notification.
+ * <p>
+ * <b>Who is told</b> is always derived server-side from the event's own ids, never from anything the message says about a person: a
+ * student's user is looked up through {@code directory}, a grade's student through {@code enrollment}. The tenant named by the event
+ * must match the tenant of the person it resolves to, otherwise the event is poison, not delivered.
+ * <p>
+ * Events this module has no notification for are acknowledged and recorded as {@link Outcome#IGNORED}, not failed.
+ */
+@Service
+public class NotificationEventProcessor {
+
+    public enum Outcome { CREATED, DUPLICATE, IGNORED }
+
+    private final JdbcClient jdbc;
+    private final ObjectMapper objectMapper;
+    private final StudentProfileService studentProfiles;
+    private final EnrollmentService enrollments;
+
+    public NotificationEventProcessor(JdbcClient jdbc, ObjectMapper objectMapper, StudentProfileService studentProfiles,
+                                       EnrollmentService enrollments) {
+        this.jdbc = jdbc;
+        this.objectMapper = objectMapper;
+        this.studentProfiles = studentProfiles;
+        this.enrollments = enrollments;
+    }
+
+    /**
+     * @param headerEventId the {@code event_id} Kafka header (the outbox row id); the payload's own {@code eventId} is used if absent
+     * @param headerTenantId the {@code tenant_id} Kafka header, if present; must agree with the payload's tenant
+     */
+    @Transactional
+    public Outcome process(String eventType, String headerEventId, String headerTenantId, String payloadJson) {
+        JsonNode payload = parse(payloadJson);
+        UUID eventId = uuid(headerEventId != null ? headerEventId : text(payload, "eventId"), "eventId");
+        UUID tenantId = uuid(text(payload, "tenantId"), "tenantId");
+        if (headerTenantId != null && !tenantId.equals(uuid(headerTenantId, "tenant_id header"))) {
+            throw new PoisonEventException("tenant_id header does not match the payload's tenantId for event " + eventId);
+        }
+
+        Optional<Draft> draft = draftFor(eventType, payload, tenantId);
+        if (draft.isEmpty()) {
+            return Outcome.IGNORED; // not an event this module notifies on; not recorded, so a later release can start handling it
+        }
+
+        // The guard: only the first delivery of this event id gets past this insert.
+        int inserted = jdbc.sql("INSERT INTO notification.processed_events (event_id, event_type) VALUES (:id, :type) ON CONFLICT (event_id) DO NOTHING")
+            .param("id", eventId).param("type", eventType).update();
+        if (inserted == 0) {
+            return Outcome.DUPLICATE;
+        }
+
+        Draft d = draft.get();
+        jdbc.sql("INSERT INTO notification.notifications (tenant_id, user_id, type, payload_json) VALUES (:tenant, :user, :type, CAST(:payload AS jsonb))")
+            .param("tenant", tenantId).param("user", d.userId()).param("type", d.type()).param("payload", write(d.content(eventId, eventType)))
+            .update();
+        return Outcome.CREATED;
+    }
+
+    private Optional<Draft> draftFor(String eventType, JsonNode p, UUID tenantId) {
+        return switch (eventType) {
+            case "GradePublished" -> {
+                UUID enrollmentId = uuid(text(p, "enrollmentId"), "enrollmentId");
+                EnrollmentService.EnrollmentSummary enrollment = enrollments.findEnrollmentSummary(enrollmentId)
+                    .orElseThrow(() -> new PoisonEventException("GradePublished names an unknown enrollment " + enrollmentId));
+                if (!tenantId.equals(enrollment.tenantId())) {
+                    throw new PoisonEventException("GradePublished tenant does not match enrollment " + enrollmentId);
+                }
+                yield Optional.of(student(enrollment.studentId(), tenantId, "GRADE_PUBLISHED", "A new grade has been published",
+                    "A grade for one of your courses is now available.", "/student/grades"));
+            }
+            case "PaymentSuccessful" -> Optional.of(student(studentId(p), tenantId, "PAYMENT_RECEIVED", "Payment received",
+                "Your payment of " + amount(p) + " was received.", "/student/finance"));
+            case "PaymentFailed" -> Optional.of(student(studentId(p), tenantId, "PAYMENT_FAILED", "Payment failed",
+                "A payment attempt did not go through. Nothing was charged; you can try again.", "/student/finance"));
+            case "PaymentRefunded" -> Optional.of(student(studentId(p), tenantId, "PAYMENT_REFUNDED", "Payment refunded",
+                "A refund of " + amount(p) + " was issued for one of your payments.", "/student/finance"));
+            case "PlacementRecorded" -> Optional.of(student(studentId(p), tenantId, "PLACEMENT_RECORDED", "Placement recorded",
+                "Your placement with " + text(p, "employer") + " has been recorded.", "/student/career"));
+            case "RecommendationCreated" -> Optional.of(student(studentId(p), tenantId, "RECOMMENDATION_AVAILABLE", "New study recommendation",
+                "There is a new recommendation to help you stay on track.", "/student/success"));
+            case "StudentAdmitted" -> Optional.of(student(uuid(text(p, "studentId"), "studentId"), tenantId, "ADMISSION_CONFIRMED",
+                "Welcome to the college", "Your admission has been recorded. Your courses and schedule will appear here.", "/student"));
+            case "InterventionCreated" -> {
+                // Addressed to the advisor who owns the intervention, not to the student it is about.
+                UUID owner = uuid(text(p, "ownerUserId"), "ownerUserId");
+                yield Optional.of(new Draft(owner, "INTERVENTION_ASSIGNED", "A student needs follow-up",
+                    "A student-success intervention has been assigned to you.", "/admin/student-success"));
+            }
+            default -> Optional.empty();
+        };
+    }
+
+    private Draft student(UUID studentId, UUID tenantId, String type, String title, String message, String link) {
+        StudentProfileService.StudentTenantOwner owner = studentProfiles.findTenantAndOwnerUserId(studentId)
+            .orElseThrow(() -> new PoisonEventException("event names an unknown student " + studentId));
+        if (!tenantId.equals(owner.tenantId())) {
+            throw new PoisonEventException("event tenant does not match the tenant of student " + studentId);
+        }
+        return new Draft(owner.ownerUserId(), type, title, message, link);
+    }
+
+    private static UUID studentId(JsonNode p) {
+        return uuid(text(p, "studentId"), "studentId");
+    }
+
+    private static String amount(JsonNode p) {
+        String currency = p.hasNonNull("currency") ? p.get("currency").asText() : "INR";
+        JsonNode a = p.get("amount");
+        if (a == null || !a.isNumber()) {
+            throw new PoisonEventException("payment event has no numeric amount");
+        }
+        return currency + " " + a.decimalValue().setScale(2, java.math.RoundingMode.HALF_UP).toPlainString();
+    }
+
+    private JsonNode parse(String json) {
+        try {
+            JsonNode node = objectMapper.readTree(json);
+            if (node == null || !node.isObject()) {
+                throw new PoisonEventException("event payload is not a JSON object");
+            }
+            return node;
+        } catch (JsonProcessingException e) {
+            throw new PoisonEventException("event payload is not valid JSON", e);
+        }
+    }
+
+    private String write(ObjectNode node) {
+        try {
+            return objectMapper.writeValueAsString(node);
+        } catch (JsonProcessingException e) {
+            throw new IllegalStateException(e);
+        }
+    }
+
+    private static String text(JsonNode p, String field) {
+        JsonNode n = p.get(field);
+        if (n == null || n.isNull() || !n.isTextual() || n.asText().isBlank()) {
+            throw new PoisonEventException("event payload is missing '" + field + "'");
+        }
+        return n.asText();
+    }
+
+    private static UUID uuid(String value, String what) {
+        if (value == null) {
+            throw new PoisonEventException("event has no " + what);
+        }
+        try {
+            return UUID.fromString(value);
+        } catch (IllegalArgumentException e) {
+            throw new PoisonEventException(what + " is not a UUID", e);
+        }
+    }
+
+    private record Draft(UUID userId, String type, String title, String message, String link) {
+
+        /** The stored body: a short human message plus where to go, and the event it came from. No personal data beyond what the recipient already owns. */
+        ObjectNode content(UUID eventId, String eventType) {
+            ObjectNode node = new ObjectMapper().createObjectNode();
+            node.put("title", title).put("message", message).put("link", link)
+                .put("eventId", eventId.toString()).put("eventType", eventType);
+            return node;
+        }
+    }
+}

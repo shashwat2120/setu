@@ -97,6 +97,7 @@ questions from that round. `api_clients` is removed entirely (decision E).
 | `notifications` | `notification` | Notification/Realtime |
 | `notification_preferences` | `notification` | Notification/Realtime |
 | `delivery_attempts` | `notification` | Notification/Realtime |
+| `processed_events` | `notification` | Notification/Realtime (the consumer's own idempotency table, V78) |
 | `audit_logs` | *cross-cutting* | replicated per-service at extraction |
 | `outbox_events` | *cross-cutting* | replicated per-service (service-owned data, canonical spec §2) |
 | `idempotency_keys` | *cross-cutting* | replicated per-service as needed |
