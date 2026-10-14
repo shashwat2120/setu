@@ -1,6 +1,7 @@
 package com.setu.identity.infrastructure.security;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.setu.identity.application.LoginLivenessService;
 import com.setu.shared.web.ErrorResponse;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
@@ -57,9 +58,11 @@ public class SecurityConfig {
     private final WebAuthnProperties webAuthnProperties;
     private final ObjectMapper objectMapper;
     private final String metricsScrapeToken;
+    private final LoginLivenessService loginLiveness;
 
     public SecurityConfig(JwtService jwtService, WebAuthnProperties webAuthnProperties, ObjectMapper objectMapper,
-                          @Value("${app.metrics.scrape-token:}") String metricsScrapeToken) {
+                          @Value("${app.metrics.scrape-token:}") String metricsScrapeToken, LoginLivenessService loginLiveness) {
+        this.loginLiveness = loginLiveness;
         this.jwtService = jwtService;
         this.webAuthnProperties = webAuthnProperties;
         this.objectMapper = objectMapper;
@@ -96,7 +99,7 @@ public class SecurityConfig {
                 .requestMatchers("/ws/**").permitAll()
                 .anyRequest().authenticated())
             .addFilterBefore(new MetricsScrapeAuthFilter(metricsScrapeToken), UsernamePasswordAuthenticationFilter.class)
-            .addFilterBefore(new JwtAuthenticationFilter(jwtService), UsernamePasswordAuthenticationFilter.class);
+            .addFilterBefore(new JwtAuthenticationFilter(jwtService, loginLiveness), UsernamePasswordAuthenticationFilter.class);
         return http.build();
     }
 

@@ -28,14 +28,18 @@ import java.util.UUID;
 public class TokenAuthenticationService {
 
     private final JwtService jwtService;
+    private final LoginLivenessService loginLiveness;
 
-    public TokenAuthenticationService(JwtService jwtService) {
+    public TokenAuthenticationService(JwtService jwtService, LoginLivenessService loginLiveness) {
         this.jwtService = jwtService;
+        this.loginLiveness = loginLiveness;
     }
 
     public Optional<UUID> resolveUserId(String bearerToken) {
         try {
-            return Optional.of(jwtService.validate(bearerToken).userId());
+            var claims = jwtService.validate(bearerToken);
+            // Same rule as the HTTP filter: a revoked login or an inactive account is refused at STOMP CONNECT too.
+            return loginLiveness.isLive(claims.userId(), claims.familyId()) ? Optional.of(claims.userId()) : Optional.empty();
         } catch (JwtException | IllegalArgumentException e) {
             return Optional.empty();
         }

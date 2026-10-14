@@ -1,5 +1,6 @@
 package com.setu.identity.infrastructure.security;
 
+import com.setu.identity.application.LoginLivenessService;
 import com.setu.identity.domain.UserPrincipal;
 import io.jsonwebtoken.JwtException;
 import jakarta.servlet.FilterChain;
@@ -26,9 +27,11 @@ import java.util.List;
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
     private final JwtService jwtService;
+    private final LoginLivenessService loginLiveness;
 
-    public JwtAuthenticationFilter(JwtService jwtService) {
+    public JwtAuthenticationFilter(JwtService jwtService, LoginLivenessService loginLiveness) {
         this.jwtService = jwtService;
+        this.loginLiveness = loginLiveness;
     }
 
     @Override
@@ -39,9 +42,12 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             String token = header.substring("Bearer ".length());
             try {
                 JwtService.AccessTokenClaims claims = jwtService.validate(token);
-                UserPrincipal principal = new UserPrincipal(claims.userId(), claims.jti(), claims.stepUpAt());
-                var authentication = new UsernamePasswordAuthenticationToken(principal, null, List.of());
-                SecurityContextHolder.getContext().setAuthentication(authentication);
+                // A correctly signed, unexpired token still counts only while its login is live and its account active.
+                if (loginLiveness.isLive(claims.userId(), claims.familyId())) {
+                    UserPrincipal principal = new UserPrincipal(claims.userId(), claims.jti(), claims.stepUpAt(), claims.familyId());
+                    var authentication = new UsernamePasswordAuthenticationToken(principal, null, List.of());
+                    SecurityContextHolder.getContext().setAuthentication(authentication);
+                }
             } catch (JwtException | IllegalArgumentException ignored) {
                 // No token, an expired one, or a forged one — all leave the request unauthenticated.
             }

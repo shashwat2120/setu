@@ -64,7 +64,7 @@ public class StepUpController {
                     // defense-in-depth, not the primary enforcement.
                     yield ResponseEntity.status(HttpStatus.FORBIDDEN).body(new ErrorResponse("credential does not belong to the authenticated account"));
                 }
-                String token = jwtService.issueAccessToken(userId, Instant.now());
+                String token = jwtService.issueAccessToken(userId, Instant.now(), requireFamilyId(principal));
                 yield ResponseEntity.ok(new StepUpFinishResponse(token));
             }
             case PasskeyAuthOutcome.ChallengeExpiredOrUnknown ignored ->
@@ -80,6 +80,15 @@ public class StepUpController {
                     ? "this account has been deactivated"
                     : "this account has been suspended"));
         };
+    }
+
+    /** The login the current token belongs to, carried over to the stepped-up token so it stays bound to (and revocable with) that login. */
+    private static java.util.UUID requireFamilyId(Principal principal) {
+        if (principal instanceof org.springframework.security.authentication.UsernamePasswordAuthenticationToken token
+            && token.getPrincipal() instanceof UserPrincipal userPrincipal) {
+            return userPrincipal.familyId();
+        }
+        throw new AccessDeniedException("not authenticated");
     }
 
     private static java.util.UUID requireUserId(Principal principal) {

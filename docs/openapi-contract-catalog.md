@@ -107,7 +107,7 @@ POST). The two worth calling out specifically:
 
 | Method & path | Notes |
 |---|---|
-| `POST /finance/payments/webhook` (provider callback) | **Not** bearer-authenticated like the rest — verified via the provider's own signature scheme instead. Idempotent on `payment_events.provider_event_id`. See "duplicate payment webhook" in the matrix. |
+| `POST /finance/payments/{paymentId}/events` (stand-in for a provider webhook) | Bearer-authenticated and requires the finance management permission: **no provider signature scheme is implemented**, because no real gateway is integrated. Idempotent on `payment_events.provider_event_id` (a repeated id answers `ALREADY_PROCESSED`); the event, not a client call, moves a payment to SUCCEEDED or FAILED. See "duplicate payment webhook" in the matrix. |
 | `POST /ai/explain` | `STUDENT` (self) or `FACULTY`/`COLLEGE_ADMIN` (advisee, via tool scope). Returns `202 Accepted` + a job id (async — canonical spec §14 "AI: asynchronous queued/running/completed"), not a synchronous answer; client polls or subscribes via WebSocket for the `AIJobCompleted` status. |
 
 ### Notifications (implemented)

@@ -54,7 +54,7 @@ public class SessionService {
         Session session = Session.startNewFamily(
             UUID.randomUUID(), userId, tokenHasher.hash(rawRefreshToken), refreshExpiry, deviceMetadataJson, now);
         sessionRepository.save(session);
-        return new TokenPair(jwtService.issueAccessToken(userId), rawRefreshToken, refreshExpiry, session.id());
+        return new TokenPair(jwtService.issueAccessToken(userId, null, session.familyId()), rawRefreshToken, refreshExpiry, session.id());
     }
 
     @Transactional
@@ -93,7 +93,7 @@ public class SessionService {
             tokenHasher.hash(newRawRefreshToken), refreshExpiry, deviceMetadataJson, now);
         sessionRepository.save(rotated);
         return new RefreshOutcome.Rotated(new TokenPair(
-            jwtService.issueAccessToken(session.userId()), newRawRefreshToken, refreshExpiry, rotated.id()));
+            jwtService.issueAccessToken(session.userId(), null, rotated.familyId()), newRawRefreshToken, refreshExpiry, rotated.id()));
     }
 
     /** Single-device logout: revokes only the presented session, not the whole family. */

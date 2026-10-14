@@ -19,6 +19,10 @@ public interface SessionRepository extends JpaRepository<Session, UUID> {
 
     List<Session> findByUserIdAndRevokedAtIsNull(UUID userId);
 
+    /** True while at least one session of this login (family) is neither revoked nor expired: the login is still live. */
+    @Query("SELECT COUNT(s) > 0 FROM Session s WHERE s.familyId = :familyId AND s.userId = :userId AND s.revokedAt IS NULL AND s.expiresAt > :now")
+    boolean existsLiveSession(@Param("familyId") UUID familyId, @Param("userId") UUID userId, @Param("now") Instant now);
+
     /**
      * Reuse-detected compromise response: revoke every session descended
      * from this login in one statement. {@code clearAutomatically = true}

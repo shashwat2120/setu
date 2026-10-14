@@ -32,6 +32,8 @@ import java.util.UUID;
 public class JwtService {
 
     private static final String STEP_UP_CLAIM = "sup";
+    /** The login (session family) this token came from; see {@link com.setu.identity.application.LoginLivenessService}. */
+    private static final String FAMILY_CLAIM = "fam";
 
     private final JwtProperties properties;
     private final SecretKey key;
@@ -62,6 +64,15 @@ public class JwtService {
      * operation (Day 4 instruction §8).
      */
     public String issueAccessToken(UUID userId, Instant stepUpAt) {
+        return issueAccessToken(userId, stepUpAt, null);
+    }
+
+    /**
+     * {@code familyId} binds the token to the login (session family) it was issued for, so ending that login (logout, suspension,
+     * refresh-token reuse) stops the token working at once instead of when it expires. Every token issued to a real login carries one;
+     * only tokens minted directly by tests and tooling go without.
+     */
+    public String issueAccessToken(UUID userId, Instant stepUpAt, UUID familyId) {
         Instant now = Instant.now();
         Instant expiry = now.plus(properties.getAccessTokenTtlMinutes(), ChronoUnit.MINUTES);
         var builder = Jwts.builder()
@@ -73,6 +84,9 @@ public class JwtService {
             .id(UUID.randomUUID().toString());
         if (stepUpAt != null) {
             builder.claim(STEP_UP_CLAIM, stepUpAt.getEpochSecond());
+        }
+        if (familyId != null) {
+            builder.claim(FAMILY_CLAIM, familyId.toString());
         }
         return builder.signWith(key, Jwts.SIG.HS256).compact();
     }
@@ -88,14 +102,16 @@ public class JwtService {
         Claims claims = jws.getPayload();
         Long stepUpEpoch = claims.get(STEP_UP_CLAIM, Long.class);
         Instant stepUpAt = stepUpEpoch == null ? null : Instant.ofEpochSecond(stepUpEpoch);
+        String family = claims.get(FAMILY_CLAIM, String.class);
         return new AccessTokenClaims(
             UUID.fromString(claims.getSubject()),
             claims.getId(),
             claims.getIssuedAt().toInstant(),
             claims.getExpiration().toInstant(),
-            stepUpAt);
+            stepUpAt,
+            family == null ? null : UUID.fromString(family));
     }
 
-    public record AccessTokenClaims(UUID userId, String jti, Instant issuedAt, Instant expiresAt, Instant stepUpAt) {
+    public record AccessTokenClaims(UUID userId, String jti, Instant issuedAt, Instant expiresAt, Instant stepUpAt, UUID familyId) {
     }
 }

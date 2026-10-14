@@ -1,0 +1,93 @@
+# Non-negotiables test audit
+
+Audit of canonical spec §3 (non-negotiables), §5 (schema invariants), §6–§10 (security, realtime, events, Redis, AI) and the §13
+test gates, against the automated tests in `backend/src/test`. For each item: the evidence that exists, and what this audit added.
+A claim here means a named test passes, not that the code looks right.
+
+Status: **covered** (an automated test fails if it breaks), **added** (this audit wrote the test), **fixed** (the audit found a defect,
+fixed it and tested it), **open** (no test yet; stated plainly in "Open items").
+
+## §3 Non-negotiables
+
+| Non-negotiable | Evidence | Status |
+|---|---|---|
+| Account is separate from the profile | `SchemaInvariantTests.anAccountIsSeparateFromEveryProfile` (no credentials or user link on profile tables, no profile data on the account, person is the link); `GuardianOnboardingServiceTests` | added |
+| Tenant from the security context, never trusted from the client | `EndpointSecurityAuditTests.aCollegeAdminNamingAnotherCollegesIdIsNeverServedOnAnyEndpointThatTakesATenantId` sweeps every GET endpoint that takes a `tenantId`; per-service `crossTenant…Denied` tests (about 25 services); `AiToolAuthorizationTests`, `AiPolicySearchTests` | added |
+| Every row carries a tenant | `SchemaInvariantTests.everyTableIsTenantOwnedOrBelongsToATenantOwnedParent` (every table has `tenant_id` or a foreign-key path to one, plus a named platform allow-list) and `…everyTenantIdThatExistsIsNotNull…`; `MigrationIntegrationTests` | added |
+| Role is not permission: user + role + permission + tenant + resource + ownership + state | `AuthorizationServiceTests`, per-service denial tests, `GuardianDelegationAuthorizationTests` | covered |
+| Course vs section; class vs section | `CourseSectionTests`, `CourseTests`, `MigrationIntegrationTests` unique constraints | covered |
+| Enrollment is stateful: prerequisites, capacity, conflicts, credit limit, holds, waitlist, overrides | `EnrollmentTests`, `EnrollmentOverrideTests`, `CoursePrerequisiteTests` (self-loop and cycle rejected), `EnrollmentConcurrencyTests` (last-seat race, double enrol) | covered |
+| Attendance percentage is derived, never stored | `SchemaInvariantTests.attendancePercentageIsDerivedNeverStored`; `AttendanceRecordTests` (percentage views) | added |
+| Grades: published are authoritative, corrections keep history and audit | `GradeTests`, `AssessmentConcurrencyTests` (concurrent correction, publish racing correction), `MigrationIntegrationTests.gradesAndTranscriptsAreAppendOnlyByDesign` | covered |
+| Guardian access explicit, scoped, revocable, audited | `GuardianDelegatedLookupTests`, `GuardianDelegationAuthorizationTests` (expired, revoked), **`GuardianGrantLifecycleTests`** (grant and revoke each audited with the actor; revocation effective on the next request; a guardian cannot grant or revoke their own access) | added |
+| AI has no unrestricted DB access; tools are application-owned and authorized | `AiToolAuthorizationTests`, `AiChatIntegrationTests` (cannot force SQL or switch tenant), **`AiExplainBoundaryTests`** (ArchUnit: no JPA/JDBC/datasource, no repository, no other module's infrastructure) | added |
+| Authoritative write and outbox event commit atomically | **`OutboxAtomicityTests`** (the writer joins the caller's transaction; a rolled-back change leaves no event; a duplicate admission leaves no event), `OutboxPublisherTests` | added |
+| Microservices by business ownership | Not applicable before Sprint 6; `ModularityTests` keeps the boundaries extraction depends on | covered |
+
+## §5 Schema invariants
+
+| Invariant | Evidence | Status |
+|---|---|---|
+| Enrollment unique per student and section | `MigrationIntegrationTests.criticalUniqueConstraintsExist`, `EnrollmentConcurrencyTests` | covered |
+| Prerequisite graph rejects self-loops and cycles | `CoursePrerequisiteTests` | covered |
+| Room capacity supports section capacity | `CourseSectionTests.roomCapacityInsufficientIsRejected` | covered |
+| Binary media outside PostgreSQL | **`SchemaInvariantTests.binaryMediaStaysOutsidePostgres`** (only the three WebAuthn crypto columns; no large objects) | added |
+| No card PAN/CVV stored | **`SchemaInvariantTests.paymentTablesNeverHoldCardNumbers`** | added |
+| Optimistic locking on mutable aggregates | `MigrationIntegrationTests.optimisticLockingVersionColumnsArePresentOnMutableAggregates`, concurrency tests | covered |
+| Official history preserved | `…gradesAndTranscriptsAreAppendOnlyByDesign`, versioned grades, append-only risk rows (`RiskConcurrencyTests`) | covered |
+
+## §6 Authentication and authorization
+
+| Requirement | Evidence | Status |
+|---|---|---|
+| Passkey validation (origin, RP ID, challenge, revoked credential) | `PasskeyCeremonyVerifierTests`, `PasskeyAuthenticationServiceTests`, `PasskeyFullFlowTests` | covered |
+| Argon2id, breached-password policy, rate limits | `Argon2PasswordServiceTests`, `PasswordPolicy` tests, `AuthRateLimiterTests`, `PasswordResetCodeEndpointTests` | covered |
+| Refresh token only as a hash, rotated every use, reuse detected | `SessionServiceTests`; **`SessionCookieAuditTests`** (rotation over HTTP, replay ends the login, raw token not in the database) | added |
+| Refresh token only in a Secure, HttpOnly, SameSite cookie, never in a body | **`SessionCookieAuditTests.theRefreshTokenIsOnlyEverASecureHttpOnlyStrictCookieScopedToAuth`** | added |
+| Step-up for privileged operations | `RoleAssignmentServiceTests`, `UserAccessServiceTests` (stale step-up), `PasskeyAuthenticationServiceTests` | covered |
+| A revoked login or suspended account stops working at once | **Defect found and fixed**: access tokens stayed valid for up to 15 minutes after logout, suspension or refresh-token reuse, over HTTP and STOMP. Tokens are now bound to their login and re-checked on every request. **`AccessTokenRevocationTests`** (10) | fixed |
+| Every endpoint refuses anonymous callers, except the named public ones | **`EndpointSecurityAuditTests.everyNonPublicEndpointRefusesAnAnonymousCaller`** (reads Spring's own handler mapping, so new controllers are covered automatically) | added |
+| Privilege escalation, IDOR, tenant escape | per-service cross-tenant and wrong-role tests; the endpoint sweep above | covered |
+
+## §7–§10 Realtime, events, Redis, AI
+
+| Requirement | Evidence | Status |
+|---|---|---|
+| STOMP: connection authenticated, subscription authorized per destination, delivery only to the authorized | `AttendanceStompAuthorizationTests` (no token, bad token, wrong section, other tenant, student on the instructor board, delivery) | covered |
+| STOMP: revoked session blocked | `AccessTokenRevocationTests` (same check `StompAuthorizationChannelInterceptor` uses via `TokenAuthenticationService`) | fixed |
+| Consumers idempotent; retry; DLQ | `NotificationEventProcessorTests` (redelivery, 8 parallel deliveries, rollback of the event id), `NotificationErrorHandlerTests` | covered |
+| Redis never the source of truth | **`RedisOutageTests`** (sign-in and AI limiters fail open); `AuthRateLimiterTests.redisKeysNeverContainTheRawEmail` | added |
+| AI: tool authorization, prompt injection, schema validation, tenant-safe retrieval, source attribution | `AiToolAuthorizationTests`, `AiChatIntegrationTests.ignoresAnInstructionEmbeddedInsideARetrievedPolicyDocument`, `AiPolicySearchTests`, `AiChatSourcesTests` | covered |
+
+## §13 Concurrency gate
+
+Last-seat race, duplicate QR scan, duplicate payment event and concurrent grade update all have named tests:
+`EnrollmentConcurrencyTests`, `AttendanceConcurrencyTests`, `FinanceConcurrencyTests`, `AssessmentConcurrencyTests`; plus learning,
+career and risk concurrency tests.
+
+## Other defects found by the audit
+
+- `GET /enrollment/faculty-assignments` answered **500** when neither `sectionId` nor `facultyId` was given. It now answers 400.
+  (Found by the tenant-escape sweep.)
+- `docs/openapi-contract-catalog.md` described `POST /finance/payments/webhook` as a provider callback verified by a provider
+  signature. The code is an authenticated stand-in (`POST /finance/payments/{paymentId}/events`, administrator only, idempotent on the
+  provider event id); no provider signature scheme exists. The catalog now says so.
+
+## Open items (no automated test, or a known gap)
+
+1. **Event envelope is narrower than canonical spec §8.** Messages carry `event_id`, `event_type`, `event_version`,
+   `correlation_id` and `tenant_id` as headers, and `eventId`, `tenantId`, `occurredAt`, `aggregateId`, `causationId` in the payload.
+   There is no `producer` or `schema_version` field. This is a contract change across every event; it belongs to Sprint 6B
+   ("Kafka contracts"), together with a schema-compatibility test.
+2. **Client-supplied `tenantId` in request bodies** (for example `POST /career/jobs`) is authorized, and per-service cross-tenant tests
+   cover many of them, but the generic sweep covers GET endpoints only; write endpoints still rely on those per-service tests.
+3. **Access-token liveness costs two indexed queries per request** and fails closed on a database error. Acceptable at this scale; a
+   short per-instance cache or the Redis denylist the spec mentions would be the optimisation, not a correctness change.
+4. **Accessibility** (spec §13): fixed and checked by hand and with the browser's own tooling earlier, but there is no automated
+   accessibility test in the frontend (no test runner is set up there).
+5. **Performance** (spec §13): pagination is tested on a few lists; there is no N+1 detection test and no load or Kafka-lag test.
+6. **Contracts** (spec §13): OpenAPI generation is tested (`OpenApiTests`); event schemas have no compatibility test yet (see 1).
+7. **WebSocket fan-out and live QR through the dev bridge** cannot be exercised on the Windows development machine (known JDK defect);
+   they are covered by `AttendanceStompAuthorizationTests`, which runs the real STOMP stack in-process.
+8. **The broker-backed Kafka consumer test** (`NotificationKafkaConsumerTests`) skips itself where the JDK cannot open an NIO
+   selector, which includes this machine; the retry and dead-letter policy is covered without a broker by `NotificationErrorHandlerTests`.

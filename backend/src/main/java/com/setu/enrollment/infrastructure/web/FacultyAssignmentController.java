@@ -70,9 +70,12 @@ public class FacultyAssignmentController {
     }
 
     @GetMapping
-    public ResponseEntity<List<AssignmentResponse>> listForSection(@RequestParam(required = false) UUID sectionId,
-                                                                     @RequestParam(required = false) UUID facultyId,
-                                                                     @RequestParam UUID tenantId) {
+    public ResponseEntity<?> listForSection(@RequestParam(required = false) UUID sectionId,
+                                             @RequestParam(required = false) UUID facultyId,
+                                             @RequestParam UUID tenantId) {
+        if (sectionId == null && facultyId == null) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(new ErrorResponse("sectionId or facultyId is required"));
+        }
         List<FacultyAssignment> result = sectionId != null
             ? facultyAssignmentService.listForSection(sectionId, tenantId)
             : facultyAssignmentService.listForFaculty(facultyId, tenantId);

@@ -30,6 +30,8 @@ class MetricsEndpointSecurityTests {
     MockMvc mockMvc;
     @Autowired
     JwtService jwtService;
+    @Autowired
+    com.setu.identity.application.UserRegistrationService registrationService;
 
     @Test
     void anonymousRequestsAreRefused() throws Exception {
@@ -44,7 +46,10 @@ class MetricsEndpointSecurityTests {
 
     @Test
     void anOrdinaryUsersTokenIsAuthenticatedButForbidden() throws Exception {
-        String userToken = "Bearer " + jwtService.issueAccessToken(UUID.randomUUID());
+        // A real, active account: an unknown or inactive user's token is refused earlier (401), see AccessTokenRevocationTests.
+        UUID userId = ((com.setu.identity.application.UserRegistrationService.Outcome.Created)
+            registrationService.register("metrics-" + UUID.randomUUID() + "@example.com")).userId();
+        String userToken = "Bearer " + jwtService.issueAccessToken(userId);
         mockMvc.perform(get("/actuator/prometheus").header("Authorization", userToken)).andExpect(status().isForbidden());
     }
 
