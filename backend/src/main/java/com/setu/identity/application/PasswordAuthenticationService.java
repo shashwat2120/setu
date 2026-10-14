@@ -4,6 +4,7 @@ import com.setu.identity.domain.User;
 import com.setu.identity.infrastructure.UserRepository;
 import com.setu.identity.infrastructure.security.Argon2PasswordService;
 import com.setu.shared.governance.AuditLogWriter;
+import io.micrometer.core.instrument.MeterRegistry;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -28,9 +29,11 @@ public class PasswordAuthenticationService {
     private final UserRepository userRepository;
     private final Argon2PasswordService passwordService;
     private final AuditLogWriter auditLogWriter;
+    private final MeterRegistry meterRegistry;
 
     public PasswordAuthenticationService(UserRepository userRepository, Argon2PasswordService passwordService,
-                                          AuditLogWriter auditLogWriter) {
+                                          AuditLogWriter auditLogWriter, MeterRegistry meterRegistry) {
+        this.meterRegistry = meterRegistry;
         this.userRepository = userRepository;
         this.passwordService = passwordService;
         this.auditLogWriter = auditLogWriter;
@@ -38,6 +41,19 @@ public class PasswordAuthenticationService {
 
     @Transactional
     public PasswordAuthOutcome authenticate(String email, String rawPassword) {
+        PasswordAuthOutcome outcome = verify(email, rawPassword);
+        // Counted by outcome only: never by email or account, so the metric can reveal a spike but not who.
+        meterRegistry.counter("setu.auth.logins", "outcome", switch (outcome) {
+            case PasswordAuthOutcome.Success s -> "success";
+            case PasswordAuthOutcome.InvalidCredentials i -> "invalid_credentials";
+            case PasswordAuthOutcome.AccountLocked l -> "locked";
+            case PasswordAuthOutcome.NoPasswordConfigured n -> "no_password";
+            case PasswordAuthOutcome.AccountNotActive a -> "account_not_active";
+        }).increment();
+        return outcome;
+    }
+
+    private PasswordAuthOutcome verify(String email, String rawPassword) {
         Instant now = Instant.now();
         Optional<User> maybeUser = userRepository.findByEmail(email);
         if (maybeUser.isEmpty()) {

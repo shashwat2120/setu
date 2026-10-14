@@ -63,6 +63,7 @@ git-ignored `backend/.env.local` (it is loaded automatically); never commit keys
 | `AI_PRIMARY_TIMEOUT_SECONDS`, `AI_REQUEST_TIMEOUT_SECONDS` | `25`, `60` | Budget for the Gemini attempt, and for the whole request |
 | `AI_RATE_LIMIT_MAX_REQUESTS` | `20` | Advisor requests per window per user |
 | `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_HOST`, `SMTP_PORT`, `SMTP_FROM_ADDRESS` | none, none, `smtp.gmail.com`, `587`, the user | Reset email over SMTP; with no user or password nothing is sent |
+| `METRICS_SCRAPE_TOKEN` | none | Token Prometheus uses for `/actuator/prometheus`; with none set the endpoint is closed to everyone. See [infra/docker/README.md](../infra/docker/README.md#observability) |
 | `EMAIL_PREVIEW_ENABLED`, `EMAIL_PREVIEW_DIR` | `false`, `target/demo-email-outbox` | Also write each reset email to a local file |
 
 ### AI advisor

@@ -124,7 +124,7 @@ backend log at startup, and the click-through is in [docs/demo-script.md](docs/d
   and placements.
 - **Student Success Engine and AI advisor:** a deterministic, reproducible risk score; an advisor that answers only through
   application-owned, authorization-checked tools and cites its sources.
-- **Platform:** transactional outbox to Kafka, per-module Flyway migrations, an audit log, Actuator health and Modulith endpoints. Prometheus and Grafana dashboards are planned, not built.
+- **Platform:** transactional outbox to Kafka, per-module Flyway migrations, an audit log, Actuator health and Modulith endpoints, and Micrometer metrics scraped by Prometheus and drawn on a provisioned Grafana dashboard (see [infra/docker/README.md](infra/docker/README.md#observability)).
 
 Sprint 6 (service extraction) has not started: the system is still one Spring Modulith application, and nothing consumes the
 Kafka topics yet.
@@ -139,6 +139,7 @@ Secrets and local overrides live in the git-ignored `backend/.env.local`; nothin
 | `GEMINI_API_KEY`, `GEMINI_MODEL` | Gemini credentials and model. Pick a model that actually answers for your key: see [backend/README.md](backend/README.md#ai-advisor) |
 | `AI_PRIMARY_TIMEOUT_SECONDS` | How long Gemini may take before the local fallback is tried (default 25) |
 | `SMTP_USER`, `SMTP_PASSWORD` | Real password-reset email delivery over SMTP, for example Gmail with an app password. Without them the email is not sent: see [backend/README.md](backend/README.md#password-reset-and-email) |
+| `METRICS_SCRAPE_TOKEN` | The one token Prometheus presents to read `/actuator/prometheus`. Create it with `infra/docker/observability/init-scrape-token.ps1`; blank keeps the endpoint closed |
 | `EMAIL_PREVIEW_ENABLED` | Also write each reset email to `backend/target/demo-email-outbox` for local inspection |
 
 ## Testing

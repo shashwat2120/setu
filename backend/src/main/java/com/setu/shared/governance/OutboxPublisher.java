@@ -1,5 +1,7 @@
 package com.setu.shared.governance;
 
+import io.micrometer.core.instrument.Gauge;
+import io.micrometer.core.instrument.MeterRegistry;
 import org.apache.kafka.clients.producer.ProducerRecord;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -58,8 +60,9 @@ class OutboxPublisher {
     private final int batchSize;
     private final String topicPrefix;
     private final long sendTimeoutSeconds;
+    private final MeterRegistry meterRegistry;
 
-    OutboxPublisher(OutboxEventRepository repository, KafkaTemplate<String, String> kafkaTemplate,
+    OutboxPublisher(OutboxEventRepository repository, KafkaTemplate<String, String> kafkaTemplate, MeterRegistry meterRegistry,
                      @Value("${app.outbox.batch-size:100}") int batchSize,
                      @Value("${app.outbox.topic-prefix:setu.}") String topicPrefix,
                      @Value("${app.outbox.send-timeout-seconds:5}") long sendTimeoutSeconds) {
@@ -68,6 +71,15 @@ class OutboxPublisher {
         this.batchSize = batchSize;
         this.topicPrefix = topicPrefix;
         this.sendTimeoutSeconds = sendTimeoutSeconds;
+        this.meterRegistry = meterRegistry;
+        // How many events are waiting to reach Kafka. A backlog that keeps growing means the broker or the publisher is unhealthy.
+        Gauge.builder("setu.outbox.pending", repository, r -> {
+            try {
+                return r.countByStatus(OutboxEvent.OutboxStatus.NEW);
+            } catch (RuntimeException e) {
+                return Double.NaN;
+            }
+        }).description("Outbox events saved but not yet acknowledged by Kafka").register(meterRegistry);
     }
 
     @Scheduled(fixedDelayString = "${app.outbox.poll-interval-ms:2000}")
@@ -96,7 +108,10 @@ class OutboxPublisher {
             // genuinely reached the broker.
             kafkaTemplate.send(record).get(sendTimeoutSeconds, TimeUnit.SECONDS);
             event.markPublished();
+            // One counter per event type is also the business activity feed: grades published, attendance recorded, risk changes...
+            meterRegistry.counter("setu.outbox.events.published", "event_type", event.eventType()).increment();
         } catch (Exception e) {
+            meterRegistry.counter("setu.outbox.events.failed", "event_type", event.eventType()).increment();
             log.warn("outbox event {} ({} on {}) could not be published, leaving NEW for retry",
                 event.id(), event.eventType(), topic, e);
         }

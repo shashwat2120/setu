@@ -1,6 +1,7 @@
 package com.setu.aiexplain.infrastructure.web;
 
 import com.setu.aiexplain.application.AiChatService;
+import io.micrometer.core.instrument.MeterRegistry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
@@ -38,10 +39,24 @@ public class AiChatController {
     private static final long STREAM_TIMEOUT_MS = 120_000L;
 
     private final AiChatService aiChatService;
+    private final MeterRegistry meterRegistry;
     private final ExecutorService streamExecutor = Executors.newVirtualThreadPerTaskExecutor();
 
-    public AiChatController(AiChatService aiChatService) {
+    public AiChatController(AiChatService aiChatService, MeterRegistry meterRegistry) {
         this.aiChatService = aiChatService;
+        this.meterRegistry = meterRegistry;
+    }
+
+    /** Counts each request by outcome and answering model (never by user or question), so a provider outage or a rate-limit storm shows up. */
+    private void countRequest(AiChatService.ChatResult result, String channel) {
+        String outcome = switch (result) {
+            case AiChatService.ChatResult.Success r -> "answered";
+            case AiChatService.ChatResult.InvalidRequest r -> "invalid";
+            case AiChatService.ChatResult.RateLimited r -> "rate_limited";
+            case AiChatService.ChatResult.ProviderUnavailable r -> "unavailable";
+        };
+        String model = result instanceof AiChatService.ChatResult.Success r && r.model() != null ? r.model() : "none";
+        meterRegistry.counter("setu.ai.chat.requests", "outcome", outcome, "model", model, "channel", channel).increment();
     }
 
     public record ChatRequest(String message) {
@@ -56,6 +71,7 @@ public class AiChatController {
     @PostMapping("/chat")
     public ResponseEntity<?> chat(@RequestBody ChatRequest request) {
         var result = aiChatService.chat(request == null ? null : request.message());
+        countRequest(result, "chat");
         return switch (result) {
             case AiChatService.ChatResult.Success r ->
                 ResponseEntity.ok(new ChatResponse(r.answer(), r.sources(), r.generatedAt(), r.model(), r.correlationId()));
@@ -100,6 +116,7 @@ public class AiChatController {
                         send(emitter, "token", Map.of("text", text));
                     }
                 });
+                countRequest(result, "stream");
                 switch (result) {
                     case AiChatService.ChatResult.Success r -> send(emitter, "done",
                         new ChatResponse(r.answer(), r.sources(), r.generatedAt(), r.model(), r.correlationId()));

@@ -2,6 +2,7 @@ package com.setu.devtools;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.micrometer.metrics.test.autoconfigure.AutoConfigureMetrics;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.mock.web.MockHttpServletResponse;
@@ -54,6 +55,8 @@ import java.util.Locale;
     "spring.ai.google.genai.chat.options.model=${GEMINI_MODEL:gemini-3.8-flash}"
 })
 @AutoConfigureMockMvc
+// Spring Boot switches metrics export off in tests; the bridge serves /actuator/prometheus to the Prometheus container, so turn it back on.
+@AutoConfigureMetrics
 @TestPropertySource(properties = "app.demo-data.enabled=true")
 class LiveDevBridge {
 

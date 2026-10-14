@@ -63,7 +63,40 @@ services:
       retries: 15
       start_period: 20s
 
+  # Observability: Prometheus reads the backend metrics, Grafana draws them (provisioned datasource + dashboard).
+  # One-time setup:  pwsh infra/docker/observability/init-scrape-token.ps1   (creates the scrape token the backend requires)
+  prometheus:
+    image: prom/prometheus:v2.53.1
+    restart: unless-stopped
+    ports:
+      - "${PROMETHEUS_PORT:-9091}:9090"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ./observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./observability/scrape-token.local:/etc/prometheus/scrape-token:ro
+      - setu_prometheus_data:/prometheus
+
+  grafana:
+    image: grafana/grafana:11.1.4
+    restart: unless-stopped
+    depends_on:
+      - prometheus
+    ports:
+      - "${GRAFANA_PORT:-3001}:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      # Local development default; set GRAFANA_ADMIN_PASSWORD in infra/docker/.env to change it.
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes:
+      - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - setu_grafana_data:/var/lib/grafana
+
 volumes:
   setu_postgres_data:
   setu_redis_data:
   setu_kafka_data:
+  setu_prometheus_data:
+  setu_grafana_data:

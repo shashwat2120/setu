@@ -122,9 +122,20 @@ management:
   endpoints:
     web:
       exposure:
-        include: health, info, modulith
+        include: health, info, modulith, prometheus
+  metrics:
+    tags:
+      application: setu-backend
+    distribution:
+      # Histogram buckets for request latency, so Grafana can show p95 (see infra/docker/observability).
+      percentiles-histogram:
+        "[http.server.requests]": true
 
 app:
+  metrics:
+    # The one token Prometheus presents to read /actuator/prometheus (see MetricsScrapeAuthFilter). Never committed:
+    # set METRICS_SCRAPE_TOKEN in the git-ignored backend/.env.local. Blank keeps the endpoint closed to everyone.
+    scrape-token: ${METRICS_SCRAPE_TOKEN:}
   # The origin the frontend is actually served from — used only to build the password-reset link
   # (${app.frontend-base-url}/reset-password, the page where the emailed code is typed). Never hard-code localhost in a link a real email sends.
   frontend-base-url: ${FRONTEND_BASE_URL:http://localhost:5180}

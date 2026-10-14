@@ -1,0 +1,19 @@
+# Prometheus for local development. It scrapes the backend's Micrometer metrics every 15 seconds.
+# The backend only serves /actuator/prometheus to a request that carries the dedicated scrape token (see
+# backend MetricsScrapeAuthFilter); the token is read from a file so it is never written into this config.
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: setu-backend
+    metrics_path: /actuator/prometheus
+    authorization:
+      type: Bearer
+      credentials_file: /etc/prometheus/scrape-token
+    static_configs:
+      # 8089 is the dev bridge used on this Windows machine; a normally run backend listens on 8080.
+      # In Sprint 6 each extracted service becomes one more target here, labelled with its own name.
+      - targets: ['host.docker.internal:8089']
+        labels:
+          service: setu-backend

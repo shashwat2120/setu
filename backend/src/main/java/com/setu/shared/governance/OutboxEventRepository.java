@@ -20,4 +20,7 @@ interface OutboxEventRepository extends JpaRepository<OutboxEvent, UUID> {
     @Query(value = "SELECT * FROM governance.outbox_events WHERE status = 'NEW' "
         + "ORDER BY occurred_at ASC LIMIT :batchSize FOR UPDATE SKIP LOCKED", nativeQuery = true)
     List<OutboxEvent> lockNextBatchForPublishing(@Param("batchSize") int batchSize);
+
+    /** Backlog size for the {@code setu.outbox.pending} gauge: events saved but not yet acknowledged by Kafka. */
+    long countByStatus(OutboxEvent.OutboxStatus status);
 }
