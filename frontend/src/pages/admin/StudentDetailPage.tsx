@@ -139,7 +139,7 @@ export default function StudentDetailPage() {
   const [onboardingMessage, setOnboardingMessage] = useState('');
   const [onboardingBusy, setOnboardingBusy] = useState(false);
   const [expiresAt, setExpiresAt] = useState('');
-  const [permissions, setPermissions] = useState<string[]>(['VIEW_ATTENDANCE', 'VIEW_GRADES']);
+  const [permissions, setPermissions] = useState<string[]>(['VIEW_SCHEDULE', 'VIEW_ATTENDANCE', 'VIEW_GRADES']);
   const [grantMessage, setGrantMessage] = useState('');
   const [busy, setBusy] = useState(false);
 
@@ -232,6 +232,7 @@ export default function StudentDetailPage() {
               <div className="form-field"><label htmlFor="linked-guardian">Linked guardian</label><select id="linked-guardian" value={guardianId} onChange={(e) => setGuardianId(e.target.value)} required><option value="">Choose guardian</option>{guardians.data?.map((g) => <option key={g.id} value={g.guardianId}>{g.guardianId}{g.primary ? ' · Primary' : ''}</option>)}</select></div>
               <div className="form-field"><label htmlFor="grant-expiry">Expires (optional)</label><input id="grant-expiry" type="datetime-local" value={expiresAt} onChange={(e) => setExpiresAt(e.target.value)} /></div>
               <fieldset style={{ border: 0, padding: 0, margin: '0 0 12px' }}><legend style={{ fontSize: 13, marginBottom: 6 }}>Allowed information</legend>{['VIEW_ATTENDANCE','VIEW_GRADES','VIEW_SCHEDULE','VIEW_ACADEMIC_STATUS','VIEW_LEARNING_DATA','VIEW_FINANCE','VIEW_RISK_SCORE'].map((p) => <label key={p} style={{ display: 'inline-flex', gap: 6, margin: '4px 12px 4px 0', fontSize: 13 }}><input type="checkbox" checked={permissions.includes(p)} onChange={(e) => setPermissions(e.target.checked ? [...permissions, p] : permissions.filter((x) => x !== p))} />{p.replaceAll('_',' ').toLowerCase()}</label>)}</fieldset>
+              <p style={{ fontSize: 12, margin: '0 0 10px' }}>Grades and attendance are shown course by course, so they also need "view schedule".</p>
               {grantMessage && <p role="status" style={{ marginBottom: 10 }}>{grantMessage}</p>}<button className="btn btn-primary" disabled={busy || !permissions.length}>Grant access</button>
             </form>
             <div style={{ marginTop: 16 }}>{grants.data?.map((g) => <div key={g.grantId} style={{ display: 'flex', gap: 12, alignItems: 'center', justifyContent: 'space-between', borderTop: '1px solid var(--line)', padding: '10px 0' }}><span><strong>{g.status}</strong> · {g.guardianId}<br /><small>{g.permissions.join(', ') || 'No permissions'}{g.expiresAt ? ` · expires ${new Date(g.expiresAt).toLocaleDateString()}` : ''}</small></span>{g.status === 'ACTIVE' && <button type="button" className="btn btn-ghost" disabled={busy} onClick={() => revokeGrant(g.grantId)}>Revoke</button>}</div>)}</div>

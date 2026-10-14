@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useAuth } from '../../auth/AuthContext';
 import { tenantForRole } from '../../auth/types';
 import { apiFetch } from '../../api/client';
@@ -25,6 +25,7 @@ function MySkills({ studentId, tenantId }: { studentId: string; tenantId: string
       await apiFetch('/career/student-skills', { method: 'POST', body: { studentId, skillId, proficiencyLevel: level } });
       setSkillId('');
       mySkills.refetch();
+      window.dispatchEvent(new Event(SKILLS_CHANGED));
     } finally {
       setAdding(false);
     }
@@ -33,6 +34,7 @@ function MySkills({ studentId, tenantId }: { studentId: string; tenantId: string
   const remove = async (studentSkillId: string) => {
     await apiFetch(`/career/student-skills/${studentSkillId}`, { method: 'DELETE' });
     mySkills.refetch();
+    window.dispatchEvent(new Event(SKILLS_CHANGED));
   };
 
   const columns: Column<StudentSkillResponse>[] = [
@@ -70,10 +72,18 @@ function MySkills({ studentId, tenantId }: { studentId: string; tenantId: string
   );
 }
 
+const SKILLS_CHANGED = 'setu:student-skills-changed';
+
 function JobCard({ job, studentId }: { job: JobResponse; studentId: string }) {
   const eligibility = useApiQuery<JobEligibilityResponse>(
     `/career/applications/eligibility?jobId=${job.id}&studentId=${studentId}`,
   );
+  // The skills panel announces changes, so "Missing N required skill(s)" updates as soon as a skill is added or removed.
+  const { refetch: recheckEligibility } = eligibility;
+  useEffect(() => {
+    window.addEventListener(SKILLS_CHANGED, recheckEligibility);
+    return () => window.removeEventListener(SKILLS_CHANGED, recheckEligibility);
+  }, [recheckEligibility]);
   const applications = useApiQuery<ApplicationResponse[]>(`/career/applications?studentId=${studentId}`);
   const [applying, setApplying] = useState(false);
   const [error, setError] = useState<string | null>(null);

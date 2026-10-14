@@ -189,6 +189,10 @@ export default function GuardianStudentPage() {
         </>
       )}
 
+      {!has('VIEW_SCHEDULE') && (has('VIEW_GRADES') || has('VIEW_ATTENDANCE')) && (
+        <EmptyState title="Courses are not shared yet" description="Grades and attendance are shown course by course. The college needs to allow view schedule on this access before they can appear." />
+      )}
+
       {!has('VIEW_SCHEDULE') && !has('VIEW_GRADES') && !has('VIEW_ATTENDANCE') && !has('VIEW_FINANCE') && !has('VIEW_RISK_SCORE') && (
         <EmptyState title="No viewable data categories" description="This grant does not currently include any data category this view can show." />
       )}
