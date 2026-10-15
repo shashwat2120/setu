@@ -49,6 +49,7 @@ public class AcademicServiceApplication {
         SpringApplication application = new SpringApplication(AcademicServiceApplication.class);
         application.setDefaultProperties(Map.of(
             "setu.service", "academic",
+            "app.discovery.service", "academic",
             "setu.auth.mode", "remote",
             "app.academic.consumer.enabled", "true",
             "spring.application.name", "academic-service",

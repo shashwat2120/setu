@@ -134,12 +134,13 @@ address masked and never with the password.
 
 ### Services that can run on their own (Sprint 6)
 
-The monolith is still the default. Two of its parts also start alone, as the first step of the service split; each is inert inside the
+The monolith is still the default. Three of its parts also start alone, as the first step of the service split; each is inert inside the
 monolith and has its contract in `docs/contracts/`.
 
 | Service | Entry point | Port | Needs |
 |---|---|---|---|
 | Identity | `com.setu.identity.IdentityServiceApplication` | 8081 | Postgres, Redis, Kafka; `JWT_SIGNING_KEY` (see `tools/generate-jwt-key.js`); publishes its keys at `/.well-known/jwks.json` |
+| Gateway | `com.setu.gateway.GatewayApplication` | 8080 | Redis only (no database); routes `/auth` to Identity, the Academic paths to Academic, the rest to the remaining monolith; services reach it via `APP_DISCOVERY_ADVERTISE_URL` (their own base URL) or `GATEWAY_*_URL` |
 | Academic | `com.setu.academic.AcademicServiceApplication` | 8082 | the same, plus `app.security.jwt.jwks-uri` pointing at Identity's key set; builds its read model of roles and people from Identity's events |
 
 Run one with `./mvnw spring-boot:run -Dspring-boot.run.main-class=com.setu.academic.AcademicServiceApplication`. Neither runs Flyway:

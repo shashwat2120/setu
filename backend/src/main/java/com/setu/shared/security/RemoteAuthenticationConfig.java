@@ -3,10 +3,10 @@ package com.setu.shared.security;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.setu.shared.web.CorrelationIdFilter;
 import com.setu.shared.web.ErrorResponse;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
@@ -16,9 +16,6 @@ import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 
 import java.io.IOException;
-import java.net.URI;
-import java.time.Clock;
-import java.time.Duration;
 import java.util.UUID;
 
 /**
@@ -33,26 +30,8 @@ import java.util.UUID;
 @Configuration
 @EnableWebSecurity
 @ConditionalOnProperty(name = "setu.auth.mode", havingValue = "remote")
+@Import(RemoteVerificationConfig.class)
 public class RemoteAuthenticationConfig {
-
-    @Bean
-    JwksKeySource jwksKeySource(@Value("${app.security.jwt.jwks-uri:http://localhost:8081/.well-known/jwks.json}") URI jwksUri,
-                                @Value("${app.security.jwt.jwks-refresh-minutes:10}") long refreshMinutes,
-                                @Value("${app.security.jwt.jwks-min-refetch-seconds:30}") long minRefetchSeconds) {
-        return new JwksKeySource(new HttpJwksFetcher(jwksUri, Duration.ofSeconds(3)), Clock.systemUTC(),
-            Duration.ofMinutes(refreshMinutes), Duration.ofSeconds(minRefetchSeconds));
-    }
-
-    @Bean
-    TokenVerifier tokenVerifier(JwksKeySource keys, @Value("${app.security.jwt.issuer:setu}") String issuer,
-                                @Value("${app.security.jwt.audience:setu-api}") String audience) {
-        return new KeyedTokenVerifier(keys, issuer, audience);
-    }
-
-    @Bean
-    RemoteTokenAuthenticator remoteTokenAuthenticator(TokenVerifier verifier, LoginRevocations revocations) {
-        return new RemoteTokenAuthenticator(verifier, revocations);
-    }
 
     @Bean
     SecurityFilterChain remoteSecurityFilterChain(HttpSecurity http, RemoteTokenAuthenticator authenticator, ObjectMapper objectMapper) throws Exception {

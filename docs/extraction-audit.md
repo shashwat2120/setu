@@ -222,7 +222,7 @@ giving Learning, Assessment, Risk and Finance read contracts.
 3. **6A.3 Academic (done for the service boundary):** role/person read model, kernel authorization engine, standalone entry point, no Academic-to-Identity
    dependency. Not done: the onboarding saga, section-cancel cascade, per-service databases (6B.2) and the other services' own read models (each needs
    the role and, for guardian access, grant data when it is extracted).
-4. **6A.4 gateway, discovery, config**, using the route table above.
+4. **6A.4 gateway and discovery (done):** [contracts/gateway.md](contracts/gateway.md): servlet gateway (no Spring Cloud train supports Boot 4.1), Redis-announced and configured instances with passive health, edge authentication, rate limiting, error envelope; `GatewayRouteCoverageTests` keeps the route table and the controllers in step. Config: see the next commit.
 5. **Finance and Career** (leaf services, Academic only): the first feature services out, and the proof that the pattern works.
 6. **Attendance, Learning, Assessment (with Record)**, with the missing learning and assessment events.
 7. **Student Success** last of the core services; then **Notification/Realtime** and **AI** in 6B.3.

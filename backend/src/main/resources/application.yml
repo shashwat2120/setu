@@ -205,6 +205,41 @@ app:
     rate-limit:
       max-requests: ${AI_RATE_LIMIT_MAX_REQUESTS:20}
       window-seconds: ${AI_RATE_LIMIT_WINDOW_SECONDS:60}
+  # The API gateway (com.setu.gateway.GatewayApplication, only active with setu.service=gateway; see docs/contracts/gateway.md).
+  # Routes are plain configuration: the most specific matching path wins. GatewayRouteCoverageTests fails if a controller's path would reach a
+  # service other than the one that owns its module, so moving a module into its own service means editing this block and keeping that test green.
+  gateway:
+    services:
+      # Floor of known instances per service; running services also announce themselves in Redis (app.discovery.advertise-url) and are added.
+      identity:
+        instances: ${GATEWAY_IDENTITY_URL:http://localhost:8081}
+      academic:
+        instances: ${GATEWAY_ACADEMIC_URL:http://localhost:8082}
+      core:
+        # Everything not extracted yet (learning, assessment, record, attendance, risk, career, finance, notification, AI, onboarding).
+        instances: ${GATEWAY_CORE_URL:http://localhost:8083}
+    routes:
+      - id: identity
+        service: identity
+        paths: ["/auth/**", "/identity/**", "/.well-known/**"]
+        # Sign-in, refresh and reset cannot need a token; the step-up endpoints under /auth still demand one, enforced by Identity itself.
+        public-paths: ["/auth/**", "/.well-known/jwks.json"]
+      - id: academic
+        service: academic
+        paths: ["/institution/**", "/catalog/**", "/enrollment/**", "/directory/**", "/guardian-access/**"]
+      - id: core
+        service: core
+        paths: ["/**"]
+        public-paths: ["/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html"]
+    cors:
+      allowed-origins: ${GATEWAY_ALLOWED_ORIGINS:http://localhost:5173,http://localhost:3000,http://localhost:5180}
+    upstream:
+      connect-timeout: 2s
+      response-timeout: 30s
+      quarantine: 15s
+    limits:
+      anonymous-per-minute: 120
+      user-per-minute: 600
   security:
     jwt:
       # DEV-ONLY default (Base64 of "dev-only-secret-do-not-use-in-production-replace-me")

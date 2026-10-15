@@ -48,6 +48,7 @@ public class IdentityServiceApplication {
         SpringApplication application = new SpringApplication(IdentityServiceApplication.class);
         application.setDefaultProperties(Map.of(
             "setu.service", "identity",
+            "app.discovery.service", "identity",
             "spring.application.name", "identity-service",
             "spring.flyway.enabled", "false",
             "server.port", "8081"));
