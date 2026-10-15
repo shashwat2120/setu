@@ -1,9 +1,7 @@
 package com.setu.academic;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.setu.academic.application.IdentityEventProjector;
 import com.setu.academic.readmodel.ReadModelPersonDirectory;
-import com.setu.academic.readmodel.ReadModelRoleGrantSource;
 import com.setu.shared.authorization.AuthorizationContext;
 import com.setu.shared.authorization.AuthorizationEngine;
 import com.setu.shared.authorization.GuardianDelegationChecker;
@@ -11,6 +9,8 @@ import com.setu.shared.authorization.RoleBasedTenantContext;
 import com.setu.shared.authorization.RoleBasedTenantMembership;
 import com.setu.shared.authorization.RoleGrantSource;
 import com.setu.shared.identity.PersonDirectory;
+import com.setu.shared.readmodel.IdentityEventProjector;
+import com.setu.shared.readmodel.ReadModelRoleGrantSource;
 import com.setu.shared.identity.TenantMembership;
 import com.setu.shared.tenant.TenantContext;
 import org.springframework.beans.factory.ObjectProvider;
@@ -30,9 +30,12 @@ import org.springframework.jdbc.core.simple.JdbcClient;
 @ConditionalOnProperty(name = "setu.service", havingValue = "academic")
 public class AcademicServiceConfiguration {
 
+    /** Academic's schema for the read model of Identity's data (V80). */
+    static final String SCHEMA = "institution";
+
     @Bean
     RoleGrantSource roleGrantSource(JdbcClient jdbc) {
-        return new ReadModelRoleGrantSource(jdbc);
+        return new ReadModelRoleGrantSource(jdbc, SCHEMA);
     }
 
     @Bean
@@ -58,6 +61,6 @@ public class AcademicServiceConfiguration {
 
     @Bean
     IdentityEventProjector identityEventProjector(JdbcClient jdbc, ObjectMapper objectMapper) {
-        return new IdentityEventProjector(jdbc, objectMapper);
+        return new IdentityEventProjector(jdbc, objectMapper, SCHEMA, true);
     }
 }

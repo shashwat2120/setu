@@ -215,8 +215,14 @@ app:
         instances: ${GATEWAY_IDENTITY_URL:http://localhost:8081}
       academic:
         instances: ${GATEWAY_ACADEMIC_URL:http://localhost:8082}
+      learning:
+        instances: ${GATEWAY_LEARNING_URL:http://localhost:8084}
+      assessment:
+        instances: ${GATEWAY_ASSESSMENT_URL:http://localhost:8085}
+      attendance:
+        instances: ${GATEWAY_ATTENDANCE_URL:http://localhost:8086}
       core:
-        # Everything not extracted yet (learning, assessment, record, attendance, risk, career, finance, notification, AI, onboarding).
+        # Everything not extracted yet (record, risk, career, finance, notification, AI, onboarding).
         instances: ${GATEWAY_CORE_URL:http://localhost:8083}
     routes:
       - id: identity
@@ -227,6 +233,15 @@ app:
       - id: academic
         service: academic
         paths: ["/institution/**", "/catalog/**", "/enrollment/**", "/directory/**", "/guardian-access/**"]
+      - id: learning
+        service: learning
+        paths: ["/learning/**"]
+      - id: assessment
+        service: assessment
+        paths: ["/assessment/**"]
+      - id: attendance
+        service: attendance
+        paths: ["/attendance/**", "/staff-attendance/**"]
       - id: core
         service: core
         paths: ["/**"]

@@ -1,6 +1,6 @@
-package com.setu.academic.infrastructure.kafka;
+package com.setu.shared.readmodel.kafka;
 
-import com.setu.academic.application.PoisonEventException;
+import com.setu.shared.readmodel.PoisonEventException;
 import io.micrometer.core.instrument.MeterRegistry;
 import org.apache.kafka.common.TopicPartition;
 import org.slf4j.Logger;
@@ -17,25 +17,25 @@ import org.springframework.kafka.listener.DefaultErrorHandler;
 import org.springframework.util.backoff.ExponentialBackOff;
 
 /**
- * Retry and dead-letter policy for the Academic consumer, the same as the notification consumer's (docs/kafka-event-catalog.md
- * "Retry/DLQ"): three deliveries with backoff for a transient failure, straight to {@code {topic}.DLQ} for a poison message, never
- * silently dropped and never blocking the partition.
+ * Retry and dead-letter policy for the read-model consumer, the same as the notification consumer's (docs/kafka-event-catalog.md
+ * "Retry/DLQ"): three deliveries with backoff for a transient failure, straight to {@code {topic}.DLQ} for a poison message, never silently
+ * dropped and never blocking the partition.
  */
 @Configuration
-@ConditionalOnProperty(name = "app.academic.consumer.enabled", havingValue = "true")
-class AcademicKafkaConfig {
+@ConditionalOnProperty(name = "app.readmodel.consumer.enabled", havingValue = "true")
+class ReadModelKafkaConfig {
 
-    private static final Logger log = LoggerFactory.getLogger(AcademicKafkaConfig.class);
+    private static final Logger log = LoggerFactory.getLogger(ReadModelKafkaConfig.class);
 
     /** Total deliveries of one record before it is dead-lettered: the first try plus two retries. */
     static final int MAX_ATTEMPTS = 3;
 
     @Bean
-    CommonErrorHandler academicErrorHandler(KafkaTemplate<String, String> template, MeterRegistry meterRegistry,
-                                             @Value("${app.academic.consumer.retry-initial-ms:500}") long initialBackoffMs) {
+    CommonErrorHandler readModelErrorHandler(KafkaTemplate<String, String> template, MeterRegistry meterRegistry,
+                                              @Value("${app.readmodel.consumer.retry-initial-ms:500}") long initialBackoffMs) {
         DeadLetterPublishingRecoverer recoverer = new DeadLetterPublishingRecoverer(template, (record, ex) -> {
-            meterRegistry.counter("setu.academic.identity_events.dead_lettered", "topic", record.topic()).increment();
-            log.error("identity event on {}-{}@{} dead-lettered to {}.DLQ: {}", record.topic(), record.partition(), record.offset(),
+            meterRegistry.counter("setu.readmodel.events.dead_lettered", "topic", record.topic()).increment();
+            log.error("read-model event on {}-{}@{} dead-lettered to {}.DLQ: {}", record.topic(), record.partition(), record.offset(),
                 record.topic(), rootMessage(ex));
             return new TopicPartition(record.topic() + ".DLQ", -1);
         });

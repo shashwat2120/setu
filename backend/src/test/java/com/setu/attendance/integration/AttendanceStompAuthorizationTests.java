@@ -5,7 +5,7 @@ import com.setu.attendance.application.AttendanceSessionService;
 import com.setu.identity.TestAuthentication;
 import com.setu.identity.domain.RoleCode;
 import com.setu.identity.infrastructure.security.JwtService;
-import com.setu.notification.infrastructure.websocket.StompUserPrincipal;
+import com.setu.shared.websocket.StompUserPrincipal;
 import com.setu.testsupport.Day7TestFixtures;
 import com.setu.testsupport.Day8TestFixtures;
 import com.setu.testsupport.Day9TestFixtures;

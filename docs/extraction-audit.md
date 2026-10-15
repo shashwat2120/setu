@@ -223,7 +223,8 @@ giving Learning, Assessment, Risk and Finance read contracts.
    dependency. Not done: the onboarding saga, section-cancel cascade, per-service databases (6B.2) and the other services' own read models (each needs
    the role and, for guardian access, grant data when it is extracted).
 4. **6A.4 gateway and discovery (done):** [contracts/gateway.md](contracts/gateway.md): servlet gateway (no Spring Cloud train supports Boot 4.1), Redis-announced and configured instances with passive health, edge authentication, rate limiting, error envelope; `GatewayRouteCoverageTests` keeps the route table and the controllers in step. **Config server (done):** [contracts/config-server.md](contracts/config-server.md): per-application tokens, secrets kept in a git-ignored directory, `local` and `demo` profiles, a `setu-config:` import for services, and a test that fails if a secret is committed.
-5. **Finance and Career** (leaf services, Academic only): the first feature services out, and the proof that the pattern works.
+5. **6A.5 Learning, Assessment, Attendance (done for the services; Record, the live WebSocket proxy and the synchronous guardian check are open):** [contracts/extracted-services.md](contracts/extracted-services.md): one `AcademicDirectory` port, a per-service copy of Identity and Academic facts fed by events, eight module edges and a leaked domain class removed, realtime support moved to the shared kernel.
+6. **Finance and Career** (leaf services, Academic only): the first feature services out, and the proof that the pattern works.
 6. **Attendance, Learning, Assessment (with Record)**, with the missing learning and assessment events.
 7. **Student Success** last of the core services; then **Notification/Realtime** and **AI** in 6B.3.
 8. **Analytics** when it has something to project.

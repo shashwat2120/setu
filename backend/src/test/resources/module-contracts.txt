@@ -10,12 +10,6 @@ edge   aiexplain -> institution
 edge   aiexplain -> learning
 edge   aiexplain -> record
 edge   aiexplain -> risk
-edge   assessment -> directory
-edge   assessment -> enrollment
-edge   attendance -> catalog
-edge   attendance -> directory
-edge   attendance -> enrollment
-edge   attendance -> institution
 edge   career -> directory
 edge   career -> institution
 edge   catalog -> institution
@@ -25,11 +19,8 @@ edge   enrollment -> institution
 edge   finance -> directory
 edge   finance -> institution
 edge   guardianaccess -> directory
-edge   learning -> directory
-edge   learning -> enrollment
 edge   notification -> directory
 edge   notification -> enrollment
-edge   notification -> identity
 edge   record -> assessment
 edge   record -> catalog
 edge   record -> directory
@@ -66,8 +57,6 @@ domain aiexplain -> learning :: LessonType
 domain aiexplain -> risk :: RiskBand
 domain aiexplain -> risk :: RiskFactor
 domain aiexplain -> risk :: RiskScore
-domain attendance -> directory :: FacultyProfile
-domain attendance -> directory :: FacultyStatus
 domain enrollment -> catalog :: AcademicPeriod
 domain enrollment -> catalog :: PrerequisiteRuleType
 domain record -> assessment :: Grade

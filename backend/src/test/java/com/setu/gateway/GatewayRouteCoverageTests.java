@@ -27,7 +27,8 @@ class GatewayRouteCoverageTests {
     private static final Map<String, String> SERVICE_OF_MODULE = Map.ofEntries(
         Map.entry("identity", "identity"),
         Map.entry("institution", "academic"), Map.entry("catalog", "academic"), Map.entry("enrollment", "academic"),
-        Map.entry("directory", "academic"), Map.entry("guardianaccess", "academic"));
+        Map.entry("directory", "academic"), Map.entry("guardianaccess", "academic"),
+        Map.entry("learning", "learning"), Map.entry("assessment", "assessment"), Map.entry("attendance", "attendance"));
     private static final String REMAINING = "core";
 
     @Autowired

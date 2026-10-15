@@ -1,4 +1,4 @@
-package com.setu.notification.infrastructure.websocket;
+package com.setu.shared.websocket;
 
 import java.security.Principal;
 import java.util.UUID;
@@ -18,7 +18,7 @@ public final class StompUserPrincipal implements Principal {
         this.userId = userId;
     }
 
-    UUID userId() {
+    public UUID userId() {
         return userId;
     }
 

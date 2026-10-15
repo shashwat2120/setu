@@ -25,7 +25,7 @@ import java.util.UUID;
  */
 @org.springframework.modulith.NamedInterface
 @Service
-public class TokenAuthenticationService {
+public class TokenAuthenticationService implements com.setu.shared.websocket.StompTokenAuthenticator {
 
     private final JwtService jwtService;
     private final LoginLivenessService loginLiveness;
@@ -35,6 +35,7 @@ public class TokenAuthenticationService {
         this.loginLiveness = loginLiveness;
     }
 
+    @Override
     public Optional<UUID> resolveUserId(String bearerToken) {
         try {
             var claims = jwtService.validate(bearerToken);

@@ -1,10 +1,11 @@
 package com.setu.academic;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.setu.academic.application.IdentityEventProjector;
-import com.setu.academic.application.PoisonEventException;
+import com.setu.shared.readmodel.IdentityEventProjector;
+import com.setu.shared.readmodel.ReadModelProjector;
+import com.setu.shared.readmodel.PoisonEventException;
 import com.setu.academic.readmodel.ReadModelPersonDirectory;
-import com.setu.academic.readmodel.ReadModelRoleGrantSource;
+import com.setu.shared.readmodel.ReadModelRoleGrantSource;
 import com.setu.identity.TestAuthentication;
 import com.setu.identity.application.PersonService;
 import com.setu.identity.application.RoleAssignmentService;
@@ -74,7 +75,7 @@ class ReadModelParityTests {
     }
 
     private IdentityEventProjector projector() {
-        return new IdentityEventProjector(jdbc, objectMapper);
+        return new IdentityEventProjector(jdbc, objectMapper, "institution", true);
     }
 
     private UUID newUser(String prefix) {
@@ -102,7 +103,7 @@ class ReadModelParityTests {
     }
 
     private void assertSameDecisions(UUID user, UUID... tenants) {
-        var readModel = new ReadModelRoleGrantSource(jdbc);
+        var readModel = new ReadModelRoleGrantSource(jdbc, "institution");
         assertThat(new TreeSet<>(readModel.activeGrants(user, Instant.now()).stream().map(Object::toString).toList()))
             .isEqualTo(new TreeSet<>(identityRoles.activeGrants(user, Instant.now()).stream().map(Object::toString).toList()));
         AuthorizationEngine fromIdentity = engine(identityRoles);
@@ -143,8 +144,8 @@ class ReadModelParityTests {
 
         assertSameDecisions(admin, tenant, otherTenant);
         assertSameDecisions(faculty, tenant, otherTenant);
-        assertThat(engine(new ReadModelRoleGrantSource(jdbc)).canAsUser(admin, "MANAGE_COURSES", ResourceRef.of("course", UUID.randomUUID(), tenant)).isAllowed()).isTrue();
-        assertThat(engine(new ReadModelRoleGrantSource(jdbc)).canAsUser(admin, "MANAGE_COURSES", ResourceRef.of("course", UUID.randomUUID(), otherTenant)).isAllowed()).isFalse();
+        assertThat(engine(new ReadModelRoleGrantSource(jdbc, "institution")).canAsUser(admin, "MANAGE_COURSES", ResourceRef.of("course", UUID.randomUUID(), tenant)).isAllowed()).isTrue();
+        assertThat(engine(new ReadModelRoleGrantSource(jdbc, "institution")).canAsUser(admin, "MANAGE_COURSES", ResourceRef.of("course", UUID.randomUUID(), otherTenant)).isAllowed()).isFalse();
     }
 
     @Test
@@ -157,12 +158,12 @@ class ReadModelParityTests {
         UUID assignment = roleAssignmentService.assignRole(student, RoleCode.STUDENT, tenant);
         replay(assignment);
         assertSameDecisions(student, tenant);
-        assertThat(new ReadModelRoleGrantSource(jdbc).activeGrants(student, Instant.now())).hasSize(1);
+        assertThat(new ReadModelRoleGrantSource(jdbc, "institution").activeGrants(student, Instant.now())).hasSize(1);
 
         roleAssignmentService.revokeRole(assignment);
         replay(assignment);   // the assigned event is delivered again: a duplicate, ignored; the revoked one is new
 
-        assertThat(new ReadModelRoleGrantSource(jdbc).activeGrants(student, Instant.now())).isEmpty();
+        assertThat(new ReadModelRoleGrantSource(jdbc, "institution").activeGrants(student, Instant.now())).isEmpty();
         assertSameDecisions(student, tenant);
     }
 
@@ -184,7 +185,7 @@ class ReadModelParityTests {
             projector().apply((String) events.get(i).get("event_type"), events.get(i).get("id").toString(), (String) events.get(i).get("payload"));
         }
 
-        assertThat(new ReadModelRoleGrantSource(jdbc).activeGrants(student, Instant.now())).isEmpty();
+        assertThat(new ReadModelRoleGrantSource(jdbc, "institution").activeGrants(student, Instant.now())).isEmpty();
     }
 
     @Test
@@ -195,8 +196,8 @@ class ReadModelParityTests {
         var row = jdbc.sql("SELECT id, payload_json::text AS payload FROM governance.outbox_events WHERE aggregate_id = :id AND event_type = 'UserRoleAssigned'")
             .param("id", role).query().singleRow();
 
-        assertThat(projector().apply("UserRoleAssigned", row.get("id").toString(), (String) row.get("payload"))).isEqualTo(IdentityEventProjector.Outcome.APPLIED);
-        assertThat(projector().apply("UserRoleAssigned", row.get("id").toString(), (String) row.get("payload"))).isEqualTo(IdentityEventProjector.Outcome.DUPLICATE);
+        assertThat(projector().apply("UserRoleAssigned", row.get("id").toString(), (String) row.get("payload"))).isEqualTo(ReadModelProjector.Outcome.APPLIED);
+        assertThat(projector().apply("UserRoleAssigned", row.get("id").toString(), (String) row.get("payload"))).isEqualTo(ReadModelProjector.Outcome.DUPLICATE);
         assertThat(jdbc.sql("SELECT count(*) FROM institution.rm_role_grants WHERE user_role_id = :id").param("id", role).query(Integer.class).single()).isEqualTo(1);
     }
 
@@ -235,7 +236,7 @@ class ReadModelParityTests {
 
     @Test
     void eventsItHasNoUseForAreIgnoredAndMalformedOnesArePoison() {
-        assertThat(projector().apply("GradePublished", UUID.randomUUID().toString(), "{}")).isEqualTo(IdentityEventProjector.Outcome.IGNORED);
+        assertThat(projector().apply("GradePublished", UUID.randomUUID().toString(), "{}")).isEqualTo(ReadModelProjector.Outcome.IGNORED);
         assertThatThrownBy(() -> projector().apply("UserRoleAssigned", UUID.randomUUID().toString(), "not json")).isInstanceOf(PoisonEventException.class);
         assertThatThrownBy(() -> projector().apply("UserRoleAssigned", UUID.randomUUID().toString(), "{\"occurredAt\":1,\"userRoleId\":\"" + UUID.randomUUID() + "\",\"userId\":\"" + UUID.randomUUID() + "\"}"))
             .isInstanceOf(PoisonEventException.class);   // no roleCode

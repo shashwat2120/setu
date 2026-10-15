@@ -1,5 +1,6 @@
-package com.setu.notification.infrastructure.websocket;
+package com.setu.shared.websocket;
 
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Configuration;
 import org.jspecify.annotations.NonNull;
 import org.springframework.messaging.simp.config.ChannelRegistration;
@@ -22,6 +23,7 @@ import org.springframework.web.socket.config.annotation.WebSocketMessageBrokerCo
  * SecurityConfig).
  */
 @Configuration
+@ConditionalOnProperty(name = "app.realtime.enabled", havingValue = "true", matchIfMissing = true)
 @EnableWebSocketMessageBroker
 public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
 

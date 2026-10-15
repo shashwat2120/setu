@@ -35,7 +35,7 @@ the other services that authorize guardian access will need the grant data when 
 
 ## 3. The read model
 
-`institution.rm_role_grants`, `rm_role_permissions`, `rm_persons`, `rm_processed_events`. Written only by `IdentityEventProjector`.
+`institution.rm_role_grants`, `rm_role_permissions`, `rm_persons`, `rm_processed_events`. Written only by `IdentityEventProjector` (`shared.readmodel`, the same projector the services on top of Academic use for their own role copy, here with people enabled).
 
 | Event (topic `setu.<aggregate>`) | Effect |
 |---|---|
@@ -46,7 +46,7 @@ the other services that authorize guardian access will need the grant data when 
 - **Idempotent:** the event id goes into `rm_processed_events` in the same transaction as the change; a redelivery is a no-op.
 - **Ordered per key:** the outbox publishes with the aggregate id as key, so events about one assignment or person arrive in order; the
   projector is also safe if they do not.
-- **Consumer:** group `setu-academic`, offset `earliest`, so a new Academic service rebuilds its model by replaying the topics. Started in
+- **Consumer** (`shared.readmodel.kafka`, shared with the other extracted services): group `setu-academic`, offset `earliest`, so a new Academic service rebuilds its model by replaying the topics. Started in
   the background (`AcademicConsumerStarter`) and retried, so an unreachable broker never stops the service starting. Three deliveries with
   backoff, then `{topic}.DLQ`; malformed events skip the retries. Metrics `setu.academic.identity_events{event_type,outcome}`.
 - **Staleness bound:** a role change reaches Academic when the outbox publisher delivers it and the consumer applies it (seconds), not

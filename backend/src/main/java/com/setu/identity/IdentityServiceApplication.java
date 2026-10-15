@@ -12,6 +12,7 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.FilterType;
 import org.springframework.scheduling.annotation.EnableScheduling;
 
+import java.util.HashMap;
 import java.util.Map;
 
 /**
@@ -46,12 +47,15 @@ public class IdentityServiceApplication {
 
     public static void main(String[] args) {
         SpringApplication application = new SpringApplication(IdentityServiceApplication.class);
-        application.setDefaultProperties(Map.of(
+        Map<String, Object> defaults = new HashMap<>(Map.of(
             "setu.service", "identity",
             "app.discovery.service", "identity",
             "spring.application.name", "identity-service",
             "spring.flyway.enabled", "false",
             "server.port", "8081"));
+        // no live connections here: leave the shared WebSocket/STOMP support to the services that serve them
+        defaults.put("app.realtime.enabled", "false");
+        application.setDefaultProperties(defaults);
         application.run(args);
     }
 }

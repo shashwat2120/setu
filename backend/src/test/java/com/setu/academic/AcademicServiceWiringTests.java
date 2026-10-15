@@ -44,7 +44,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * revocation list. Tokens here are signed by a test key whose JWKS the service is given, exactly as it would fetch Identity's.
  */
 @SpringBootTest(classes = AcademicServiceApplication.class, properties = {
-    "setu.service=academic", "setu.auth.mode=remote", "app.academic.consumer.enabled=false"})   // Flyway stays on here only so the test never depends on another test having migrated the schema first
+    "setu.service=academic", "setu.auth.mode=remote", "app.readmodel.consumer.enabled=false"})   // Flyway stays on here only so the test never depends on another test having migrated the schema first
 @AutoConfigureMockMvc
 @Import(AcademicServiceWiringTests.IdentityKeys.class)
 class AcademicServiceWiringTests {

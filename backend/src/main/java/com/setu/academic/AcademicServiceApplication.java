@@ -12,6 +12,7 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.FilterType;
 import org.springframework.scheduling.annotation.EnableScheduling;
 
+import java.util.HashMap;
 import java.util.Map;
 
 /**
@@ -47,14 +48,19 @@ public class AcademicServiceApplication {
 
     public static void main(String[] args) {
         SpringApplication application = new SpringApplication(AcademicServiceApplication.class);
-        application.setDefaultProperties(Map.of(
+        Map<String, Object> defaults = new HashMap<>(Map.of(
             "setu.service", "academic",
             "app.discovery.service", "academic",
             "setu.auth.mode", "remote",
-            "app.academic.consumer.enabled", "true",
+            "app.readmodel.consumer.enabled", "true",
+            "app.readmodel.consumer.group-id", "setu-academic",
+            "app.readmodel.consumer.aggregates", "user_roles,persons",
             "spring.application.name", "academic-service",
             "spring.flyway.enabled", "false",
             "server.port", "8082"));
+        // no live connections here: leave the shared WebSocket/STOMP support to the services that serve them
+        defaults.put("app.realtime.enabled", "false");
+        application.setDefaultProperties(defaults);
         application.run(args);
     }
 }

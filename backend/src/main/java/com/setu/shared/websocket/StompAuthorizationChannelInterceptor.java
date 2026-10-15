@@ -1,7 +1,6 @@
-package com.setu.notification.infrastructure.websocket;
+package com.setu.shared.websocket;
 
-import com.setu.identity.application.TokenAuthenticationService;
-import com.setu.shared.websocket.StompDestinationAuthorizer;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.jspecify.annotations.NonNull;
 import org.springframework.messaging.Message;
 import org.springframework.messaging.MessageChannel;
@@ -30,14 +29,15 @@ import java.util.UUID;
  * but future non-section-scoped notification destinations may exist.
  */
 @Component
+@ConditionalOnProperty(name = "app.realtime.enabled", havingValue = "true", matchIfMissing = true)
 public class StompAuthorizationChannelInterceptor implements ChannelInterceptor {
 
-    private final TokenAuthenticationService tokenAuthenticationService;
+    private final StompTokenAuthenticator tokenAuthenticator;
     private final List<StompDestinationAuthorizer> authorizers;
 
-    public StompAuthorizationChannelInterceptor(TokenAuthenticationService tokenAuthenticationService,
+    public StompAuthorizationChannelInterceptor(StompTokenAuthenticator tokenAuthenticator,
                                                   List<StompDestinationAuthorizer> authorizers) {
-        this.tokenAuthenticationService = tokenAuthenticationService;
+        this.tokenAuthenticator = tokenAuthenticator;
         this.authorizers = authorizers;
     }
 
@@ -61,7 +61,7 @@ public class StompAuthorizationChannelInterceptor implements ChannelInterceptor 
             throw new AccessDeniedException("Missing bearer token on STOMP CONNECT");
         }
         String token = header.substring("Bearer ".length());
-        UUID userId = tokenAuthenticationService.resolveUserId(token)
+        UUID userId = tokenAuthenticator.resolveUserId(token)
             .orElseThrow(() -> new AccessDeniedException("Invalid or expired token"));
         accessor.setUser(new StompUserPrincipal(userId));
     }

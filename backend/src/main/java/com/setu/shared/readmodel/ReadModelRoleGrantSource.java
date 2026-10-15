@@ -1,4 +1,4 @@
-package com.setu.academic.readmodel;
+package com.setu.shared.readmodel;
 
 import com.setu.shared.authorization.RoleGrant;
 import com.setu.shared.authorization.RoleGrantSource;
@@ -12,24 +12,26 @@ import java.util.Set;
 import java.util.UUID;
 
 /**
- * Roles and permissions from the Academic service's own read model of Identity's data ({@code institution.rm_role_grants} and
- * {@code rm_role_permissions}), so an authorization decision never calls Identity. An assignment counts at {@code now} when it has
- * started and not ended, the same rule Identity applies to its own table.
+ * Roles and permissions from a service's own copy of Identity's data ({@code <schema>.rm_role_grants} and {@code rm_role_permissions}), so
+ * an authorization decision never calls Identity. An assignment counts at {@code now} when it has started and not ended, the same rule
+ * Identity applies to its own table.
  */
 public class ReadModelRoleGrantSource implements RoleGrantSource {
 
     private final JdbcClient jdbc;
+    private final String grants;
+    private final String permissions;
 
-    public ReadModelRoleGrantSource(JdbcClient jdbc) {
+    public ReadModelRoleGrantSource(JdbcClient jdbc, String schema) {
         this.jdbc = jdbc;
+        this.grants = ReadModelSchema.table(schema, "rm_role_grants");
+        this.permissions = ReadModelSchema.table(schema, "rm_role_permissions");
     }
 
     @Override
     public List<RoleGrant> activeGrants(UUID userId, Instant now) {
-        return jdbc.sql("""
-                SELECT role_code, tenant_id FROM institution.rm_role_grants
-                WHERE user_id = :userId AND starts_at <= :now AND (ends_at IS NULL OR ends_at > :now)
-                """)
+        return jdbc.sql("SELECT role_code, tenant_id FROM " + grants
+                + " WHERE user_id = :userId AND starts_at <= :now AND (ends_at IS NULL OR ends_at > :now)")
             .param("userId", userId).param("now", Timestamp.from(now))
             .query((rs, i) -> new RoleGrant(rs.getString("role_code"), rs.getObject("tenant_id", UUID.class)))
             .list();
@@ -40,7 +42,7 @@ public class ReadModelRoleGrantSource implements RoleGrantSource {
         if (roleCodes.isEmpty()) {
             return Set.of();
         }
-        return Set.copyOf(jdbc.sql("SELECT permission_code FROM institution.rm_role_permissions WHERE role_code IN (:codes)")
+        return Set.copyOf(jdbc.sql("SELECT permission_code FROM " + permissions + " WHERE role_code IN (:codes)")
             .param("codes", List.copyOf(roleCodes))
             .query(String.class).list());
     }

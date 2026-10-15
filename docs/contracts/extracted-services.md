@@ -1,0 +1,93 @@
+# Learning, Assessment and Attendance services (Sprint 6A.5)
+
+The three services that sit directly on top of Academic, each startable on its own (`LearningServiceApplication` :8084,
+`AssessmentServiceApplication` :8085, `AttendanceServiceApplication` :8086), and the one mechanism that makes that possible: each keeps its
+**own copy of the Identity and Academic facts it decides with**, kept current by events, so no request ever leaves the process to be authorized
+or validated. Contracts for the services they depend on: [identity-service.md](identity-service.md), [academic-service.md](academic-service.md),
+[gateway.md](gateway.md).
+
+## 1. What they asked before, and what they ask now
+
+Before, these modules called Academic's services directly (about ten distinct lookups across the three). Now they depend on one narrow port,
+`shared.academic.AcademicDirectory`, and on `CourseSectionDirectory` (section to college), `AuthorizationContext`, `TenantContext` and
+`GuardianDelegationChecker`. Eight module-to-module edges and one leaked domain class (`attendance` used Academic's `FacultyProfile`) are gone
+from `module-contracts.txt`; the three modules import nothing from `directory`, `enrollment`, `institution` or `catalog`.
+
+| `AcademicDirectory` question | Used for |
+|---|---|
+| `studentIdOfUser`, `studentOwner` | "is this signed-in user a student here", ownership of a student's data |
+| `facultyIdOfUser`, `facultyTenant`, `facultyStatus` | "is this signed-in user faculty here"; staff self-service blocked unless ACTIVE |
+| `isActivelyAssigned` | may this faculty member run this section's content, assessments, attendance |
+| `activeEnrollmentId`, `enrollment`, `activeEnrollmentIds` | may this student see this section; which enrollment a grade or attendance record belongs to; who is absent when a session closes |
+| `meeting` | does this meeting belong to this section and college |
+| `timeZoneOf` | what calendar day it is for a college (staff attendance) |
+
+In the monolith the port is answered by `enrollment.application.AcademicDirectoryAdapter` from Academic's own services. In an extracted service
+it is answered by `ReadModelAcademicDirectory` from that service's copy. The decision logic above the port did not change, and the three
+modules' existing suites (248 tests) pass unchanged on the port.
+
+## 2. The copy
+
+Per service, in its own schema (`learning`, `assessment`, `attendance`; migration `V81`), written only by the projectors, never by service code:
+
+| Table | Fed by | Answers |
+|---|---|---|
+| `rm_role_grants`, `rm_role_permissions` | Identity: `UserRoleAssigned`, `UserRoleRevoked` (matrix copied by migration, parity-tested) | the shared authorization engine |
+| `rm_students`, `rm_faculty` | Academic: `StudentAdmitted` (now carries `ownerUserId`), `FacultyProfileCreated`, `FacultyStatusChanged` | who a user is as a student or faculty member |
+| `rm_faculty_assignments` | `FacultyAssigned`, `FacultyAssignmentEnded` | who teaches which section now (in force while `ends_at` is null) |
+| `rm_enrollments` | `StudentEnrolled`, `EnrollmentDropped` | who is in which section now |
+| `rm_sections` | `CourseSectionCreated`, `CourseSectionOpened`, `CourseSectionCancelled` | which college a section belongs to, from the moment it is created |
+| `rm_colleges` | `CollegeCreated`, `CollegeUpdated` | time zone |
+| `rm_meetings` | `MeetingPatternScheduled`, `MeetingPatternRemoved` | meeting to section |
+| `rm_guardian_grants`, `rm_guardian_grant_permissions` | `GuardianAccessGranted`, `GuardianAccessRevoked` | whether a guardian may see a student's data |
+| `rm_processed_events` | every projector | a redelivered event is a no-op |
+
+**Convergence.** Every projected row remembers the time of the event that last wrote it and an older event never overwrites a newer one; a
+revocation or a status change that arrives before the event that created its row creates what it needs and lets the earlier event fill in
+the rest. So a replay from the start of a topic, a redelivery, and the whole history in reverse order all end in the same state
+(`AcademicReadModelParityTests` checks all three). One consumer per service (`shared.readmodel.kafka`), group `setu-<service>`, offset
+`earliest`, started in the background and retried, three deliveries with backoff then `{topic}.DLQ`; metrics `setu.readmodel.events`.
+
+The initial content of each copy is taken from the owning schemas by `V81`. That works only while there is one database; once there are
+several (6B.2) it becomes a snapshot export plus the replay.
+
+## 3. Known differences from the monolith
+
+- **A revoked guardian grant takes effect when its event is applied** (seconds), not in the same transaction. Academic itself still checks in
+  process, with no delay. The synchronous check with a timeout and an honest failure (6B.2) is what closes the gap; until then this is the one
+  place the "revocation takes immediate effect" rule is bounded rather than absolute. A role change has the same bound; logouts and suspensions
+  do not, because they travel on the revocation list.
+- **An enrollment is known once it has been ENROLLED.** Requests that were refused or are still waiting never appear in the copy; nothing asks
+  about those.
+- **Events carry no history.** Rows that existed before the events did come from `V81`; after that, only events change them.
+
+## 4. What stays in the core, honestly
+
+- **Record** is still in the monolith. It reads grades and Academic's curriculum data in process. It belongs with Assessment (audit section 6) but
+  needs its own copy of catalog and curriculum data first, so until then the core still contains the assessment code and reads the same tables:
+  a transitional state, not the target. Likewise **risk**, **AI**, **notification**, **career** and **finance** still call these modules
+  in process from the core.
+- **Live attendance WebSocket.** The STOMP support (`shared.websocket`) moved out of the notification module so the Attendance service can serve
+  its live board itself, with the token check behind a `StompTokenAuthenticator` port (Identity's in the monolith, published keys plus revocation
+  list in a service). Clients connect to the Attendance service directly: the gateway answers a WebSocket upgrade with 501 rather than
+  proxying it. A frame-level proxy is the open item; it could not be verified on this machine.
+- **Foreign keys across services** (for example `learning.course_modules.section_id` to `enrollment.course_sections`) stay until each service
+  has its own database (6B.2); they are frozen in `cross-service-foreign-keys.txt`.
+
+## 5. Running them
+
+Each is inert inside the monolith and starts only with `setu.service=<name>` (set by its `main`). The gateway routes `/learning/**`,
+`/assessment/**`, `/attendance/**` and `/staff-attendance/**` to them (`GatewayRouteCoverageTests` fails if any endpoint would reach the wrong
+service). Services announce themselves for discovery with `APP_DISCOVERY_ADVERTISE_URL`. Like the others they have been verified through
+MockMvc, not over a socket, because embedded Tomcat does not start on the Windows development machine.
+
+## 6. Tests that hold this contract
+
+| Contract | Test |
+|---|---|
+| The copy answers like Academic for every question, after the college is built and after each kind of change; reverse-order and repeated delivery converge; malformed events are poison | `AcademicReadModelParityTests` |
+| Each service starts with only its module and the kernel; decides from its copy; an ended assignment or dropped enrollment stops working on the next request; a revoked login, a forged token and an unknown key are refused | `LearningServiceWiringTests`, `AssessmentServiceWiringTests`, `AttendanceServiceWiringTests` (shared checks in `ExtractedServiceWiringSupport`) |
+| The modules behave as before on the port | the unchanged `learning`, `assessment`, `attendance` suites |
+| Academic emits each new event in the transaction of the change | `directory`, `enrollment`, `institution`, `catalog`, `guardianaccess` suites and the parity test |
+| Eight edges gone, three schemas of tables owned by their services | `ModuleContractFreezeTests`, `TableOwnershipTests` |
+| Every endpoint reaches its service through the gateway | `GatewayRouteCoverageTests` |

@@ -1,7 +1,7 @@
-package com.setu.notification.application;
+package com.setu.shared.websocket;
 
 import org.springframework.messaging.simp.SimpMessagingTemplate;
-import com.setu.shared.websocket.LiveBroadcastRequest;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.event.TransactionPhase;
 import org.springframework.transaction.event.TransactionalEventListener;
@@ -22,6 +22,7 @@ import org.springframework.transaction.event.TransactionalEventListener;
  * {@code ModularityTests}.
  */
 @Service
+@ConditionalOnProperty(name = "app.realtime.enabled", havingValue = "true", matchIfMissing = true)
 public class RealtimeBroadcastService {
 
     private final SimpMessagingTemplate messagingTemplate;

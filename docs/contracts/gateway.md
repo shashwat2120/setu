@@ -24,7 +24,10 @@ token.
 |---|---|---|---|
 | identity | Identity | `/auth/**`, `/identity/**`, `/.well-known/**` | `/auth/**`, `/.well-known/jwks.json` (the step-up endpoints under `/auth` still demand a token, enforced by Identity itself) |
 | academic | Academic | `/institution/**`, `/catalog/**`, `/enrollment/**`, `/directory/**`, `/guardian-access/**` | nothing |
-| core | everything not yet extracted | `/**` | API docs and Swagger UI |
+| learning | Learning | `/learning/**` | nothing |
+| assessment | Assessment | `/assessment/**` | nothing |
+| attendance | Attendance | `/attendance/**`, `/staff-attendance/**` | nothing |
+| core | everything not yet extracted (record, risk, career, finance, notification, AI, onboarding) | `/**` | API docs and Swagger UI |
 
 `GatewayRouteCoverageTests` reads every endpoint from the running application and fails if any would reach the wrong service, if a route
 pattern has no endpoint behind it, or if anything other than sign-in and key publication is open at the gateway. Moving a module into its
@@ -87,7 +90,7 @@ The gateway's own `/actuator/health` and `/actuator/info` are served locally and
 
 ## 6. What it does not do (yet)
 
-- **WebSocket/STOMP routing** (6A.5) and **TLS termination** (assumed at the deployment edge).
+- **WebSocket/STOMP routing.** The live attendance board is served by the Attendance service itself; clients connect to it directly, and the gateway refuses an upgrade with 501 instead of half-proxying it. TLS termination is assumed at the deployment edge.
 - **Request size limits** and **per-route timeouts** (one global timeout today).
 - **Tracing across the hop** beyond the correlation id (6C.1).
 - **Running as a real server on this machine.** Embedded Tomcat does not start on this Windows setup (see `backend/README.md`), so the gateway
