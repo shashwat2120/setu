@@ -11,10 +11,7 @@ import com.setu.attendance.infrastructure.AttendanceRecordInsertGuard;
 import com.setu.attendance.infrastructure.AttendanceRecordRepository;
 import com.setu.attendance.infrastructure.AttendanceSessionRepository;
 import com.setu.attendance.infrastructure.QrTokenHasher;
-import com.setu.directory.application.FacultyProfileService;
-import com.setu.directory.application.StudentProfileService;
-import com.setu.enrollment.application.EnrollmentService;
-import com.setu.enrollment.application.FacultyAssignmentService;
+import com.setu.shared.academic.AcademicDirectory;
 import com.setu.shared.websocket.LiveBroadcastRequest;
 import org.springframework.context.ApplicationEventPublisher;
 import com.setu.shared.authorization.AuthorizationContext;
@@ -77,10 +74,7 @@ public class AttendanceRecordService {
     private final AttendanceRecordRepository attendanceRecordRepository;
     private final AttendanceRecordInsertGuard attendanceRecordInsertGuard;
     private final QrTokenHasher qrTokenHasher;
-    private final StudentProfileService studentProfileService;
-    private final FacultyProfileService facultyProfileService;
-    private final FacultyAssignmentService facultyAssignmentService;
-    private final EnrollmentService enrollmentService;
+    private final AcademicDirectory academic;
     private final ApplicationEventPublisher eventPublisher;
     private final AuthorizationContext authorizationContext;
     private final AuditLogWriter auditLogWriter;
@@ -90,8 +84,7 @@ public class AttendanceRecordService {
                                     AttendanceQrSessionRepository attendanceQrSessionRepository,
                                     AttendanceRecordRepository attendanceRecordRepository,
                                     AttendanceRecordInsertGuard attendanceRecordInsertGuard, QrTokenHasher qrTokenHasher,
-                                    StudentProfileService studentProfileService, FacultyProfileService facultyProfileService,
-                                    FacultyAssignmentService facultyAssignmentService, EnrollmentService enrollmentService,
+                                    AcademicDirectory academic,
                                     ApplicationEventPublisher eventPublisher, AuthorizationContext authorizationContext,
                                     AuditLogWriter auditLogWriter, OutboxEventWriter outboxEventWriter) {
         this.attendanceSessionRepository = attendanceSessionRepository;
@@ -99,10 +92,7 @@ public class AttendanceRecordService {
         this.attendanceRecordRepository = attendanceRecordRepository;
         this.attendanceRecordInsertGuard = attendanceRecordInsertGuard;
         this.qrTokenHasher = qrTokenHasher;
-        this.studentProfileService = studentProfileService;
-        this.facultyProfileService = facultyProfileService;
-        this.facultyAssignmentService = facultyAssignmentService;
-        this.enrollmentService = enrollmentService;
+        this.academic = academic;
         this.eventPublisher = eventPublisher;
         this.authorizationContext = authorizationContext;
         this.auditLogWriter = auditLogWriter;
@@ -145,7 +135,7 @@ public class AttendanceRecordService {
         AttendanceSession session = maybeSession.get();
 
         UUID currentUserId = authorizationContext.currentUserId();
-        Optional<UUID> studentId = studentProfileService.findIdByTenantAndOwnerUserId(session.tenantId(), currentUserId);
+        Optional<UUID> studentId = academic.studentIdOfUser(session.tenantId(), currentUserId);
         if (studentId.isEmpty()) {
             return new ScanResult.StudentNotFound();
         }
@@ -162,7 +152,7 @@ public class AttendanceRecordService {
             return new ScanResult.ExpiredToken();
         }
 
-        Optional<UUID> enrollmentId = enrollmentService.findActiveEnrollmentId(session.sectionId(), studentId.get());
+        Optional<UUID> enrollmentId = academic.activeEnrollmentId(session.sectionId(), studentId.get());
         if (enrollmentId.isEmpty()) {
             return new ScanResult.NotEnrolled();
         }
@@ -221,8 +211,8 @@ public class AttendanceRecordService {
         AttendanceSession session = attendanceSessionRepository.findById(sessionId)
             .orElseThrow(() -> new IllegalArgumentException("attendance session not found"));
         UUID currentUserId = authorizationContext.currentUserId();
-        Optional<UUID> facultyId = facultyProfileService.findIdByTenantAndOwnerUserId(tenantId, currentUserId);
-        boolean isAssignedFaculty = facultyId.isPresent() && facultyAssignmentService.isActivelyAssigned(session.sectionId(), facultyId.get());
+        Optional<UUID> facultyId = academic.facultyIdOfUser(tenantId, currentUserId);
+        boolean isAssignedFaculty = facultyId.isPresent() && academic.isActivelyAssigned(session.sectionId(), facultyId.get());
         if (!isAssignedFaculty) {
             authorizationContext.assertCan(VIEW_PERMISSION, ResourceRef.of("attendance_record", UUID.randomUUID(), tenantId));
         }
@@ -250,25 +240,25 @@ public class AttendanceRecordService {
      */
     @Transactional(readOnly = true)
     public AttendancePercentage percentageForEnrollment(UUID enrollmentId) {
-        Optional<com.setu.enrollment.application.EnrollmentService.EnrollmentSummary> summary =
-            enrollmentService.findEnrollmentSummary(enrollmentId);
+        Optional<AcademicDirectory.EnrollmentRef> summary =
+            academic.enrollment(enrollmentId);
         if (summary.isEmpty()) {
             return new AttendancePercentage(0, 0);
         }
         UUID tenantId = summary.get().tenantId();
         UUID currentUserId = authorizationContext.currentUserId();
-        Optional<StudentProfileService.StudentTenantOwner> studentInfo =
-            studentProfileService.findTenantAndOwnerUserId(summary.get().studentId());
+        Optional<AcademicDirectory.TenantOwner> studentInfo =
+            academic.studentOwner(summary.get().studentId());
         boolean isSelf = studentInfo.isPresent() && currentUserId.equals(studentInfo.get().ownerUserId());
         if (!isSelf) {
-            UUID facultyId = facultyProfileService.findIdByTenantAndOwnerUserId(tenantId, currentUserId).orElse(null);
-            boolean isAssignedFaculty = facultyId != null && facultyAssignmentService.isActivelyAssigned(summary.get().sectionId(), facultyId);
+            UUID facultyId = academic.facultyIdOfUser(tenantId, currentUserId).orElse(null);
+            boolean isAssignedFaculty = facultyId != null && academic.isActivelyAssigned(summary.get().sectionId(), facultyId);
             if (!isAssignedFaculty
                 && !authorizationContext.can(VIEW_PERMISSION, ResourceRef.of("attendance_record", enrollmentId, tenantId)).isAllowed()) {
                 // Falls through to a guardian with an active VIEW_ATTENDANCE delegation for this exact student
                 // (GuardianAccessService's supported-permissions set) — same delegatableForStudent idiom as
                 // GradeService/RiskCalculationService/LearningProgressService/StudentAccountService.
-                UUID ownerUserId = studentInfo.map(StudentProfileService.StudentTenantOwner::ownerUserId).orElse(null);
+                UUID ownerUserId = studentInfo.map(AcademicDirectory.TenantOwner::ownerUserId).orElse(null);
                 ResourceRef delegated = ResourceRef.of("attendance_record", enrollmentId, tenantId)
                     .ownedBy(ownerUserId).delegatableForStudent(summary.get().studentId());
                 authorizationContext.assertCan("VIEW_ATTENDANCE", delegated);
@@ -311,8 +301,8 @@ public class AttendanceRecordService {
         AttendanceSession session = attendanceSessionRepository.findById(record.attendanceSessionId()).orElseThrow();
 
         UUID currentUserId = authorizationContext.currentUserId();
-        Optional<UUID> facultyId = facultyProfileService.findIdByTenantAndOwnerUserId(session.tenantId(), currentUserId);
-        boolean isAssignedFaculty = facultyId.isPresent() && facultyAssignmentService.isActivelyAssigned(session.sectionId(), facultyId.get());
+        Optional<UUID> facultyId = academic.facultyIdOfUser(session.tenantId(), currentUserId);
+        boolean isAssignedFaculty = facultyId.isPresent() && academic.isActivelyAssigned(session.sectionId(), facultyId.get());
         if (!isAssignedFaculty) {
             authorizationContext.assertCan(MANAGE_PERMISSION, ResourceRef.of("attendance_record", record.id(), session.tenantId()));
         }

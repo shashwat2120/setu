@@ -11,10 +11,7 @@ import com.setu.attendance.infrastructure.AttendanceRecordRepository;
 import com.setu.attendance.infrastructure.AttendanceSessionInsertGuard;
 import com.setu.attendance.infrastructure.AttendanceSessionRepository;
 import com.setu.attendance.infrastructure.QrTokenHasher;
-import com.setu.catalog.application.MeetingPatternService;
-import com.setu.directory.application.FacultyProfileService;
-import com.setu.enrollment.application.EnrollmentService;
-import com.setu.enrollment.application.FacultyAssignmentService;
+import com.setu.shared.academic.AcademicDirectory;
 import com.setu.shared.authorization.AuthorizationContext;
 import com.setu.shared.authorization.ResourceRef;
 import com.setu.shared.enrollment.CourseSectionDirectory;
@@ -81,10 +78,7 @@ public class AttendanceSessionService {
     private final AttendanceSessionInsertGuard attendanceSessionInsertGuard;
     private final QrTokenHasher qrTokenHasher;
     private final CourseSectionDirectory courseSectionDirectory;
-    private final MeetingPatternService meetingPatternService;
-    private final FacultyProfileService facultyProfileService;
-    private final FacultyAssignmentService facultyAssignmentService;
-    private final EnrollmentService enrollmentService;
+    private final AcademicDirectory academic;
     private final AuthorizationContext authorizationContext;
     private final AuditLogWriter auditLogWriter;
     private final OutboxEventWriter outboxEventWriter;
@@ -94,9 +88,8 @@ public class AttendanceSessionService {
                                      AttendanceRecordRepository attendanceRecordRepository,
                                      AttendanceRecordInsertGuard attendanceRecordInsertGuard,
                                      AttendanceSessionInsertGuard attendanceSessionInsertGuard, QrTokenHasher qrTokenHasher,
-                                     CourseSectionDirectory courseSectionDirectory, MeetingPatternService meetingPatternService,
-                                     FacultyProfileService facultyProfileService, FacultyAssignmentService facultyAssignmentService,
-                                     EnrollmentService enrollmentService, AuthorizationContext authorizationContext,
+                                     CourseSectionDirectory courseSectionDirectory, AcademicDirectory academic,
+                                     AuthorizationContext authorizationContext,
                                      AuditLogWriter auditLogWriter, OutboxEventWriter outboxEventWriter) {
         this.outboxEventWriter = outboxEventWriter;
         this.attendanceSessionRepository = attendanceSessionRepository;
@@ -106,10 +99,7 @@ public class AttendanceSessionService {
         this.attendanceSessionInsertGuard = attendanceSessionInsertGuard;
         this.qrTokenHasher = qrTokenHasher;
         this.courseSectionDirectory = courseSectionDirectory;
-        this.meetingPatternService = meetingPatternService;
-        this.facultyProfileService = facultyProfileService;
-        this.facultyAssignmentService = facultyAssignmentService;
-        this.enrollmentService = enrollmentService;
+        this.academic = academic;
         this.authorizationContext = authorizationContext;
         this.auditLogWriter = auditLogWriter;
     }
@@ -117,8 +107,8 @@ public class AttendanceSessionService {
     /** Real assignment-data check, never a role check — see class javadoc. */
     private boolean isAssignedFacultyOrAdmin(UUID sectionId, UUID tenantId) {
         UUID currentUserId = authorizationContext.currentUserId();
-        Optional<UUID> facultyId = facultyProfileService.findIdByTenantAndOwnerUserId(tenantId, currentUserId);
-        boolean isAssignedFaculty = facultyId.isPresent() && facultyAssignmentService.isActivelyAssigned(sectionId, facultyId.get());
+        Optional<UUID> facultyId = academic.facultyIdOfUser(tenantId, currentUserId);
+        boolean isAssignedFaculty = facultyId.isPresent() && academic.isActivelyAssigned(sectionId, facultyId.get());
         if (!isAssignedFaculty) {
             authorizationContext.assertCan(MANAGE_PERMISSION, ResourceRef.of("attendance_session", UUID.randomUUID(), tenantId));
         }
@@ -156,7 +146,7 @@ public class AttendanceSessionService {
         }
         UUID tenant = tenantId.get();
 
-        Optional<MeetingPatternService.MeetingPatternTenantSection> meetingInfo = meetingPatternService.findTenantAndSection(meetingId);
+        Optional<AcademicDirectory.MeetingRef> meetingInfo = academic.meeting(meetingId);
         if (meetingInfo.isEmpty()) {
             return new OpenResult.MeetingNotFound();
         }
@@ -270,7 +260,7 @@ public class AttendanceSessionService {
             session.id(), Map.of());
 
         // docs/state-machines.md #15: every enrolled student with no scan by close gets a system-generated ABSENT row.
-        List<UUID> activeEnrollmentIds = enrollmentService.listActiveEnrollmentIds(session.sectionId());
+        List<UUID> activeEnrollmentIds = academic.activeEnrollmentIds(session.sectionId());
         Set<UUID> alreadyMarked = new HashSet<>();
         for (AttendanceRecord existing : attendanceRecordRepository.findByAttendanceSessionId(sessionId)) {
             alreadyMarked.add(existing.enrollmentId());

@@ -3,12 +3,15 @@ package com.setu.guardianaccess.application;
 import com.setu.directory.application.GuardianProfileService;
 import com.setu.directory.application.StudentProfileService;
 import com.setu.guardianaccess.domain.GuardianAccessGrant;
+import com.setu.guardianaccess.domain.GuardianAccessGrantedEvent;
+import com.setu.guardianaccess.domain.GuardianAccessRevokedEvent;
 import com.setu.guardianaccess.domain.GuardianAccessPermission;
 import com.setu.guardianaccess.infrastructure.GuardianAccessGrantRepository;
 import com.setu.guardianaccess.infrastructure.GuardianAccessPermissionRepository;
 import com.setu.shared.authorization.AuthorizationContext;
 import com.setu.shared.authorization.ResourceRef;
 import com.setu.shared.governance.AuditLogWriter;
+import com.setu.shared.governance.OutboxEventWriter;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -63,18 +66,21 @@ public class GuardianAccessService {
     private final StudentProfileService studentProfileService;
     private final AuthorizationContext authorizationContext;
     private final AuditLogWriter auditLogWriter;
+    private final OutboxEventWriter outboxEventWriter;
 
     public GuardianAccessService(GuardianAccessGrantRepository grantRepository,
                                   GuardianAccessPermissionRepository permissionRepository,
                                   GuardianProfileService guardianProfileService,
                                   StudentProfileService studentProfileService,
-                                  AuthorizationContext authorizationContext, AuditLogWriter auditLogWriter) {
+                                  AuthorizationContext authorizationContext, AuditLogWriter auditLogWriter,
+                                  OutboxEventWriter outboxEventWriter) {
         this.grantRepository = grantRepository;
         this.permissionRepository = permissionRepository;
         this.guardianProfileService = guardianProfileService;
         this.studentProfileService = studentProfileService;
         this.authorizationContext = authorizationContext;
         this.auditLogWriter = auditLogWriter;
+        this.outboxEventWriter = outboxEventWriter;
     }
 
     public sealed interface GrantResult {
@@ -141,6 +147,8 @@ public class GuardianAccessService {
         auditLogWriter.write(tenantId, actor, "GUARDIAN_ACCESS_GRANTED", "guardian_access_grants", grant.id(),
             Map.of("studentId", studentId, "guardianId", guardianId, "permissions", permissionCodes,
                 "expiresAt", String.valueOf(expiresAt)));
+        outboxEventWriter.publish(new GuardianAccessGrantedEvent(UUID.randomUUID(), now, tenantId, grant.id(), UUID.randomUUID(), null, grant.id(),
+            studentId, guardian.get().ownerUserId(), expiresAt, permissionCodes.stream().sorted().toList()));
         return new GrantResult.Success(grant.id());
     }
 
@@ -160,6 +168,8 @@ public class GuardianAccessService {
         auditLogWriter.write(grant.tenantId(), actor, "GUARDIAN_ACCESS_REVOKED", "guardian_access_grants",
             grant.id(), Map.of("studentId", grant.studentId(), "guardianId", grant.guardianId(),
                 "reason", reason == null ? "" : reason));
+        outboxEventWriter.publish(new GuardianAccessRevokedEvent(UUID.randomUUID(), Instant.now(), grant.tenantId(), grant.id(), UUID.randomUUID(), null,
+            grant.id(), grant.studentId()));
         return RevokeResult.SUCCESS;
     }
 

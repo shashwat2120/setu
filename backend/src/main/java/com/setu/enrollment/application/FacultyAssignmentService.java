@@ -8,7 +8,10 @@ import com.setu.enrollment.infrastructure.FacultyAssignmentRepository;
 import com.setu.shared.authorization.AuthorizationContext;
 import com.setu.shared.authorization.ResourceRef;
 import com.setu.shared.directory.FacultyDirectory;
+import com.setu.enrollment.domain.FacultyAssignedEvent;
+import com.setu.enrollment.domain.FacultyAssignmentEndedEvent;
 import com.setu.shared.governance.AuditLogWriter;
+import com.setu.shared.governance.OutboxEventWriter;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -52,15 +55,18 @@ public class FacultyAssignmentService {
     private final FacultyDirectory facultyDirectory;
     private final AuthorizationContext authorizationContext;
     private final AuditLogWriter auditLogWriter;
+    private final OutboxEventWriter outboxEventWriter;
 
     public FacultyAssignmentService(FacultyAssignmentRepository facultyAssignmentRepository,
                                      CourseSectionRepository courseSectionRepository, FacultyDirectory facultyDirectory,
-                                     AuthorizationContext authorizationContext, AuditLogWriter auditLogWriter) {
+                                     AuthorizationContext authorizationContext, AuditLogWriter auditLogWriter,
+                                     OutboxEventWriter outboxEventWriter) {
         this.facultyAssignmentRepository = facultyAssignmentRepository;
         this.courseSectionRepository = courseSectionRepository;
         this.facultyDirectory = facultyDirectory;
         this.authorizationContext = authorizationContext;
         this.auditLogWriter = auditLogWriter;
+        this.outboxEventWriter = outboxEventWriter;
     }
 
     public sealed interface AssignResult {
@@ -118,6 +124,8 @@ public class FacultyAssignmentService {
         facultyAssignmentRepository.save(assignment);
         auditLogWriter.write(tenantId, actor, "FACULTY_ASSIGNMENT_CREATED", "enrollment.faculty_assignments",
             assignment.id(), Map.of("sectionId", sectionId, "facultyId", facultyId, "role", role.name()));
+        outboxEventWriter.publish(new FacultyAssignedEvent(UUID.randomUUID(), java.time.Instant.now(), tenantId, assignment.id(), UUID.randomUUID(), null,
+            assignment.id(), sectionId, facultyId, assignment.endsAt()));
         return new AssignResult.Success(assignment.id());
     }
 
@@ -211,6 +219,8 @@ public class FacultyAssignmentService {
         facultyAssignmentRepository.save(assignment);
         auditLogWriter.write(assignment.tenantId(), actor, "FACULTY_ASSIGNMENT_REMOVED", "enrollment.faculty_assignments",
             assignment.id(), Map.of("endsAt", String.valueOf(endsAt)));
+        outboxEventWriter.publish(new FacultyAssignmentEndedEvent(UUID.randomUUID(), java.time.Instant.now(), assignment.tenantId(), assignment.id(),
+            UUID.randomUUID(), null, assignment.id(), assignment.sectionId(), assignment.facultyId(), assignment.endsAt()));
         return new EndResult.Success();
     }
 

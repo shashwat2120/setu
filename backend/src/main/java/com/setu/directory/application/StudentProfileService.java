@@ -98,7 +98,8 @@ public class StudentProfileService {
         StudentProfile profile = new StudentProfile(UUID.randomUUID(), tenantId, personId, admissionNo, rollNo,
             admissionDate, actor, now);
         var event = new StudentAdmittedEvent(UUID.randomUUID(), now, tenantId, profile.id(), UUID.randomUUID(),
-            null, profile.id(), admissionNo, admissionDate);
+            null, profile.id(), admissionNo, admissionDate,
+            personDirectory.findById(personId).map(PersonDirectory.PersonSummary::userId).orElse(null));
         try {
             studentProfileInsertGuard.insertWithOutboxEvent(profile, tenantId, event);
         } catch (DataIntegrityViolationException e) {

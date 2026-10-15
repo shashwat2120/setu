@@ -28,6 +28,12 @@ public class OutboxEventWriter {
         this.objectMapper = objectMapper;
     }
 
+    /** Writes a domain event as the envelope it already describes: its own aggregate, type, version, tenant and correlation ids. */
+    public void publish(com.setu.shared.events.DomainEvent event) {
+        write(event.aggregateType(), event.aggregateId(), event.eventType(), event.eventVersion(), event, event.tenantId(),
+            event.correlationId(), event.causationId());
+    }
+
     public void write(String aggregateType, UUID aggregateId, String eventType, int eventVersion,
                        Object payload, UUID tenantId, UUID correlationId, UUID causationId) {
         String payloadJson;

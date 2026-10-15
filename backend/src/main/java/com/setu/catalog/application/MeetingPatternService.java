@@ -8,7 +8,10 @@ import com.setu.catalog.infrastructure.RoomRepository;
 import com.setu.shared.authorization.AuthorizationContext;
 import com.setu.shared.authorization.ResourceRef;
 import com.setu.shared.enrollment.CourseSectionDirectory;
+import com.setu.catalog.domain.MeetingPatternRemovedEvent;
+import com.setu.catalog.domain.MeetingPatternScheduledEvent;
 import com.setu.shared.governance.AuditLogWriter;
+import com.setu.shared.governance.OutboxEventWriter;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -58,17 +61,19 @@ public class MeetingPatternService {
     private final CourseSectionDirectory courseSectionDirectory;
     private final AuthorizationContext authorizationContext;
     private final AuditLogWriter auditLogWriter;
+    private final OutboxEventWriter outboxEventWriter;
 
     public MeetingPatternService(MeetingPatternRepository meetingPatternRepository,
                                   MeetingPatternWriteGuard meetingPatternWriteGuard, RoomRepository roomRepository,
                                   CourseSectionDirectory courseSectionDirectory, AuthorizationContext authorizationContext,
-                                  AuditLogWriter auditLogWriter) {
+                                  AuditLogWriter auditLogWriter, OutboxEventWriter outboxEventWriter) {
         this.meetingPatternRepository = meetingPatternRepository;
         this.meetingPatternWriteGuard = meetingPatternWriteGuard;
         this.roomRepository = roomRepository;
         this.courseSectionDirectory = courseSectionDirectory;
         this.authorizationContext = authorizationContext;
         this.auditLogWriter = auditLogWriter;
+        this.outboxEventWriter = outboxEventWriter;
     }
 
     public sealed interface CreateResult {
@@ -124,6 +129,8 @@ public class MeetingPatternService {
         }
         auditLogWriter.write(tenantId, actor, "MEETING_PATTERN_CREATED", "catalog.meeting_patterns", pattern.id(),
             Map.of("sectionId", sectionId, "roomId", roomId, "dayOfWeek", dayOfWeek));
+        outboxEventWriter.publish(new MeetingPatternScheduledEvent(UUID.randomUUID(), java.time.Instant.now(), tenantId, pattern.id(), UUID.randomUUID(),
+            null, pattern.id(), sectionId));
         return new CreateResult.Success(pattern.id());
     }
 
@@ -236,6 +243,8 @@ public class MeetingPatternService {
         meetingPatternRepository.delete(pattern);
         auditLogWriter.write(pattern.tenantId(), actor, "MEETING_PATTERN_REMOVED", "catalog.meeting_patterns",
             pattern.id(), Map.of("sectionId", pattern.sectionId()));
+        outboxEventWriter.publish(new MeetingPatternRemovedEvent(UUID.randomUUID(), java.time.Instant.now(), pattern.tenantId(), pattern.id(),
+            UUID.randomUUID(), null, pattern.id(), pattern.sectionId()));
         return RemoveResult.SUCCESS;
     }
 

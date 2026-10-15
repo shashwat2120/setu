@@ -25,7 +25,9 @@ public record StudentAdmittedEvent(
     UUID causationId,
     UUID studentId,
     String admissionNo,
-    LocalDate admissionDate
+    LocalDate admissionDate,
+    /** The account that owns the profile, so services can resolve "who is this signed-in user as a student" from their own copy. Null if the person has no account. */
+    UUID ownerUserId
 ) implements DomainEvent {
 
     @Override

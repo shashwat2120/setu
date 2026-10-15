@@ -1,9 +1,6 @@
 package com.setu.assessment.application;
 
-import com.setu.directory.application.FacultyProfileService;
-import com.setu.directory.application.StudentProfileService;
-import com.setu.enrollment.application.EnrollmentService;
-import com.setu.enrollment.application.FacultyAssignmentService;
+import com.setu.shared.academic.AcademicDirectory;
 import com.setu.shared.authorization.AuthorizationContext;
 import com.setu.shared.authorization.ResourceRef;
 import org.springframework.stereotype.Component;
@@ -42,26 +39,18 @@ import java.util.UUID;
 @Component
 class AssessmentAccessSupport {
 
-    private final StudentProfileService studentProfileService;
-    private final FacultyProfileService facultyProfileService;
-    private final FacultyAssignmentService facultyAssignmentService;
-    private final EnrollmentService enrollmentService;
+    private final AcademicDirectory academic;
     private final AuthorizationContext authorizationContext;
 
-    AssessmentAccessSupport(StudentProfileService studentProfileService, FacultyProfileService facultyProfileService,
-                             FacultyAssignmentService facultyAssignmentService, EnrollmentService enrollmentService,
-                             AuthorizationContext authorizationContext) {
-        this.studentProfileService = studentProfileService;
-        this.facultyProfileService = facultyProfileService;
-        this.facultyAssignmentService = facultyAssignmentService;
-        this.enrollmentService = enrollmentService;
+    AssessmentAccessSupport(AcademicDirectory academic, AuthorizationContext authorizationContext) {
+        this.academic = academic;
         this.authorizationContext = authorizationContext;
     }
 
     ResourceRef sectionScoped(String resourceType, UUID resourceId, UUID tenantId, UUID sectionId) {
         UUID currentUserId = authorizationContext.currentUserId();
-        boolean isAssigned = facultyProfileService.findIdByTenantAndOwnerUserId(tenantId, currentUserId)
-            .filter(facultyId -> facultyAssignmentService.isActivelyAssigned(sectionId, facultyId))
+        boolean isAssigned = academic.facultyIdOfUser(tenantId, currentUserId)
+            .filter(facultyId -> academic.isActivelyAssigned(sectionId, facultyId))
             .isPresent();
         UUID marker = isAssigned ? currentUserId : UUID.randomUUID();
         return ResourceRef.of(resourceType, resourceId, tenantId).assignedTo(Set.of(marker));
@@ -70,22 +59,21 @@ class AssessmentAccessSupport {
     /** Non-empty only if the CURRENT principal is a student with an active ENROLLED enrollment in this exact section. */
     Optional<UUID> currentEnrolledStudentId(UUID tenantId, UUID sectionId) {
         UUID currentUserId = authorizationContext.currentUserId();
-        return studentProfileService.findIdByTenantAndOwnerUserId(tenantId, currentUserId)
-            .filter(studentId -> enrollmentService.findActiveEnrollmentId(sectionId, studentId).isPresent());
+        return academic.studentIdOfUser(tenantId, currentUserId)
+            .filter(studentId -> academic.activeEnrollmentId(sectionId, studentId).isPresent());
     }
 
     /** The current principal's own student-profile id in this tenant. */
     Optional<UUID> currentStudentId(UUID tenantId) {
-        return studentProfileService.findIdByTenantAndOwnerUserId(tenantId, authorizationContext.currentUserId());
+        return academic.studentIdOfUser(tenantId, authorizationContext.currentUserId());
     }
 
     /** The identity.users.id that owns a given student-profile id — see {@code LearningProgressService}'s Day 10 precedent for why this is needed for guardian-delegation ownership scoping. */
     Optional<UUID> ownerUserIdOf(UUID studentProfileId) {
-        return studentProfileService.findTenantAndOwnerUserId(studentProfileId)
-            .map(StudentProfileService.StudentTenantOwner::ownerUserId);
+        return academic.studentOwner(studentProfileId).map(AcademicDirectory.TenantOwner::ownerUserId);
     }
 
     Optional<UUID> activeEnrollmentId(UUID sectionId, UUID studentId) {
-        return enrollmentService.findActiveEnrollmentId(sectionId, studentId);
+        return academic.activeEnrollmentId(sectionId, studentId);
     }
 }

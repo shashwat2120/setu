@@ -7,8 +7,7 @@ import com.setu.attendance.domain.PolicyRules;
 import com.setu.attendance.domain.FacultyAttendanceStatus;
 import com.setu.attendance.infrastructure.FacultyAttendanceInsertGuard;
 import com.setu.attendance.infrastructure.FacultyAttendanceRepository;
-import com.setu.directory.application.FacultyProfileService;
-import com.setu.institution.application.CollegeService;
+import com.setu.shared.academic.AcademicDirectory;
 import com.setu.shared.authorization.AuthorizationContext;
 import com.setu.shared.authorization.ResourceRef;
 import com.setu.shared.governance.AuditLogWriter;
@@ -49,8 +48,7 @@ public class FacultyAttendanceService {
 
     private final FacultyAttendanceRepository repository;
     private final FacultyAttendanceInsertGuard insertGuard;
-    private final FacultyProfileService facultyProfileService;
-    private final CollegeService collegeService;
+    private final AcademicDirectory academic;
     private final TenantContext tenantContext;
     private final AuthorizationContext authorizationContext;
     private final AuditLogWriter auditLogWriter;
@@ -58,7 +56,7 @@ public class FacultyAttendanceService {
     private final StaffAttendancePolicyService policyService;
 
     public FacultyAttendanceService(FacultyAttendanceRepository repository, FacultyAttendanceInsertGuard insertGuard,
-                                     FacultyProfileService facultyProfileService, CollegeService collegeService,
+                                     AcademicDirectory academic,
                                      TenantContext tenantContext, AuthorizationContext authorizationContext,
                                      AuditLogWriter auditLogWriter, OutboxEventWriter outboxEventWriter,
                                      StaffAttendancePolicyService policyService) {
@@ -66,8 +64,7 @@ public class FacultyAttendanceService {
         this.policyService = policyService;
         this.repository = repository;
         this.insertGuard = insertGuard;
-        this.facultyProfileService = facultyProfileService;
-        this.collegeService = collegeService;
+        this.academic = academic;
         this.tenantContext = tenantContext;
         this.authorizationContext = authorizationContext;
         this.auditLogWriter = auditLogWriter;
@@ -114,7 +111,7 @@ public class FacultyAttendanceService {
             return new RecordResult.NotAFaculty();
         }
         UUID userId = authorizationContext.currentUserId();
-        Optional<UUID> facultyId = facultyProfileService.findIdByTenantAndOwnerUserId(tenantId.get(), userId);
+        Optional<UUID> facultyId = academic.facultyIdOfUser(tenantId.get(), userId);
         if (facultyId.isEmpty()) {
             return new RecordResult.NotAFaculty();
         }
@@ -132,7 +129,7 @@ public class FacultyAttendanceService {
             return new RecordResult.AlreadyRecorded(existing.get());
         }
         FacultyAttendance row = FacultyAttendance.checkIn(tenantId.get(), facultyId.get(), today, now);
-        row.applyPolicy(policyService.currentRules(tenantId.get()), collegeService.timeZoneFor(tenantId.get()));
+        row.applyPolicy(policyService.currentRules(tenantId.get()), academic.timeZoneOf(tenantId.get()));
         try {
             insertGuard.insert(row, () -> {
                 auditLogWriter.write(tenantId.get(), userId, "FACULTY_CHECKED_IN", "attendance.faculty_attendance", row.id(),
@@ -154,7 +151,7 @@ public class FacultyAttendanceService {
             return new RecordResult.NotAFaculty();
         }
         UUID userId = authorizationContext.currentUserId();
-        Optional<UUID> facultyId = facultyProfileService.findIdByTenantAndOwnerUserId(tenantId.get(), userId);
+        Optional<UUID> facultyId = academic.facultyIdOfUser(tenantId.get(), userId);
         if (facultyId.isEmpty()) {
             return new RecordResult.NotAFaculty();
         }
@@ -172,7 +169,7 @@ public class FacultyAttendanceService {
         }
         row.checkOut(now);
         PolicyRules rules = policyService.currentRules(tenantId.get());
-        row.applyPolicy(rules, collegeService.timeZoneFor(tenantId.get()));
+        row.applyPolicy(rules, academic.timeZoneOf(tenantId.get()));
         row.applySelfCheckOutOutcome(rules);
         repository.save(row);
         Map<String, Object> outDetails = new LinkedHashMap<>();
@@ -195,7 +192,7 @@ public class FacultyAttendanceService {
             return Optional.empty();
         }
         UUID userId = authorizationContext.currentUserId();
-        Optional<UUID> facultyId = facultyProfileService.findIdByTenantAndOwnerUserId(tenantId.get(), userId);
+        Optional<UUID> facultyId = academic.facultyIdOfUser(tenantId.get(), userId);
         if (facultyId.isEmpty()) {
             return Optional.empty();
         }
@@ -214,7 +211,7 @@ public class FacultyAttendanceService {
     /** The faculty member themself, or an administrator with MANAGE_STAFF_ATTENDANCE for that faculty's college. Range is capped. */
     @Transactional(readOnly = true)
     public Optional<List<FacultyAttendance>> history(UUID facultyId, LocalDate from, LocalDate to) {
-        Optional<UUID> tenantId = facultyProfileService.findTenantId(facultyId);
+        Optional<UUID> tenantId = academic.facultyTenant(facultyId);
         if (tenantId.isEmpty()) {
             return Optional.empty();
         }
@@ -235,7 +232,7 @@ public class FacultyAttendanceService {
     /** Create or correct one faculty member's record for a past or current day. Requires a reason; never a future day. */
     @Transactional
     public RecordResult markByAdmin(UUID facultyId, LocalDate date, FacultyAttendanceStatus status, String reason) {
-        Optional<UUID> tenantId = facultyProfileService.findTenantId(facultyId);
+        Optional<UUID> tenantId = academic.facultyTenant(facultyId);
         if (tenantId.isEmpty()) {
             return new RecordResult.FacultyNotFound();
         }
@@ -314,14 +311,14 @@ public class FacultyAttendanceService {
     /** The caller's college clock for the live widget: the server's current instant and the college timezone (the browser's own clock is never trusted). */
     @Transactional(readOnly = true)
     public Optional<java.time.ZoneId> zoneForCurrentTenant() {
-        return tenantContext.tenantId().map(collegeService::timeZoneFor);
+        return tenantContext.tenantId().map(academic::timeZoneOf);
     }
 
     // ---- helpers ----------------------------------------------------------------------------------------------
 
     /** Re-judges a day's times under the college's CURRENT policy after an administrator changed it (status is left as the administrator set it). */
     private void refreshMetrics(FacultyAttendance row) {
-        row.applyPolicy(policyService.currentRules(row.tenantId()), collegeService.timeZoneFor(row.tenantId()));
+        row.applyPolicy(policyService.currentRules(row.tenantId()), academic.timeZoneOf(row.tenantId()));
     }
 
     private void audit(UUID tenantId, UUID actor, FacultyAttendance row, String action, FacultyAttendanceStatus before, String reason) {
@@ -357,7 +354,7 @@ public class FacultyAttendanceService {
 
     private void assertSelfOrManage(UUID tenantId, UUID facultyId) {
         UUID userId = authorizationContext.currentUserId();
-        boolean isSelf = facultyProfileService.findIdByTenantAndOwnerUserId(tenantId, userId)
+        boolean isSelf = academic.facultyIdOfUser(tenantId, userId)
             .map(facultyId::equals).orElse(false);
         if (isSelf) {
             assertSelf(tenantId, facultyId, userId);
@@ -367,13 +364,12 @@ public class FacultyAttendanceService {
     }
 
     private Optional<String> inactiveStatus(UUID facultyId) {
-        return facultyProfileService.get(facultyId)
-            .map(f -> f.status().name())
+        return academic.facultyStatus(facultyId)
             .filter(status -> !"ACTIVE".equals(status));
     }
 
     private LocalDate today(UUID tenantId, Instant now) {
-        return now.atZone(collegeService.timeZoneFor(tenantId)).toLocalDate();
+        return now.atZone(academic.timeZoneOf(tenantId)).toLocalDate();
     }
 
     private static void validateRange(LocalDate from, LocalDate to) {

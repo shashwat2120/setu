@@ -5,7 +5,7 @@ import com.setu.assessment.domain.AssessmentComponent;
 import com.setu.assessment.domain.Grade;
 import com.setu.assessment.domain.GradePublishedEvent;
 import com.setu.assessment.infrastructure.GradeRepository;
-import com.setu.enrollment.application.EnrollmentService;
+import com.setu.shared.academic.AcademicDirectory;
 import com.setu.shared.authorization.AuthorizationContext;
 import com.setu.shared.authorization.ResourceRef;
 import com.setu.shared.governance.AuditLogWriter;
@@ -79,20 +79,20 @@ public class GradeService {
     private final GradeRepository gradeRepository;
     private final AssessmentService assessmentService;
     private final AssessmentComponentService assessmentComponentService;
-    private final EnrollmentService enrollmentService;
+    private final AcademicDirectory academic;
     private final AssessmentAccessSupport accessSupport;
     private final AuthorizationContext authorizationContext;
     private final AuditLogWriter auditLogWriter;
     private final OutboxEventWriter outboxEventWriter;
 
     public GradeService(GradeRepository gradeRepository, AssessmentService assessmentService,
-                         AssessmentComponentService assessmentComponentService, EnrollmentService enrollmentService,
+                         AssessmentComponentService assessmentComponentService, AcademicDirectory academic,
                          AssessmentAccessSupport accessSupport, AuthorizationContext authorizationContext,
                          AuditLogWriter auditLogWriter, OutboxEventWriter outboxEventWriter) {
         this.gradeRepository = gradeRepository;
         this.assessmentService = assessmentService;
         this.assessmentComponentService = assessmentComponentService;
-        this.enrollmentService = enrollmentService;
+        this.academic = academic;
         this.accessSupport = accessSupport;
         this.authorizationContext = authorizationContext;
         this.auditLogWriter = auditLogWriter;
@@ -203,7 +203,7 @@ public class GradeService {
     @Transactional(readOnly = true)
     public Optional<Grade> getCurrent(UUID enrollmentId, UUID componentId) {
         Optional<Grade> grade = gradeRepository.findByEnrollmentIdAndComponentIdAndIsCurrentTrue(enrollmentId, componentId);
-        Optional<EnrollmentService.EnrollmentSummary> summary = enrollmentService.findEnrollmentSummary(enrollmentId);
+        Optional<AcademicDirectory.EnrollmentRef> summary = academic.enrollment(enrollmentId);
         if (summary.isEmpty()) {
             return Optional.empty();
         }
@@ -213,7 +213,7 @@ public class GradeService {
 
     @Transactional(readOnly = true)
     public List<Grade> history(UUID enrollmentId, UUID componentId) {
-        Optional<EnrollmentService.EnrollmentSummary> summary = enrollmentService.findEnrollmentSummary(enrollmentId);
+        Optional<AcademicDirectory.EnrollmentRef> summary = academic.enrollment(enrollmentId);
         if (summary.isEmpty()) {
             throw new IllegalArgumentException("enrollment not found");
         }
@@ -227,7 +227,7 @@ public class GradeService {
         return gradeRepository.findByEnrollmentIdAndIsCurrentTrue(enrollmentId);
     }
 
-    private void assertReadAccess(EnrollmentService.EnrollmentSummary summary) {
+    private void assertReadAccess(AcademicDirectory.EnrollmentRef summary) {
         Optional<UUID> ownStudentId = accessSupport.currentStudentId(summary.tenantId());
         if (ownStudentId.isPresent() && ownStudentId.get().equals(summary.studentId())) {
             return;

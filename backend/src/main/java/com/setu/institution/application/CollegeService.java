@@ -7,7 +7,10 @@ import com.setu.institution.infrastructure.CollegeInsertGuard;
 import com.setu.institution.infrastructure.CollegeRepository;
 import com.setu.shared.authorization.AuthorizationContext;
 import com.setu.shared.authorization.ResourceRef;
+import com.setu.institution.domain.CollegeCreatedEvent;
+import com.setu.institution.domain.CollegeUpdatedEvent;
 import com.setu.shared.governance.AuditLogWriter;
+import com.setu.shared.governance.OutboxEventWriter;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -50,17 +53,19 @@ public class CollegeService {
     private final AuditLogWriter auditLogWriter;
     private final AcademicCalendarPolicy academicCalendarPolicy;
     private final ObjectMapper objectMapper;
+    private final OutboxEventWriter outboxEventWriter;
 
     public CollegeService(CollegeRepository collegeRepository, CollegeInsertGuard collegeInsertGuard,
                            AuthorizationContext authorizationContext,
                            AuditLogWriter auditLogWriter, AcademicCalendarPolicy academicCalendarPolicy,
-                           ObjectMapper objectMapper) {
+                           ObjectMapper objectMapper, OutboxEventWriter outboxEventWriter) {
         this.collegeRepository = collegeRepository;
         this.collegeInsertGuard = collegeInsertGuard;
         this.authorizationContext = authorizationContext;
         this.auditLogWriter = auditLogWriter;
         this.academicCalendarPolicy = academicCalendarPolicy;
         this.objectMapper = objectMapper;
+        this.outboxEventWriter = outboxEventWriter;
     }
 
     public sealed interface CreateResult {
@@ -84,6 +89,8 @@ public class CollegeService {
         }
         auditLogWriter.write(college.id(), actor, "COLLEGE_CREATED", "institution.colleges", college.id(),
             Map.of("code", code, "name", name));
+        outboxEventWriter.publish(new CollegeCreatedEvent(UUID.randomUUID(), now, college.id(), college.id(), UUID.randomUUID(), null,
+            college.name(), college.timezone()));
         return new CreateResult.Success(college.id());
     }
 
@@ -140,6 +147,8 @@ public class CollegeService {
         collegeRepository.save(college);
         auditLogWriter.write(college.id(), actor, "COLLEGE_UPDATED", "institution.colleges", college.id(),
             Map.of("name", name, "timezone", timezone, "locale", locale));
+        outboxEventWriter.publish(new CollegeUpdatedEvent(UUID.randomUUID(), Instant.now(), college.id(), college.id(), UUID.randomUUID(), null,
+            college.name(), college.timezone()));
         return UpdateResult.SUCCESS;
     }
 

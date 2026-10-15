@@ -14,15 +14,19 @@ import java.util.UUID;
 public class CollegeDirectoryService {
 
     private final CollegeRepository collegeRepository;
+    private final com.setu.shared.governance.OutboxEventWriter outboxEventWriter;
 
-    public CollegeDirectoryService(CollegeRepository collegeRepository) {
+    public CollegeDirectoryService(CollegeRepository collegeRepository, com.setu.shared.governance.OutboxEventWriter outboxEventWriter) {
         this.collegeRepository = collegeRepository;
+        this.outboxEventWriter = outboxEventWriter;
     }
 
     @Transactional
     public UUID provisionCollege(String code, String name, String timezone) {
         College college = new College(UUID.randomUUID(), code, name, timezone, Instant.now());
         collegeRepository.save(college);
+        outboxEventWriter.publish(new com.setu.institution.domain.CollegeCreatedEvent(UUID.randomUUID(), Instant.now(), college.id(), college.id(),
+            UUID.randomUUID(), null, college.name(), college.timezone()));
         return college.id();
     }
 

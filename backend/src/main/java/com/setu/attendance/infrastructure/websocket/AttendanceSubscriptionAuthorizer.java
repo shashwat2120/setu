@@ -1,7 +1,6 @@
 package com.setu.attendance.infrastructure.websocket;
 
-import com.setu.directory.application.FacultyProfileService;
-import com.setu.enrollment.application.FacultyAssignmentService;
+import com.setu.shared.academic.AcademicDirectory;
 import com.setu.shared.authorization.AuthorizationContext;
 import com.setu.shared.authorization.ResourceRef;
 import com.setu.shared.enrollment.CourseSectionDirectory;
@@ -40,17 +39,14 @@ public class AttendanceSubscriptionAuthorizer implements StompDestinationAuthori
     private static final String MANAGE_PERMISSION = "MANAGE_ATTENDANCE_ALL_SECTIONS";
 
     private final CourseSectionDirectory courseSectionDirectory;
-    private final FacultyProfileService facultyProfileService;
-    private final FacultyAssignmentService facultyAssignmentService;
+    private final AcademicDirectory academic;
     private final AuthorizationContext authorizationContext;
 
     public AttendanceSubscriptionAuthorizer(CourseSectionDirectory courseSectionDirectory,
-                                             FacultyProfileService facultyProfileService,
-                                             FacultyAssignmentService facultyAssignmentService,
+                                             AcademicDirectory academic,
                                              AuthorizationContext authorizationContext) {
         this.courseSectionDirectory = courseSectionDirectory;
-        this.facultyProfileService = facultyProfileService;
-        this.facultyAssignmentService = facultyAssignmentService;
+        this.academic = academic;
         this.authorizationContext = authorizationContext;
     }
 
@@ -71,8 +67,8 @@ public class AttendanceSubscriptionAuthorizer implements StompDestinationAuthori
             return false;
         }
 
-        Optional<UUID> facultyId = facultyProfileService.findIdByTenantAndOwnerUserId(tenantId.get(), userId);
-        if (facultyId.isPresent() && facultyAssignmentService.isActivelyAssigned(sectionId, facultyId.get())) {
+        Optional<UUID> facultyId = academic.facultyIdOfUser(tenantId.get(), userId);
+        if (facultyId.isPresent() && academic.isActivelyAssigned(sectionId, facultyId.get())) {
             return true;
         }
         return authorizationContext.canAsUser(userId, MANAGE_PERMISSION, ResourceRef.of("attendance_session", sectionId, tenantId.get()))

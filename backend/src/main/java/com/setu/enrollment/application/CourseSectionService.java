@@ -197,6 +197,8 @@ public class CourseSectionService implements CourseSectionDirectory {
         }
         auditLogWriter.write(tenantId, actor, "COURSE_SECTION_CREATED", "enrollment.course_sections", section.id(),
             Map.of("courseId", courseId, "periodId", periodId, "sectionCode", sectionCode));
+        outboxEventWriter.publish(new com.setu.enrollment.domain.CourseSectionCreatedEvent(UUID.randomUUID(), now, tenantId, section.id(),
+            UUID.randomUUID(), null, section.id(), courseId, periodId));
         return new CreateResult.Success(section.id());
     }
 

@@ -8,7 +8,10 @@ import com.setu.shared.identity.PersonDirectory;
 import com.setu.shared.directory.FacultyDirectory;
 import com.setu.shared.authorization.AuthorizationContext;
 import com.setu.shared.authorization.ResourceRef;
+import com.setu.directory.domain.FacultyProfileCreatedEvent;
+import com.setu.directory.domain.FacultyStatusChangedEvent;
 import com.setu.shared.governance.AuditLogWriter;
+import com.setu.shared.governance.OutboxEventWriter;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -57,15 +60,18 @@ public class FacultyProfileService implements FacultyDirectory {
     private final PersonDirectory personDirectory;
     private final AuthorizationContext authorizationContext;
     private final AuditLogWriter auditLogWriter;
+    private final OutboxEventWriter outboxEventWriter;
 
     public FacultyProfileService(FacultyProfileRepository facultyProfileRepository,
                                   FacultyProfileInsertGuard facultyProfileInsertGuard, PersonDirectory personDirectory,
-                                  AuthorizationContext authorizationContext, AuditLogWriter auditLogWriter) {
+                                  AuthorizationContext authorizationContext, AuditLogWriter auditLogWriter,
+                                  OutboxEventWriter outboxEventWriter) {
         this.facultyProfileRepository = facultyProfileRepository;
         this.facultyProfileInsertGuard = facultyProfileInsertGuard;
         this.personDirectory = personDirectory;
         this.authorizationContext = authorizationContext;
         this.auditLogWriter = auditLogWriter;
+        this.outboxEventWriter = outboxEventWriter;
     }
 
     public sealed interface CreateResult {
@@ -104,6 +110,8 @@ public class FacultyProfileService implements FacultyDirectory {
         }
         auditLogWriter.write(tenantId, actor, "FACULTY_CREATED", "directory.faculty_profiles", faculty.id(),
             Map.of("employeeNo", employeeNo, "personId", personId));
+        outboxEventWriter.publish(new FacultyProfileCreatedEvent(UUID.randomUUID(), Instant.now(), tenantId, faculty.id(), UUID.randomUUID(), null,
+            faculty.id(), personDirectory.findById(personId).map(PersonDirectory.PersonSummary::userId).orElse(null), faculty.status().name()));
         return new CreateResult.Success(faculty.id());
     }
 
@@ -158,6 +166,8 @@ public class FacultyProfileService implements FacultyDirectory {
         facultyProfileRepository.save(faculty);
         auditLogWriter.write(faculty.tenantId(), actor, "FACULTY_STATUS_CHANGED", "directory.faculty_profiles",
             faculty.id(), Map.of("from", from.name(), "to", target.name()));
+        outboxEventWriter.publish(new FacultyStatusChangedEvent(UUID.randomUUID(), Instant.now(), faculty.tenantId(), faculty.id(), UUID.randomUUID(),
+            null, faculty.id(), target.name()));
         return StatusChangeResult.SUCCESS;
     }
 
@@ -165,6 +175,12 @@ public class FacultyProfileService implements FacultyDirectory {
     @Transactional(readOnly = true)
     public Optional<UUID> findTenantId(UUID facultyId) {
         return facultyProfileRepository.findById(facultyId).map(FacultyProfile::tenantId);
+    }
+
+    /** A faculty profile's status name, with no authorization of its own: a narrow lookup for callers that have already authorized the operation (see {@code shared.academic.AcademicDirectory}). */
+    @Transactional(readOnly = true)
+    public Optional<String> findStatus(UUID facultyId) {
+        return facultyProfileRepository.findById(facultyId).map(f -> f.status().name());
     }
 
     /** See this class's javadoc for the full Day 9 §15 cross-module justification. */

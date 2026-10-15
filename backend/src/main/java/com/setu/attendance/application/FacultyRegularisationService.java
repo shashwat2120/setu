@@ -8,8 +8,7 @@ import com.setu.attendance.domain.RegularisationStatus;
 import com.setu.attendance.infrastructure.FacultyAttendanceRepository;
 import com.setu.attendance.infrastructure.FacultyRegularisationInsertGuard;
 import com.setu.attendance.infrastructure.FacultyRegularisationRepository;
-import com.setu.directory.application.FacultyProfileService;
-import com.setu.institution.application.CollegeService;
+import com.setu.shared.academic.AcademicDirectory;
 import com.setu.shared.authorization.AuthorizationContext;
 import com.setu.shared.authorization.ResourceRef;
 import com.setu.shared.governance.AuditLogWriter;
@@ -54,8 +53,7 @@ public class FacultyRegularisationService {
     private final FacultyRegularisationInsertGuard insertGuard;
     private final FacultyAttendanceRepository attendanceRepository;
     private final FacultyAttendanceService attendanceService;
-    private final FacultyProfileService facultyProfileService;
-    private final CollegeService collegeService;
+    private final AcademicDirectory academic;
     private final TenantContext tenantContext;
     private final AuthorizationContext authorizationContext;
     private final AuditLogWriter auditLogWriter;
@@ -66,7 +64,7 @@ public class FacultyRegularisationService {
                                          FacultyRegularisationInsertGuard insertGuard,
                                          FacultyAttendanceRepository attendanceRepository,
                                          FacultyAttendanceService attendanceService,
-                                         FacultyProfileService facultyProfileService, CollegeService collegeService,
+                                         AcademicDirectory academic,
                                          TenantContext tenantContext, AuthorizationContext authorizationContext,
                                          AuditLogWriter auditLogWriter, OutboxEventWriter outboxEventWriter,
                                          @Value("${app.staff-attendance.regularisation-window-days:30}") int windowDays) {
@@ -74,8 +72,7 @@ public class FacultyRegularisationService {
         this.insertGuard = insertGuard;
         this.attendanceRepository = attendanceRepository;
         this.attendanceService = attendanceService;
-        this.facultyProfileService = facultyProfileService;
-        this.collegeService = collegeService;
+        this.academic = academic;
         this.tenantContext = tenantContext;
         this.authorizationContext = authorizationContext;
         this.auditLogWriter = auditLogWriter;
@@ -129,19 +126,19 @@ public class FacultyRegularisationService {
             return new Result.NotAFaculty();
         }
         UUID userId = authorizationContext.currentUserId();
-        Optional<UUID> facultyId = facultyProfileService.findIdByTenantAndOwnerUserId(tenantId.get(), userId);
+        Optional<UUID> facultyId = academic.facultyIdOfUser(tenantId.get(), userId);
         if (facultyId.isEmpty()) {
             return new Result.NotAFaculty();
         }
         authorizationContext.assertCan(SELF_PERMISSION, ResourceRef.of(RESOURCE, facultyId.get(), tenantId.get()).ownedBy(userId));
 
-        Optional<String> inactive = facultyProfileService.get(facultyId.get()).map(f -> f.status().name())
+        Optional<String> inactive = academic.facultyStatus(facultyId.get())
             .filter(st -> !"ACTIVE".equals(st));
         if (inactive.isPresent()) {
             return new Result.ProfileNotActive(inactive.get());
         }
 
-        ZoneId zone = collegeService.timeZoneFor(tenantId.get());
+        ZoneId zone = academic.timeZoneOf(tenantId.get());
         Instant now = Instant.now();
         LocalDate today = now.atZone(zone).toLocalDate();
         if (date == null || status == null) {
@@ -206,7 +203,7 @@ public class FacultyRegularisationService {
             return List.of();
         }
         UUID userId = authorizationContext.currentUserId();
-        Optional<UUID> facultyId = facultyProfileService.findIdByTenantAndOwnerUserId(tenantId.get(), userId);
+        Optional<UUID> facultyId = academic.facultyIdOfUser(tenantId.get(), userId);
         if (facultyId.isEmpty()) {
             return List.of();
         }
@@ -223,7 +220,7 @@ public class FacultyRegularisationService {
         }
         FacultyRegularisation row = found.get();
         UUID userId = authorizationContext.currentUserId();
-        Optional<UUID> ownFaculty = facultyProfileService.findIdByTenantAndOwnerUserId(row.tenantId(), userId);
+        Optional<UUID> ownFaculty = academic.facultyIdOfUser(row.tenantId(), userId);
         if (ownFaculty.isEmpty() || !ownFaculty.get().equals(row.facultyId())) {
             return new Result.NotFound();
         }
@@ -309,7 +306,7 @@ public class FacultyRegularisationService {
 
     /** Nobody decides their own request: the approver's own faculty profile (if any) must not be the requester. */
     private boolean isOwnRequest(FacultyRegularisation row, UUID approverUserId) {
-        return facultyProfileService.findIdByTenantAndOwnerUserId(row.tenantId(), approverUserId)
+        return academic.facultyIdOfUser(row.tenantId(), approverUserId)
             .map(row.facultyId()::equals).orElse(false);
     }
 
