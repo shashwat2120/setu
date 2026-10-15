@@ -50,11 +50,22 @@ shown implicitly by its aggregate. `event_version` is `1` for every row.
 > `event_version` 1); `previous_status`, `actor_user_id` and `reason` are present only on the two administrator events. The
 > consumers listed are the intended Sprint 6B ones; the only one built so far is Notification's (next section).
 
+## Implementation status
+
+**29 events are emitted today:** `GradePublished`; `AttendanceRecorded` and the 8 staff-attendance events; `PlacementRecorded`;
+`StudentAdmitted`; **`StudentEnrolled`, `StudentWaitlisted`, `WaitlistConverted`, `EnrollmentDropped`** (added by the Sprint 6 coupling
+audit: the Academic service had published nothing, and Learning, Attendance, Student Success, Record and Notification need them);
+`PaymentSuccessful`, `PaymentFailed`, `PaymentRefunded`; `PasskeyRevoked`, `SessionRevoked`, `UserSuspended`, `UserDeactivated`,
+`UserReactivated` (the last is not in the table below); `InterventionCreated`, `InterventionCompleted`, `RecommendationCreated`,
+`RiskScoreChanged`. **The other 34 catalogued events are not emitted yet**; [extraction-audit.md](extraction-audit.md) section 7 says which
+ones block which extraction. Enrollment events use the enrollment id as the Kafka key (aggregate `enrollments`); `WaitlistConverted` uses
+the section id (aggregate `waitlist_entries`) so promotion order is kept per section.
+
 ## Consumers that exist
 
 **Notification** (`com.setu.notification`, built in the monolith, same contract it will keep when extracted). Consumer group
 `setu-notification`, reading `setu.grades`, `setu.payments`, `setu.placement_records`, `setu.recommendations`,
-`setu.interventions` and `setu.student_profiles` from the earliest offset. It turns these events into rows in
+`setu.interventions`, `setu.student_profiles`, `setu.enrollments` and `setu.waitlist_entries` from the earliest offset. It turns these events into rows in
 `notification.notifications`; every other event type on those topics is acknowledged and left alone.
 
 | Event | Notification for | Type |
@@ -64,6 +75,8 @@ shown implicitly by its aggregate. `event_version` is `1` for every row.
 | `PlacementRecorded` | the student | `PLACEMENT_RECORDED` |
 | `RecommendationCreated` | the student | `RECOMMENDATION_AVAILABLE` |
 | `StudentAdmitted` | the student | `ADMISSION_CONFIRMED` |
+| `StudentWaitlisted` | the student (with their position) | `WAITLISTED` |
+| `WaitlistConverted` | the student, now enrolled | `WAITLIST_PROMOTED` |
 | `InterventionCreated` | the intervention's owner (advisor), not the student | `INTERVENTION_ASSIGNED` |
 
 - **Idempotency:** the event id (`event_id` header) is inserted into `notification.processed_events` in the same transaction as the

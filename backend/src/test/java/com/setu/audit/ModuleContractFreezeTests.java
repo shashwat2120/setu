@@ -1,0 +1,215 @@
+package com.setu.audit;
+
+import com.tngtech.archunit.core.domain.Dependency;
+import com.tngtech.archunit.core.domain.JavaClass;
+import com.tngtech.archunit.core.domain.JavaClasses;
+import com.tngtech.archunit.core.importer.ClassFileImporter;
+import com.tngtech.archunit.core.importer.ImportOption;
+import org.junit.jupiter.api.Test;
+
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.ArrayDeque;
+import java.util.ArrayList;
+import java.util.Deque;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.TreeSet;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+/**
+ * The inter-module contracts, frozen (Sprint 6 coupling audit, docs/extraction-audit.md). Every class in the application belongs to a module
+ * (the package under {@code com.setu}); this measures, from the compiled classes, which module depends on which and which other modules'
+ * domain classes it uses, and fails when that differs from {@code module-contracts.txt}. A new dependency between modules is therefore a
+ * deliberate, reviewed change to that file, not something that creeps in; and because the file is also checked for entries that no longer
+ * exist, coupling can only ratchet down unless someone decides otherwise.
+ * <p>
+ * Deliberate rules on top of the frozen list (the findings the audit fixed, which must stay fixed):
+ * the shared kernel depends on no module; the module graph has no cycles; identity depends on no other module; nothing depends on the AI
+ * module; attendance does not depend on notification.
+ * <p>
+ * After a deliberate change, regenerate the file with {@code ./mvnw test -Dtest=ModuleContractFreezeTests -Dfreeze.update=true}, review the
+ * diff, and update the audit document.
+ */
+class ModuleContractFreezeTests {
+
+    private static final Path FROZEN = Path.of("src/test/resources/module-contracts.txt");
+    private static final JavaClasses CLASSES = new ClassFileImporter()
+        .withImportOption(ImportOption.Predefined.DO_NOT_INCLUDE_TESTS)
+        .importPackages("com.setu");
+
+    /** The module a class belongs to; the demo-data and onboarding packages inside {@code shared} are separate nodes because they depend on modules. */
+    static String moduleOf(JavaClass c) {
+        if (!c.getPackageName().startsWith("com.setu.")) {
+            return null; // a library or JDK class, not one of ours
+        }
+        String[] p = c.getPackageName().split("\\.");
+        if (p.length < 3) {
+            return null;
+        }
+        if (p[2].equals("shared") && p.length > 3 && (p[3].equals("admin") || p[3].equals("seed"))) {
+            return "shared." + p[3];
+        }
+        return p[2];
+    }
+
+    private record Measured(Set<String> edges, Set<String> domainTypes) {
+    }
+
+    private static Measured measure() {
+        Set<String> edges = new TreeSet<>();
+        Set<String> domainTypes = new TreeSet<>();
+        for (JavaClass origin : CLASSES) {
+            String from = moduleOf(origin);
+            if (from == null) {
+                continue;
+            }
+            for (Dependency d : origin.getDirectDependenciesFromSelf()) {
+                JavaClass target = d.getTargetClass();
+                String to = moduleOf(target);
+                if (to == null || to.equals(from) || to.equals("shared")) {
+                    continue; // the shared kernel is allowed everywhere; its own direction is checked separately
+                }
+                edges.add(from + " -> " + to);
+                String pkg = target.getPackageName();
+                if (pkg.endsWith(".domain") || pkg.contains(".domain.")) {
+                    JavaClass top = target;
+                    while (top.getEnclosingClass().isPresent()) {
+                        top = top.getEnclosingClass().get();
+                    }
+                    domainTypes.add(from + " -> " + to + " :: " + top.getSimpleName());
+                }
+            }
+        }
+        return new Measured(edges, domainTypes);
+    }
+
+    private static Set<String> sharedKernelDependencies() {
+        Set<String> out = new TreeSet<>();
+        for (JavaClass origin : CLASSES) {
+            if (!"shared".equals(moduleOf(origin))) {
+                continue;
+            }
+            for (Dependency d : origin.getDirectDependenciesFromSelf()) {
+                String to = moduleOf(d.getTargetClass());
+                if (to != null && !to.equals("shared")) {
+                    out.add(origin.getSimpleName() + " -> " + to + "." + d.getTargetClass().getSimpleName());
+                }
+            }
+        }
+        return out;
+    }
+
+    private static List<String> render(Measured m) {
+        List<String> lines = new ArrayList<>();
+        lines.add("# Frozen inter-module contracts. Generated by ModuleContractFreezeTests (-Dfreeze.update=true); see docs/extraction-audit.md.");
+        lines.add("# [edge] module A depends on module B.  [domain] module A uses module B's domain class (an entity or record that crosses a service boundary).");
+        m.edges().forEach(e -> lines.add("edge   " + e));
+        m.domainTypes().forEach(e -> lines.add("domain " + e));
+        return lines;
+    }
+
+    @Test
+    void interModuleDependenciesMatchTheFrozenContracts() throws IOException {
+        Measured actual = measure();
+        List<String> rendered = render(actual);
+        if (System.getProperty("freeze.update") != null) {
+            Files.writeString(FROZEN, String.join("\n", rendered) + "\n", StandardCharsets.UTF_8);
+            return;
+        }
+        Set<String> frozen = new TreeSet<>();
+        for (String line : Files.readAllLines(FROZEN, StandardCharsets.UTF_8)) {
+            if (!line.isBlank() && !line.startsWith("#")) {
+                frozen.add(line.strip());
+            }
+        }
+        Set<String> now = new TreeSet<>();
+        rendered.stream().filter(l -> !l.startsWith("#")).forEach(l -> now.add(l.strip()));
+
+        Set<String> added = new TreeSet<>(now);
+        added.removeAll(frozen);
+        Set<String> removed = new TreeSet<>(frozen);
+        removed.removeAll(now);
+        assertThat(added).as("NEW inter-module coupling not in module-contracts.txt. If it is deliberate, regenerate with -Dfreeze.update=true and update docs/extraction-audit.md").isEmpty();
+        assertThat(removed).as("coupling that no longer exists: regenerate module-contracts.txt so it can only go down (-Dfreeze.update=true)").isEmpty();
+    }
+
+    @Test
+    void theSharedKernelDependsOnNoModule() {
+        assertThat(sharedKernelDependencies()).as("shared must stay a kernel (contracts, governance, tenant, web); orchestration belongs in shared.admin or a module").isEmpty();
+    }
+
+    @Test
+    void theModuleGraphHasNoCycles() {
+        Map<String, Set<String>> adj = new HashMap<>();
+        for (String e : measure().edges()) {
+            String[] parts = e.split(" -> ");
+            adj.computeIfAbsent(parts[0], k -> new TreeSet<>()).add(parts[1]);
+        }
+        List<List<String>> cycles = stronglyConnected(adj);
+        assertThat(cycles).as("module dependency cycles").isEmpty();
+    }
+
+    @Test
+    void identityDependsOnNoOtherModule() {
+        assertThat(measure().edges()).as("Identity must be extractable without the services that depend on it (the Academic service already depends on it)")
+            .noneMatch(e -> e.startsWith("identity -> "));
+    }
+
+    @Test
+    void nothingDependsOnTheAiModuleAndAttendanceDoesNotDependOnNotification() {
+        Set<String> edges = measure().edges();
+        assertThat(edges).noneMatch(e -> e.endsWith(" -> aiexplain"));
+        assertThat(edges).doesNotContain("attendance -> notification");
+        assertThat(edges).as("institution indexes policies through the shared embedder library, not through the AI module").doesNotContain("institution -> aiexplain");
+    }
+
+    private static List<List<String>> stronglyConnected(Map<String, Set<String>> adj) {
+        Set<String> nodes = new TreeSet<>(adj.keySet());
+        adj.values().forEach(nodes::addAll);
+        Map<String, Integer> index = new HashMap<>();
+        Map<String, Integer> low = new HashMap<>();
+        Deque<String> stack = new ArrayDeque<>();
+        Set<String> onStack = new HashSet<>();
+        List<List<String>> result = new ArrayList<>();
+        int[] counter = {0};
+        for (String n : nodes) {
+            if (!index.containsKey(n)) {
+                strong(n, adj, index, low, stack, onStack, result, counter);
+            }
+        }
+        return result.stream().filter(c -> c.size() > 1).toList();
+    }
+
+    private static void strong(String v, Map<String, Set<String>> adj, Map<String, Integer> index, Map<String, Integer> low, Deque<String> stack,
+                                Set<String> onStack, List<List<String>> result, int[] counter) {
+        index.put(v, counter[0]);
+        low.put(v, counter[0]++);
+        stack.push(v);
+        onStack.add(v);
+        for (String w : adj.getOrDefault(v, Set.of())) {
+            if (!index.containsKey(w)) {
+                strong(w, adj, index, low, stack, onStack, result, counter);
+                low.put(v, Math.min(low.get(v), low.get(w)));
+            } else if (onStack.contains(w)) {
+                low.put(v, Math.min(low.get(v), index.get(w)));
+            }
+        }
+        if (low.get(v).equals(index.get(v))) {
+            List<String> component = new ArrayList<>();
+            String w;
+            do {
+                w = stack.pop();
+                onStack.remove(w);
+                component.add(w);
+            } while (!w.equals(v));
+            result.add(component);
+        }
+    }
+}

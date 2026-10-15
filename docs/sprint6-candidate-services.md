@@ -27,6 +27,15 @@ additions are **Academic Record** (H3, explicit) and the absorption of
 `guardian-access` into Institution/Academic being made explicit rather than
 left unnamed (H2).
 
+## Day 16 verdicts
+
+The coupling audit ran: see [extraction-audit.md](extraction-audit.md). In short: the boundaries above hold, with two changes. **Record folds
+into Assessment** (no code uses its tables; it is a read-side computation over grades and enrollments), and **Analytics is not a candidate
+yet** (no code, no tables). Items 1, 2, 5 and 6 below are answered there: Institution/Academic stays one service (44 cross-schema foreign keys
+inside it, nine services depending on it); `guardian-access` is not independent; Record is thin enough to fold; and the
+`learning` ↔ `assessment` foreign key is the only database-level coupling between them, listed among the 34 frozen cross-service keys, to be
+replaced using `GradePublished`.
+
 ## What Day 16 still needs to validate
 
 Nothing above is final. Per canonical spec §12 and your own repeated
