@@ -98,6 +98,10 @@ public class NotificationEventProcessor {
                 "Your placement with " + text(p, "employer") + " has been recorded.", "/app/student/career"));
             case "RecommendationCreated" -> Optional.of(student(studentId(p), tenantId, "RECOMMENDATION_AVAILABLE", "New study recommendation",
                 "There is a new recommendation to help you stay on track.", "/app/student/success"));
+            case "StudentWaitlisted" -> Optional.of(student(studentId(p), tenantId, "WAITLISTED", "You are on a waitlist",
+                "The section you requested is full. You are number " + p.path("position").asInt() + " on its waitlist.", "/app/student/courses"));
+            case "WaitlistConverted" -> Optional.of(student(studentId(p), tenantId, "WAITLIST_PROMOTED", "A seat opened up",
+                "A seat became available and you have been enrolled in the section you were waiting for.", "/app/student/courses"));
             case "StudentAdmitted" -> Optional.of(student(uuid(text(p, "studentId"), "studentId"), tenantId, "ADMISSION_CONFIRMED",
                 "Welcome to the college", "Your admission has been recorded. Your courses and schedule will appear here.", "/app/student"));
             case "InterventionCreated" -> {

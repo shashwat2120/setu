@@ -54,8 +54,23 @@ class NotificationApiTests {
         UUID dept = fixtures.provisionDepartment(tenant, prefix + "D");
         UUID programId = fixtures.provisionProgram(tenant, dept, prefix + "P");
         UUID curriculumId = fixtures.provisionCurriculum(tenant, programId, "v1", java.time.LocalDate.of(2025, 1, 1), null);
-        return new Person(tenant, day8Fixtures.provisionStudentWithActiveProgram(tenant, programId, curriculumId, prefix + "S"));
+        var person = new Person(tenant, day8Fixtures.provisionStudentWithActiveProgram(tenant, programId, curriculumId, prefix + "S"));
+        keepLiveConsumerOut(tenant.tenantId());
+        return person;
     }
+
+    /**
+     * The development database is shared with a running backend whose own notification consumer would otherwise also act on the events these
+     * fixtures write (a student's StudentAdmitted) and add notifications while a test is counting them. Mark the fixture's events as already
+     * handled, and clear anything it got in first, so a test only ever sees the notifications it makes itself. (A clean CI run has no such
+     * consumer; this is then a harmless no-op.)
+     */
+    private void keepLiveConsumerOut(UUID tenantId) {
+        jdbc.sql("INSERT INTO notification.processed_events (event_id, event_type) SELECT id, event_type FROM governance.outbox_events WHERE tenant_id = :t ON CONFLICT (event_id) DO NOTHING")
+            .param("t", tenantId).update();
+        jdbc.sql("DELETE FROM notification.notifications WHERE tenant_id = :t").param("t", tenantId).update();
+    }
+
 
     private UUID notify(Person p, String eventType) {
         UUID eventId = UUID.randomUUID();

@@ -11,6 +11,10 @@ import com.setu.directory.application.StudentProfileService;
 import com.setu.enrollment.domain.CourseSection;
 import com.setu.enrollment.domain.Enrollment;
 import com.setu.enrollment.domain.EnrollmentAction;
+import com.setu.enrollment.domain.EnrollmentDroppedEvent;
+import com.setu.enrollment.domain.StudentEnrolledEvent;
+import com.setu.enrollment.domain.StudentWaitlistedEvent;
+import com.setu.enrollment.domain.WaitlistConvertedEvent;
 import com.setu.enrollment.domain.EnrollmentOverride;
 import com.setu.enrollment.domain.EnrollmentStatus;
 import com.setu.enrollment.domain.OverrideStatus;
@@ -27,6 +31,7 @@ import com.setu.institution.application.CollegeService;
 import com.setu.shared.authorization.AuthorizationContext;
 import com.setu.shared.authorization.ResourceRef;
 import com.setu.shared.governance.AuditLogWriter;
+import com.setu.shared.governance.OutboxEventWriter;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -109,6 +114,7 @@ public class EnrollmentService {
     private final FacultyAssignmentService facultyAssignmentService;
     private final AuthorizationContext authorizationContext;
     private final AuditLogWriter auditLogWriter;
+    private final OutboxEventWriter outboxEventWriter;
 
     public EnrollmentService(EnrollmentRepository enrollmentRepository, EnrollmentActionRepository actionRepository,
                               CourseSectionRepository courseSectionRepository, StudentProgramRepository studentProgramRepository,
@@ -117,7 +123,9 @@ public class EnrollmentService {
                               AcademicPeriodService academicPeriodService, CoursePrerequisiteService coursePrerequisiteService,
                               MeetingPatternService meetingPatternService, CollegeService collegeService,
                               FacultyProfileService facultyProfileService, FacultyAssignmentService facultyAssignmentService,
-                              AuthorizationContext authorizationContext, AuditLogWriter auditLogWriter) {
+                              AuthorizationContext authorizationContext, AuditLogWriter auditLogWriter,
+                              OutboxEventWriter outboxEventWriter) {
+        this.outboxEventWriter = outboxEventWriter;
         this.enrollmentRepository = enrollmentRepository;
         this.actionRepository = actionRepository;
         this.courseSectionRepository = courseSectionRepository;
@@ -265,7 +273,16 @@ public class EnrollmentService {
         enrollment.markEnrolled(now);
         enrollmentRepository.save(enrollment);
         recordAction(enrollment.id(), "ENROLLMENT_APPROVED", currentUserId, null, tenantId);
+        emitEnrolled(enrollment, tenantId, now, false);
         return new RequestResult.Enrolled(enrollment.id());
+    }
+
+    /** Every move into ENROLLED, however it happened, tells the services that keep their own view of who is enrolled where. */
+    private void emitEnrolled(Enrollment enrollment, UUID tenantId, Instant now, boolean viaWaitlist) {
+        UUID correlationId = UUID.randomUUID();
+        var event = new StudentEnrolledEvent(UUID.randomUUID(), now, tenantId, enrollment.id(), correlationId, null,
+            enrollment.id(), enrollment.sectionId(), enrollment.studentId(), viaWaitlist);
+        outboxEventWriter.write("enrollments", enrollment.id(), event.eventType(), event.eventVersion(), event, tenantId, correlationId, null);
     }
 
     private RequestResult.Rejected reject(Enrollment enrollment, UUID tenantId, UUID actor, RejectReason reason) {
@@ -289,6 +306,10 @@ public class EnrollmentService {
         }
         waitlistEntryRepository.save(entry);
         recordAction(enrollment.id(), "ENROLLMENT_WAITLISTED", actor, null, tenantId);
+        UUID correlationId = UUID.randomUUID();
+        var event = new StudentWaitlistedEvent(UUID.randomUUID(), now, tenantId, enrollment.id(), correlationId, null,
+            enrollment.id(), section.id(), enrollment.studentId(), nextPosition);
+        outboxEventWriter.write("enrollments", enrollment.id(), event.eventType(), event.eventVersion(), event, tenantId, correlationId, null);
         return new RequestResult.Waitlisted(enrollment.id(), nextPosition);
     }
 
@@ -435,6 +456,11 @@ public class EnrollmentService {
         enrollment.markDropped(now);
         enrollmentRepository.save(enrollment);
         recordAction(enrollment.id(), "ENROLLMENT_DROPPED", currentUserId, reason, enrollment.tenantId());
+        UUID droppedCorrelation = UUID.randomUUID();
+        var droppedEvent = new EnrollmentDroppedEvent(UUID.randomUUID(), now, enrollment.tenantId(), enrollment.id(), droppedCorrelation, null,
+            enrollment.id(), enrollment.sectionId(), enrollment.studentId(), now, wasEnrolled);
+        outboxEventWriter.write("enrollments", enrollment.id(), droppedEvent.eventType(), droppedEvent.eventVersion(), droppedEvent,
+            enrollment.tenantId(), droppedCorrelation, null);
 
         boolean promoted = false;
         if (wasEnrolled) {
@@ -464,6 +490,12 @@ public class EnrollmentService {
         promoted.markEnrolled(now);
         enrollmentRepository.save(promoted);
         recordAction(promoted.id(), "ENROLLMENT_WAITLIST_PROMOTED", actor, null, promoted.tenantId());
+        UUID correlationId = UUID.randomUUID();
+        var converted = new WaitlistConvertedEvent(UUID.randomUUID(), now, promoted.tenantId(), section.id(), correlationId, null,
+            next.id(), promoted.id(), section.id(), promoted.studentId());
+        outboxEventWriter.write("waitlist_entries", section.id(), converted.eventType(), converted.eventVersion(), converted,
+            promoted.tenantId(), correlationId, null);
+        emitEnrolled(promoted, promoted.tenantId(), now, true);
         return true;
     }
 
