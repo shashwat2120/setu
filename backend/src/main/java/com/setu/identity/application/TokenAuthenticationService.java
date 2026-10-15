@@ -1,7 +1,7 @@
 package com.setu.identity.application;
 
 import com.setu.identity.infrastructure.security.JwtService;
-import io.jsonwebtoken.JwtException;
+import com.setu.shared.security.TokenRejectedException;
 import org.springframework.stereotype.Service;
 
 import java.util.Optional;
@@ -40,7 +40,7 @@ public class TokenAuthenticationService {
             var claims = jwtService.validate(bearerToken);
             // Same rule as the HTTP filter: a revoked login or an inactive account is refused at STOMP CONNECT too.
             return loginLiveness.isLive(claims.userId(), claims.familyId()) ? Optional.of(claims.userId()) : Optional.empty();
-        } catch (JwtException | IllegalArgumentException e) {
+        } catch (TokenRejectedException | IllegalArgumentException e) {
             return Optional.empty();
         }
     }

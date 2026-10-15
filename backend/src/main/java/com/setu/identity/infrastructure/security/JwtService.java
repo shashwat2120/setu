@@ -1,30 +1,28 @@
 package com.setu.identity.infrastructure.security;
 
-import io.jsonwebtoken.Claims;
-import io.jsonwebtoken.JwtException;
-import io.jsonwebtoken.Jws;
+import com.setu.shared.security.AccessTokenClaims;
+import com.setu.shared.security.KeyedTokenVerifier;
+import com.setu.shared.security.TokenRejectedException;
 import io.jsonwebtoken.Jwts;
-import io.jsonwebtoken.security.Keys;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.stereotype.Component;
 
-import javax.crypto.SecretKey;
-import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
-import java.util.Base64;
 import java.util.Date;
 import java.util.UUID;
 
 /**
  * Issues and validates short-lived access tokens. Claims are deliberately
- * minimal ({@code sub}, {@code jti}, and now {@code sup} — see below);
+ * minimal ({@code sub}, {@code jti}, {@code fam}, and {@code sup} — see below);
  * tenant/role claims are still deliberately NOT carried in the token —
  * AuthorizationService resolves those fresh from identity.user_roles on
  * every request (Day 4), so a role/tenant change takes effect immediately
- * rather than only after the old token expires. Signature (HS256), issuer,
- * audience, and expiry are all verified on every parse; a token failing any
- * one of those checks throws rather than being silently treated as
+ * rather than only after the old token expires.
+ * <p>
+ * Tokens are signed ES256 with the Identity service's private key and carry its {@code kid}; every other service verifies them against the
+ * public keys published at {@code /.well-known/jwks.json} and never holds a signing secret (Sprint 6A.2). Signature, algorithm, issuer,
+ * audience and expiry are all verified on every parse; a token failing any one of those checks is rejected, never silently treated as
  * anonymous.
  */
 @Component
@@ -36,20 +34,13 @@ public class JwtService {
     private static final String FAMILY_CLAIM = "fam";
 
     private final JwtProperties properties;
-    private final SecretKey key;
+    private final JwtKeyStore keyStore;
+    private final KeyedTokenVerifier verifier;
 
-    public JwtService(JwtProperties properties) {
+    public JwtService(JwtProperties properties, JwtKeyStore keyStore) {
         this.properties = properties;
-        byte[] secretBytes = decodeSecret(properties.getSecret());
-        this.key = Keys.hmacShaKeyFor(secretBytes);
-    }
-
-    private static byte[] decodeSecret(String secret) {
-        try {
-            return Base64.getDecoder().decode(secret);
-        } catch (IllegalArgumentException notBase64) {
-            return secret.getBytes(StandardCharsets.UTF_8);
-        }
+        this.keyStore = keyStore;
+        this.verifier = new KeyedTokenVerifier(keyStore, properties.getIssuer(), properties.getAudience());
     }
 
     public String issueAccessToken(UUID userId) {
@@ -76,6 +67,7 @@ public class JwtService {
         Instant now = Instant.now();
         Instant expiry = now.plus(properties.getAccessTokenTtlMinutes(), ChronoUnit.MINUTES);
         var builder = Jwts.builder()
+            .header().keyId(keyStore.signingKeyId()).and()
             .subject(userId.toString())
             .issuer(properties.getIssuer())
             .audience().add(properties.getAudience()).and()
@@ -88,30 +80,11 @@ public class JwtService {
         if (familyId != null) {
             builder.claim(FAMILY_CLAIM, familyId.toString());
         }
-        return builder.signWith(key, Jwts.SIG.HS256).compact();
+        return builder.signWith(keyStore.signingKey(), Jwts.SIG.ES256).compact();
     }
 
-    /** Throws a JwtException subtype (ExpiredJwtException, SignatureException, ...) on any validation failure — never returns a partially-trusted result. */
-    public AccessTokenClaims validate(String token) throws JwtException {
-        Jws<Claims> jws = Jwts.parser()
-            .verifyWith(key)
-            .requireIssuer(properties.getIssuer())
-            .requireAudience(properties.getAudience())
-            .build()
-            .parseSignedClaims(token);
-        Claims claims = jws.getPayload();
-        Long stepUpEpoch = claims.get(STEP_UP_CLAIM, Long.class);
-        Instant stepUpAt = stepUpEpoch == null ? null : Instant.ofEpochSecond(stepUpEpoch);
-        String family = claims.get(FAMILY_CLAIM, String.class);
-        return new AccessTokenClaims(
-            UUID.fromString(claims.getSubject()),
-            claims.getId(),
-            claims.getIssuedAt().toInstant(),
-            claims.getExpiration().toInstant(),
-            stepUpAt,
-            family == null ? null : UUID.fromString(family));
-    }
-
-    public record AccessTokenClaims(UUID userId, String jti, Instant issuedAt, Instant expiresAt, Instant stepUpAt, UUID familyId) {
+    /** Throws {@link TokenRejectedException} on any validation failure — never returns a partially-trusted result. */
+    public AccessTokenClaims validate(String token) throws TokenRejectedException {
+        return verifier.verify(token);
     }
 }

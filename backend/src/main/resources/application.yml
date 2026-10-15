@@ -211,6 +211,11 @@ app:
       # — every real deployment MUST override this via JWT_SECRET with a
       # random >=256-bit value. See JwtProperties.
       secret: ${JWT_SECRET:ZGV2LW9ubHktc2VjcmV0LWRvLW5vdC11c2UtaW4tcHJvZHVjdGlvbi1yZXBsYWNlLW1l}
+      # Access tokens are signed ES256. JWT_SIGNING_KEY = Base64 PKCS#8 EC P-256 private key; JWT_PREVIOUS_PUBLIC_KEYS = comma-separated
+      # Base64 X.509 public keys of retired keys (rotation). Both come from backend/tools/generate-jwt-key.js. With no signing key an
+      # EPHEMERAL one is generated at start-up (dev/tests only; logged as a warning).
+      signing-key: ${JWT_SIGNING_KEY:}
+      previous-public-keys: ${JWT_PREVIOUS_PUBLIC_KEYS:}
       issuer: ${JWT_ISSUER:setu}
       audience: ${JWT_AUDIENCE:setu-api}
       access-token-ttl-minutes: 15

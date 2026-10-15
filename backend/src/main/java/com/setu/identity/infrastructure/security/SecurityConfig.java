@@ -86,6 +86,8 @@ public class SecurityConfig {
                 .requestMatchers("/auth/step-up/**").authenticated()
                 .requestMatchers("/auth/**").permitAll()
                 .requestMatchers("/actuator/health/**", "/actuator/info").permitAll()
+                // The public half of the token-signing keys: services verify tokens against it, so it cannot require a token (6A.2).
+                .requestMatchers("/.well-known/jwks.json").permitAll()
                 // Metrics describe the whole platform: only the dedicated Prometheus scrape token may read them (not public,
                 // and not reachable with an ordinary user token either). See MetricsScrapeAuthFilter.
                 .requestMatchers(MetricsScrapeAuthFilter.PATH).hasAuthority(MetricsScrapeAuthFilter.AUTHORITY)

@@ -136,7 +136,7 @@ class AccessTokenRevocationTests {
     }
 
     @Test
-    void everyTokenIssuedAtLoginAndRefreshIsBoundToItsLogin() {
+    void everyTokenIssuedAtLoginAndRefreshIsBoundToItsLogin() throws Exception {
         TokenPair login = sessionService.startNewSession(newUser(), null);
         var rotated = ((RefreshOutcome.Rotated) sessionService.refresh(login.refreshToken(), null)).tokens();
 
