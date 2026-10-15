@@ -36,3 +36,6 @@ logs/
 
 # Generated docs (Spring Modulith Documenter output — ModularityTests#writeDocumentationSnapshot)
 /build/
+
+# Config server secrets (see infra/config/README.md): real values live here or in APP_CONFIGSERVER_SECRETSDIR, never in git
+infra/config/secrets/

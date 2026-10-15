@@ -1,0 +1,17 @@
+# The profile for running everything on one developer machine against the docker compose stack in infra/docker (non-default host ports
+# because 5432, 6379 and 9092 are taken by an unrelated project on the development machine).
+spring:
+  datasource:
+    url: jdbc:postgresql://localhost:5433/setu
+    username: setu
+  data:
+    redis:
+      host: localhost
+      port: 6380
+  kafka:
+    bootstrap-servers: localhost:9093
+app:
+  security:
+    jwt:
+      jwks-uri: http://localhost:8081/.well-known/jwks.json
+  frontend-base-url: http://localhost:5180

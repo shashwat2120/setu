@@ -1,6 +1,7 @@
 package com.setu.gateway;
 
 import com.setu.shared.security.Jwks;
+import com.setu.testsupport.BlockingStubServer;
 import com.setu.shared.security.JwksKeySource;
 import com.setu.shared.security.LoginRevocations;
 import io.jsonwebtoken.Jwts;
@@ -49,7 +50,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 class GatewayWiringTests {
 
     private static final KeyPair IDENTITY_KEY = newPair();
-    private static ApacheUpstreamTests.Stub stub;
+    private static BlockingStubServer stub;
 
     @TestConfiguration
     static class IdentityKeys {
@@ -63,7 +64,7 @@ class GatewayWiringTests {
 
     @DynamicPropertySource
     static void services(DynamicPropertyRegistry registry) throws IOException {
-        stub = new ApacheUpstreamTests.Stub();
+        stub = new BlockingStubServer();
         String url = stub.uri().toString();
         registry.add("app.gateway.services.identity.instances", () -> url);
         registry.add("app.gateway.services.academic.instances", () -> url);

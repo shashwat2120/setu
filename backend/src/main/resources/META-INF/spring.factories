@@ -1,1 +1,4 @@
 org.springframework.boot.EnvironmentPostProcessor=com.setu.aiexplain.infrastructure.ai.AiProviderSafetyPostProcessor
+
+org.springframework.boot.context.config.ConfigDataLocationResolver=com.setu.shared.config.SetuConfigDataLocationResolver
+org.springframework.boot.context.config.ConfigDataLoader=com.setu.shared.config.SetuConfigDataLoader

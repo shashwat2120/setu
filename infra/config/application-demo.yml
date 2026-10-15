@@ -1,0 +1,5 @@
+# Layered on top of "local" for a review or demo run: the demo colleges, people and content are seeded (into an EMPTY database; see
+# docs/demo-data-plan.md). Never active in a real deployment.
+app:
+  demo-data:
+    enabled: true

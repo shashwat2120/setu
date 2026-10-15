@@ -1,5 +1,6 @@
 package com.setu.gateway;
 
+import com.setu.testsupport.BlockingStubServer;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -29,103 +30,12 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  */
 class ApacheUpstreamTests {
 
-    /** A one-connection-at-a-time HTTP/1.1 stub. */
-    static class Stub implements AutoCloseable {
-        record Seen(String requestLine, List<String> headers, String body) {
-            String header(String name) {
-                return headers.stream().filter(h -> h.toLowerCase().startsWith(name.toLowerCase() + ":")).map(h -> h.substring(h.indexOf(':') + 1).trim()).findFirst().orElse(null);
-            }
-        }
-
-        final ServerSocket server;
-        final List<Seen> seen = new CopyOnWriteArrayList<>();
-        volatile String response = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: 2\r\n\r\nok";
-        volatile long delayMillis;
-        volatile boolean dropWithoutAnswer;
-        private final Thread thread;
-
-        Stub() throws IOException {
-            server = new ServerSocket(0, 20, InetAddress.getLoopbackAddress());
-            thread = new Thread(this::serve, "upstream-stub");
-            thread.setDaemon(true);
-            thread.start();
-        }
-
-        URI uri() {
-            return URI.create("http://127.0.0.1:" + server.getLocalPort());
-        }
-
-        private void serve() {
-            while (!server.isClosed()) {
-                try (Socket socket = server.accept()) {
-                    InputStream in = socket.getInputStream();
-                    String requestLine = readLine(in);
-                    List<String> headers = new ArrayList<>();
-                    String line;
-                    int length = 0;
-                    boolean chunked = false;
-                    while (!(line = readLine(in)).isEmpty()) {
-                        headers.add(line);
-                        if (line.toLowerCase().startsWith("content-length:")) {
-                            length = Integer.parseInt(line.substring(line.indexOf(':') + 1).trim());
-                        }
-                        if (line.toLowerCase().startsWith("transfer-encoding:") && line.toLowerCase().contains("chunked")) {
-                            chunked = true;
-                        }
-                    }
-                    ByteArrayOutputStream body = new ByteArrayOutputStream();
-                    if (chunked) {
-                        int size;
-                        while ((size = Integer.parseInt(readLine(in).trim(), 16)) > 0) {
-                            body.write(in.readNBytes(size));
-                            readLine(in);
-                        }
-                        readLine(in);
-                    } else {
-                        body.write(in.readNBytes(length));
-                    }
-                    seen.add(new Seen(requestLine, headers, body.toString(StandardCharsets.UTF_8)));
-                    if (delayMillis > 0) {
-                        Thread.sleep(delayMillis);
-                    }
-                    if (!dropWithoutAnswer) {
-                        OutputStream out = socket.getOutputStream();
-                        // the stub closes the socket after each answer, so it says so; otherwise a pooled connection would be reused after the close
-                        out.write(response.replaceFirst("\r\n", "\r\nConnection: close\r\n").getBytes(StandardCharsets.UTF_8));
-                        out.flush();
-                    }
-                } catch (IOException | InterruptedException e) {
-                    // the client gave up (timeout test) or the stub was closed
-                }
-            }
-        }
-
-        private static String readLine(InputStream in) throws IOException {
-            StringBuilder sb = new StringBuilder();
-            int c;
-            while ((c = in.read()) != -1) {
-                if (c == '\n') {
-                    break;
-                }
-                if (c != '\r') {
-                    sb.append((char) c);
-                }
-            }
-            return sb.toString();
-        }
-
-        @Override
-        public void close() throws IOException {
-            server.close();
-        }
-    }
-
-    private Stub stub;
+    private BlockingStubServer stub;
     private ApacheUpstream upstream;
 
     @BeforeEach
     void setUp() throws IOException {
-        stub = new Stub();
+        stub = new BlockingStubServer();
         upstream = new ApacheUpstream(Duration.ofSeconds(1), Duration.ofMillis(600));
     }
 
@@ -147,7 +57,7 @@ class ApacheUpstreamTests {
             assertThat(read(response)).isEqualTo("ok");
             assertThat(response.headers()).anyMatch(h -> h.name().equalsIgnoreCase("Content-Type") && h.value().equals("text/plain"));
         }
-        Stub.Seen seen = stub.seen.get(0);
+        BlockingStubServer.Seen seen = stub.seen.get(0);
         assertThat(seen.requestLine()).isEqualTo("GET /institution/colleges?x=1 HTTP/1.1");
         assertThat(seen.header("Authorization")).isEqualTo("Bearer t");
         assertThat(seen.header("X-Correlation-Id")).isEqualTo("c-1");
@@ -160,7 +70,7 @@ class ApacheUpstreamTests {
             List.of(new Upstream.Header("Content-Type", "application/json")), new ByteArrayInputStream(json), json.length))) {
             assertThat(response.status()).isEqualTo(200);
         }
-        Stub.Seen seen = stub.seen.get(0);
+        BlockingStubServer.Seen seen = stub.seen.get(0);
         assertThat(seen.requestLine()).startsWith("POST /directory/students");
         assertThat(seen.header("Content-Length")).isEqualTo("15");
         assertThat(seen.body()).isEqualTo("{\"name\":\"Asha\"}");

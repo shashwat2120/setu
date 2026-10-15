@@ -1,0 +1,13 @@
+# Configuration every Setu application receives from the config server (see README.md). Nothing secret belongs in this directory:
+# secrets live in the secrets directory, outside the repository.
+app:
+  security:
+    jwt:
+      issuer: setu
+      audience: setu-api
+      access-token-ttl-minutes: 15
+      refresh-token-ttl-days: 30
+    authorization:
+      step-up-validity-minutes: 5
+  outbox:
+    topic-prefix: setu.

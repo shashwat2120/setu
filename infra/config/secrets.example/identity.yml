@@ -1,0 +1,12 @@
+# Only Identity may hold the token-signing key. Make one with: node backend/tools/generate-jwt-key.js
+app:
+  security:
+    jwt:
+      signing-key: CHANGE_ME
+      # public keys of retired signing keys, comma separated, only during a rotation
+      previous-public-keys: ""
+  metrics:
+    scrape-token: CHANGE_ME
+  email:
+    smtp:
+      password: CHANGE_ME

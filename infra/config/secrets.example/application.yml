@@ -1,0 +1,11 @@
+# Copy this directory's files to infra/config/secrets/ (git-ignored) or to any directory named by APP_CONFIGSERVER_SECRETSDIR, and replace
+# every CHANGE_ME. These are the names of the secrets, never their values: a real value in this directory fails RepositoryConfigFilesTests.
+# Shared by every application:
+spring:
+  datasource:
+    password: CHANGE_ME
+app:
+  security:
+    jwt:
+      # keys the password-reset-code HMAC only; any long random string
+      secret: CHANGE_ME
