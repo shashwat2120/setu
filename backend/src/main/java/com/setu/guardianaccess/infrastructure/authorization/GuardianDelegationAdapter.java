@@ -1,34 +1,34 @@
-package com.setu.identity.infrastructure.authorization;
+package com.setu.guardianaccess.infrastructure.authorization;
 
 import com.setu.directory.application.DirectoryService;
 import com.setu.guardianaccess.application.GuardianAccessService;
-import com.setu.identity.infrastructure.PersonRepository;
 import com.setu.shared.authorization.GuardianDelegationChecker;
+import com.setu.shared.identity.PersonDirectory;
 import org.springframework.stereotype.Component;
 
 import java.time.Instant;
 import java.util.UUID;
 
 /**
- * Composes three modules to answer one question: can this authenticated
- * user (identity.users.id), acting as a guardian, see this student's data?
- * identity -&gt; persons (same module), directory -&gt; guardians (cross-module
- * application call), guardianaccess -&gt; grants+permissions (cross-module
- * application call). Lives in identity because AuthorizationService (the
- * only caller) already lives here — see shared.authorization's
- * package-info for why the composition can't live in directory or
- * guardianaccess without creating a dependency back the other way.
+ * Answers one question for the authorization engine: can this authenticated user (identity.users.id), acting as a guardian, see this
+ * student's data under an active, unexpired, un-revoked grant for this permission?
+ * <p>
+ * Lives here, with the grants it reads, and implements the shared {@link GuardianDelegationChecker} contract that identity's
+ * AuthorizationService calls. It used to live in identity, which made identity depend on directory and guardianaccess and, once services are
+ * extracted, the Identity service on the Academic service (a cycle, because Academic already depends on Identity). Found by the Sprint 6
+ * coupling audit (docs/extraction-audit.md). The person is resolved through the shared {@link PersonDirectory} contract, not identity's
+ * repository.
  */
 @Component
 public class GuardianDelegationAdapter implements GuardianDelegationChecker {
 
-    private final PersonRepository personRepository;
+    private final PersonDirectory personDirectory;
     private final DirectoryService directoryService;
     private final GuardianAccessService guardianAccessService;
 
-    public GuardianDelegationAdapter(PersonRepository personRepository, DirectoryService directoryService,
+    public GuardianDelegationAdapter(PersonDirectory personDirectory, DirectoryService directoryService,
                                       GuardianAccessService guardianAccessService) {
-        this.personRepository = personRepository;
+        this.personDirectory = personDirectory;
         this.directoryService = directoryService;
         this.guardianAccessService = guardianAccessService;
     }
@@ -36,7 +36,7 @@ public class GuardianDelegationAdapter implements GuardianDelegationChecker {
     @Override
     public boolean hasActiveDelegatedAccess(UUID guardianUserId, UUID studentProfileId, UUID tenantId,
                                              String permissionCode, Instant now) {
-        var person = personRepository.findByUserId(guardianUserId);
+        var person = personDirectory.findByUserId(guardianUserId);
         if (person.isEmpty()) {
             return false;
         }

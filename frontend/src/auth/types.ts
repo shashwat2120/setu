@@ -5,17 +5,24 @@ export interface RoleGrant {
   tenantId: string | null;
 }
 
-/** Mirrors CurrentUserController.MeResponse exactly — never invent fields the backend doesn't send. */
-export interface CurrentUser {
+/** Mirrors CurrentUserController.MeResponse (`GET /identity/me`) exactly: the account and its roles. */
+export interface IdentityMe {
   userId: string;
   email: string | null;
   personId: string | null;
   fullName: string | null;
   roles: RoleGrant[];
+}
+
+/** Mirrors DirectoryMeController.ProfilesResponse (`GET /directory/me/profiles?tenantId=`): the caller's own profile ids in one college. */
+export interface DirectoryProfiles {
   studentId: string | null;
   facultyId: string | null;
   guardianId: string | null;
 }
+
+/** The signed-in person as the app uses it: the identity service's account and roles plus the academic service's profile ids. */
+export interface CurrentUser extends IdentityMe, DirectoryProfiles {}
 
 export function hasRole(user: CurrentUser | null, role: RoleCode): boolean {
   return user?.roles.some((r) => r.roleCode === role) ?? false;

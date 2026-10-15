@@ -10,7 +10,7 @@ import java.util.UUID;
  * person), directory (resolve person -&gt; guardian), and guardianaccess
  * (resolve grant + permission), three separate modules, so it can't live
  * inside any single one of them without that module depending on the
- * others. See {@code com.setu.identity.infrastructure.authorization.
+ * others. It now lives in guardianaccess, with the grants it reads: see {@code com.setu.guardianaccess.infrastructure.authorization.
  * GuardianDelegationAdapter} for the actual composition.
  */
 public interface GuardianDelegationChecker {

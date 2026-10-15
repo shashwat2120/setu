@@ -5,7 +5,7 @@
  * <p>
  * Added Sprint 5C Day 6 to break a genuine module dependency cycle: several
  * directory-owned services (student/faculty/guardian profiles) need to
- * resolve a person by id, and identity's own {@code GuardianDelegationAdapter}
+ * resolve a person by id, and guardianaccess's {@code GuardianDelegationAdapter}
  * already depends on {@code directory.application.DirectoryService} the
  * other way. Depending on {@code identity.application.PersonService}
  * directly from {@code directory} would have closed a

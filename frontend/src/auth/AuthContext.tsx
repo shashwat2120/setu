@@ -1,15 +1,39 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { apiFetch, setAccessToken, setUnauthorizedHandler } from '../api/client';
-import type { CurrentUser } from './types';
+import type { CurrentUser, DirectoryProfiles, IdentityMe } from './types';
 import { signInWithPasskey } from './passkeyLogin';
 
 interface LoginResponse {
   accessToken: string;
 }
 
+/**
+ * The account and roles come from the identity service; the student, faculty and guardian profile ids come from the academic service
+ * (they are academic data, and identity must not depend on it). A role's college decides which college's profile to ask for.
+ */
+async function fetchCurrentUser(): Promise<CurrentUser> {
+  const me = await apiFetch<IdentityMe>('/identity/me');
+  const profileFor = async (role: 'STUDENT' | 'FACULTY' | 'GUARDIAN'): Promise<DirectoryProfiles | null> => {
+    const tenantId = me.roles.find((r) => r.roleCode === role)?.tenantId;
+    if (!tenantId) return null;
+    try {
+      return await apiFetch<DirectoryProfiles>(`/directory/me/profiles?tenantId=${encodeURIComponent(tenantId)}`);
+    } catch {
+      return null; // a missing profile must not stop sign-in; the page that needs it explains
+    }
+  };
+  const [student, faculty, guardian] = await Promise.all([profileFor('STUDENT'), profileFor('FACULTY'), profileFor('GUARDIAN')]);
+  return {
+    ...me,
+    studentId: student?.studentId ?? null,
+    facultyId: faculty?.facultyId ?? null,
+    guardianId: guardian?.guardianId ?? null,
+  };
+}
+
 interface AuthState {
   user: CurrentUser | null;
-  /** True while the initial session-restore attempt (silent refresh + /identity/me) is in flight. */
+  /** True while the initial session-restore attempt (silent refresh + /identity/me + /directory/me/profiles) is in flight. */
   loading: boolean;
   login: (email: string, password: string) => Promise<void>;
   /** Sign in with a registered passkey (WebAuthn) instead of a password; `email` is optional (see signInWithPasskey). */
@@ -33,7 +57,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   const loadCurrentUser = useCallback(async () => {
-    const me = await apiFetch<CurrentUser>('/identity/me');
+    const me = await fetchCurrentUser();
     setUser(me);
     return me;
   }, []);
@@ -46,7 +70,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (res.ok) {
           const body = (await res.json()) as LoginResponse;
           setAccessToken(body.accessToken);
-          const me = await apiFetch<CurrentUser>('/identity/me');
+          const me = await fetchCurrentUser();
           if (!cancelled) setUser(me);
         }
       } catch {
