@@ -50,6 +50,10 @@ shown implicitly by its aggregate. `event_version` is `1` for every row.
 > `event_version` 1); `previous_status`, `actor_user_id` and `reason` are present only on the two administrator events. The
 > consumers listed are the intended Sprint 6B ones; the only one built so far is Notification's (next section).
 
+> **Sprint 6B.1:** the rules every event follows (envelope headers, delivery guarantee, idempotent and version-checking consumers, correlation/causation,
+> retry and dead letters, how an event may change) are in [contracts/kafka-contracts.md](contracts/kafka-contracts.md), and the exact shape of every emitted event is
+> generated and frozen in [event-schemas.md](event-schemas.md). Where this catalogue and those two disagree about an emitted event, they win; this one still says who is meant to consume what.
+
 ## Implementation status
 
 **48 events are emitted today:** `GradePublished`; `AttendanceRecorded`, **`AttendanceSessionOpened`, `AttendanceSessionClosed`** and the 8 staff-attendance events; `PlacementRecorded`;

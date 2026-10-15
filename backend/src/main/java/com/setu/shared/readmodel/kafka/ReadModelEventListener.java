@@ -1,5 +1,7 @@
 package com.setu.shared.readmodel.kafka;
 
+import com.setu.shared.events.EventContext;
+import com.setu.shared.events.EventVersions;
 import com.setu.shared.readmodel.PoisonEventException;
 import com.setu.shared.readmodel.ReadModelProjector;
 import io.micrometer.core.instrument.MeterRegistry;
@@ -51,10 +53,14 @@ class ReadModelEventListener {
         }
         try {
             ReadModelProjector.Outcome outcome = ReadModelProjector.Outcome.IGNORED;
-            for (ReadModelProjector projector : projectors) {
-                if (projector.handles(eventType)) {
-                    outcome = projector.apply(eventType, header(record, "event_id"), record.value());
-                    break;
+            // Anything this consumer writes while handling the event continues its flow, caused by it.
+            try (EventContext.Scope ignored = EventContext.open(uuid(header(record, "correlation_id")), uuid(header(record, "event_id")))) {
+                for (ReadModelProjector projector : projectors) {
+                    if (projector.handles(eventType)) {
+                        outcome = projector.apply(eventType, header(record, "event_id"), EventVersions.parse(header(record, "event_version")),
+                            EventVersions.parse(header(record, "schema_version")), record.value());
+                        break;
+                    }
                 }
             }
             count(eventType, outcome.name().toLowerCase());
@@ -67,6 +73,14 @@ class ReadModelEventListener {
 
     private void count(String eventType, String outcome) {
         meterRegistry.counter("setu.readmodel.events", "event_type", eventType, "outcome", outcome).increment();
+    }
+
+    private static java.util.UUID uuid(String value) {
+        try {
+            return value == null ? null : java.util.UUID.fromString(value);
+        } catch (IllegalArgumentException e) {
+            return null;
+        }
     }
 
     private static String header(ConsumerRecord<?, ?> record, String name) {

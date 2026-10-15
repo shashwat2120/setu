@@ -5,6 +5,7 @@ import org.springframework.jdbc.core.simple.JdbcClient;
 
 import java.sql.Timestamp;
 import java.time.Instant;
+import java.util.Set;
 
 /**
  * Keeps a service's local copy of Identity's data current: who holds which role ({@code UserRoleAssigned}, {@code UserRoleRevoked}) and,
@@ -17,6 +18,11 @@ import java.time.Instant;
  */
 public class IdentityEventProjector extends BaseProjector {
 
+    /** The role events every service follows. */
+    public static final Set<String> ROLE_EVENTS = Set.of("UserRoleAssigned", "UserRoleRevoked");
+    /** The person events, followed only by the service that shows people by name. */
+    public static final Set<String> PERSON_EVENTS = Set.of("PersonRegistered", "PersonUpdated");
+
     private final boolean people;
 
     public IdentityEventProjector(JdbcClient jdbc, ObjectMapper mapper, String schema, boolean people) {
@@ -26,11 +32,7 @@ public class IdentityEventProjector extends BaseProjector {
 
     @Override
     public boolean handles(String eventType) {
-        return switch (eventType) {
-            case "UserRoleAssigned", "UserRoleRevoked" -> true;
-            case "PersonRegistered", "PersonUpdated" -> people;
-            default -> false;
-        };
+        return ROLE_EVENTS.contains(eventType) || (people && PERSON_EVENTS.contains(eventType));
     }
 
     @Override

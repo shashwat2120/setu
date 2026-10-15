@@ -2,6 +2,7 @@ package com.setu.shared.governance;
 
 import io.micrometer.core.instrument.Gauge;
 import io.micrometer.core.instrument.MeterRegistry;
+import com.setu.shared.events.EventEnvelope;
 import org.apache.kafka.clients.producer.ProducerRecord;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -11,7 +12,6 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 
@@ -92,13 +92,10 @@ class OutboxPublisher {
     private void publishOne(OutboxEvent event) {
         String topic = topicPrefix + event.aggregateType();
         ProducerRecord<String, String> record = new ProducerRecord<>(topic, event.aggregateId().toString(), event.payloadJson());
-        record.headers().add("event_id", event.id().toString().getBytes(StandardCharsets.UTF_8));
-        record.headers().add("event_type", event.eventType().getBytes(StandardCharsets.UTF_8));
-        record.headers().add("event_version", String.valueOf(event.eventVersion()).getBytes(StandardCharsets.UTF_8));
-        record.headers().add("correlation_id", event.correlationId().toString().getBytes(StandardCharsets.UTF_8));
-        if (event.tenantId() != null) {
-            record.headers().add("tenant_id", event.tenantId().toString().getBytes(StandardCharsets.UTF_8));
-        }
+        // The canonical envelope, in the headers (com.setu.shared.events.EventEnvelope); the value stays the event's own payload.
+        EventEnvelope.headers(event.id(), event.eventType(), event.eventVersion(), event.schemaVersion(), event.producer(), event.occurredAt(),
+            event.tenantId(), event.aggregateType(), event.aggregateId(), event.correlationId(), event.causationId())
+            .forEach((name, value) -> record.headers().add(name, EventEnvelope.bytes(value)));
         try {
             // Synchronous within this transaction on purpose: the row lock (FOR UPDATE SKIP LOCKED) is held until
             // the send is acknowledged or fails, so a concurrent publisher instance can never see this row as

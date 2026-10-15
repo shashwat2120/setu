@@ -29,6 +29,9 @@ import java.util.UUID;
 @Service
 public class NotificationEventProcessor {
 
+    /** The highest payload version of any event this module notifies on. */
+    public static final int SUPPORTED_EVENT_VERSION = 1;
+
     public enum Outcome { CREATED, DUPLICATE, IGNORED }
 
     private final JdbcClient jdbc;

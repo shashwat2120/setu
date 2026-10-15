@@ -48,7 +48,8 @@ class NotificationKafkaConfig {
         backOff.setMaxInterval(5_000);
         DefaultErrorHandler handler = new DefaultErrorHandler(recoverer, backOff);
         // Cannot succeed on a retry: skip the backoff and dead-letter immediately.
-        handler.addNotRetryableExceptions(PoisonEventException.class, DataIntegrityViolationException.class);
+        handler.addNotRetryableExceptions(PoisonEventException.class, DataIntegrityViolationException.class,
+            com.setu.shared.events.UnsupportedEventVersionException.class);
         return handler;
     }
 

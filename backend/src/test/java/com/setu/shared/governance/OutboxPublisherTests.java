@@ -114,7 +114,7 @@ class OutboxPublisherTests {
     private OutboxEvent writeTestRow(String aggregateType, UUID aggregateId, String eventType) {
         UUID correlationId = UUID.randomUUID();
         OutboxEvent event = new OutboxEvent(UUID.randomUUID(), UUID.randomUUID(), aggregateType, aggregateId,
-            eventType, 1, "{\"test\":true}", Instant.now(), correlationId, null);
+            eventType, 1, "{\"test\":true}", Instant.now(), correlationId, null, "test", 1);
         return repository.saveAndFlush(event);
     }
 

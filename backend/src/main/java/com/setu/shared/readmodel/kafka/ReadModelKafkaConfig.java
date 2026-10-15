@@ -1,5 +1,6 @@
 package com.setu.shared.readmodel.kafka;
 
+import com.setu.shared.events.UnsupportedEventVersionException;
 import com.setu.shared.readmodel.PoisonEventException;
 import io.micrometer.core.instrument.MeterRegistry;
 import org.apache.kafka.common.TopicPartition;
@@ -43,7 +44,7 @@ class ReadModelKafkaConfig {
         backOff.setMaxAttempts(MAX_ATTEMPTS - 1);
         backOff.setMaxInterval(5_000);
         DefaultErrorHandler handler = new DefaultErrorHandler(recoverer, backOff);
-        handler.addNotRetryableExceptions(PoisonEventException.class, DataIntegrityViolationException.class);
+        handler.addNotRetryableExceptions(PoisonEventException.class, DataIntegrityViolationException.class, UnsupportedEventVersionException.class);
         return handler;
     }
 

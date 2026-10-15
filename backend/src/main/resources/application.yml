@@ -111,7 +111,13 @@ spring:
     producer:
       key-serializer: org.apache.kafka.common.serialization.StringSerializer
       value-serializer: org.apache.kafka.common.serialization.StringSerializer
+      # Delivery guarantees stated rather than inherited from client defaults (docs/contracts/kafka-contracts.md): every in-sync replica
+      # acknowledges, and the broker drops a retried duplicate of a record it already has. Together with the outbox this is at-least-once
+      # delivery with no producer-side duplicates; the consumers' processed-event tables absorb the rest.
+      acks: all
       properties:
+        enable.idempotence: true
+        max.in.flight.requests.per.connection: 5
         # Short, explicit timeouts: a Kafka outage must fail a publish attempt
         # within a few seconds, not block the scheduled poller (and every test
         # context that loads it) for the client library's multi-minute defaults.

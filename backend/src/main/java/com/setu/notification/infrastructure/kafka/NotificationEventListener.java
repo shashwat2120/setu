@@ -50,8 +50,15 @@ class NotificationEventListener {
                 "record " + record.topic() + "-" + record.partition() + "@" + record.offset() + " has no event_type header");
         }
         try {
-            NotificationEventProcessor.Outcome outcome =
-                processor.process(eventType, header(record, "event_id"), header(record, "tenant_id"), record.value());
+            // An event newer than this consumer understands is refused, not guessed at (dead-lettered, never retried).
+            com.setu.shared.events.EventVersions.assertSupported(eventType,
+                com.setu.shared.events.EventVersions.parse(header(record, "event_version")),
+                com.setu.shared.events.EventVersions.parse(header(record, "schema_version")), NotificationEventProcessor.SUPPORTED_EVENT_VERSION);
+            NotificationEventProcessor.Outcome outcome;
+            try (com.setu.shared.events.EventContext.Scope ignored = com.setu.shared.events.EventContext.open(
+                uuid(header(record, "correlation_id")), uuid(header(record, "event_id")))) {
+                outcome = processor.process(eventType, header(record, "event_id"), header(record, "tenant_id"), record.value());
+            }
             count(eventType, outcome.name().toLowerCase());
             log.debug("notification consumer: {} on {} -> {}", eventType, record.topic(), outcome);
         } catch (RuntimeException e) {
@@ -62,6 +69,14 @@ class NotificationEventListener {
 
     private void count(String eventType, String outcome) {
         meterRegistry.counter("setu.notification.events", "event_type", eventType, "outcome", outcome).increment();
+    }
+
+    private static java.util.UUID uuid(String value) {
+        try {
+            return value == null ? null : java.util.UUID.fromString(value);
+        } catch (IllegalArgumentException e) {
+            return null;
+        }
     }
 
     private static String header(ConsumerRecord<?, ?> record, String name) {

@@ -8,6 +8,7 @@ import java.sql.Date;
 import java.sql.Timestamp;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -22,19 +23,18 @@ import java.util.UUID;
  */
 public class AcademicEventProjector extends BaseProjector {
 
+    /** Every event type this projector builds the copy from; the consumer-contract test checks each against what Academic really emits. */
+    public static final Set<String> EVENT_TYPES = Set.of("StudentAdmitted", "FacultyProfileCreated", "FacultyStatusChanged", "FacultyAssigned",
+        "FacultyAssignmentEnded", "StudentEnrolled", "EnrollmentDropped", "CollegeCreated", "CollegeUpdated", "MeetingPatternScheduled",
+        "MeetingPatternRemoved", "GuardianAccessGranted", "GuardianAccessRevoked", "CourseSectionCreated", "CourseSectionOpened", "CourseSectionCancelled");
+
     public AcademicEventProjector(JdbcClient jdbc, ObjectMapper mapper, String schema) {
         super(jdbc, mapper, schema);
     }
 
     @Override
     public boolean handles(String eventType) {
-        return switch (eventType) {
-            case "StudentAdmitted", "FacultyProfileCreated", "FacultyStatusChanged", "FacultyAssigned", "FacultyAssignmentEnded",
-                 "StudentEnrolled", "EnrollmentDropped", "CollegeCreated", "CollegeUpdated", "MeetingPatternScheduled",
-                 "MeetingPatternRemoved", "GuardianAccessGranted", "GuardianAccessRevoked", "CourseSectionCreated", "CourseSectionOpened",
-                 "CourseSectionCancelled" -> true;
-            default -> false;
-        };
+        return EVENT_TYPES.contains(eventType);
     }
 
     @Override

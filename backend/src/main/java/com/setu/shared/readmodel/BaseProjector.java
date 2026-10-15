@@ -4,6 +4,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.setu.shared.events.EventVersions;
+
 import java.util.UUID;
 import java.util.regex.Pattern;
 
@@ -33,13 +35,19 @@ abstract class BaseProjector implements ReadModelProjector {
         return schema + "." + name;
     }
 
-    /** Applies the event if it is of interest and has not been applied before. */
+    /** The highest payload version of this event type the projector understands. All current events are version 1. */
+    protected int supportedVersion(String eventType) {
+        return 1;
+    }
+
+    /** Applies the event if it is of interest, understood, and has not been applied before. */
     @Override
     @Transactional
-    public Outcome apply(String eventType, String headerEventId, String payloadJson) {
+    public Outcome apply(String eventType, String headerEventId, Integer eventVersion, Integer schemaVersion, String payloadJson) {
         if (!handles(eventType)) {
             return Outcome.IGNORED;
         }
+        EventVersions.assertSupported(eventType, eventVersion, schemaVersion, supportedVersion(eventType));
         EventPayload payload = EventPayload.parse(payloadJson, mapper);
         String idText = headerEventId != null ? headerEventId : payload.text("eventId");
         if (idText == null) {

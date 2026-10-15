@@ -52,12 +52,18 @@ public class OutboxEvent {
     @Column(name = "causation_id")
     private UUID causationId;
 
+    @Column(name = "producer", nullable = false)
+    private String producer;
+
+    @Column(name = "schema_version", nullable = false)
+    private int schemaVersion;
+
     protected OutboxEvent() {
     }
 
     public OutboxEvent(UUID id, UUID tenantId, String aggregateType, UUID aggregateId, String eventType,
                         int eventVersion, String payloadJson, Instant occurredAt, UUID correlationId,
-                        UUID causationId) {
+                        UUID causationId, String producer, int schemaVersion) {
         this.id = id;
         this.tenantId = tenantId;
         this.aggregateType = aggregateType;
@@ -69,6 +75,8 @@ public class OutboxEvent {
         this.occurredAt = occurredAt;
         this.correlationId = correlationId;
         this.causationId = causationId;
+        this.producer = producer;
+        this.schemaVersion = schemaVersion;
     }
 
     public UUID id() {
@@ -113,6 +121,14 @@ public class OutboxEvent {
 
     public UUID causationId() {
         return causationId;
+    }
+
+    public String producer() {
+        return producer;
+    }
+
+    public int schemaVersion() {
+        return schemaVersion;
     }
 
     /** Day 15: the outbox publisher marks a row published only after a successful, acknowledged Kafka send — see {@code OutboxPublisher}. */
