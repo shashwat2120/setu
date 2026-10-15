@@ -26,6 +26,9 @@ public class AiProviderSafetyPostProcessor implements EnvironmentPostProcessor, 
 
     static final String PROVIDER_PROPERTY = "spring.ai.model.chat";
     static final String GENAI = "google-genai";
+    static final java.util.List<String> EMBEDDING_AUTOCONFIGS = java.util.List.of(
+        "org.springframework.ai.model.google.genai.autoconfigure.embedding.GoogleGenAiEmbeddingConnectionAutoConfiguration",
+        "org.springframework.ai.model.google.genai.autoconfigure.embedding.GoogleGenAiTextEmbeddingAutoConfiguration");
 
     private final Log log;
 
@@ -57,10 +60,18 @@ public class AiProviderSafetyPostProcessor implements EnvironmentPostProcessor, 
         };
         // Spring AI switches the two providers with different keys: Gemini's text-embedding model on "spring.ai.model.embedding.text",
         // Ollama's on "spring.ai.model.embedding". Each is set so that only the chosen provider's model is created.
-        environment.getPropertySources().addFirst(new MapPropertySource("setuEmbeddingProvider", Map.of(
+        Map<String, Object> properties = new java.util.HashMap<>(Map.of(
             "app.ai.embedding.resolved", resolved,
             "spring.ai.model.embedding.text", resolved.equals("gemini") ? GENAI : "none",
-            "spring.ai.model.embedding", resolved.equals("ollama") ? "ollama" : "none")));
+            "spring.ai.model.embedding", resolved.equals("ollama") ? "ollama" : "none"));
+        if (!resolved.equals("gemini")) {
+            // Gemini's embedding CONNECTION bean has no on/off property of its own and fails ("project-id must be set") when there is
+            // no key, which would stop the whole application from starting for anyone not using Gemini. Not using it means not loading it.
+            String existing = environment.getProperty("spring.autoconfigure.exclude", "");
+            String exclude = String.join(",", EMBEDDING_AUTOCONFIGS) + (existing.isBlank() ? "" : "," + existing);
+            properties.put("spring.autoconfigure.exclude", exclude);
+        }
+        environment.getPropertySources().addFirst(new MapPropertySource("setuEmbeddingProvider", properties));
     }
 
     private void applyChatFallback(ConfigurableEnvironment environment) {

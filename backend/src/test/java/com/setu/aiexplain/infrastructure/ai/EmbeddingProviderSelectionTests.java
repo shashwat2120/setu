@@ -29,6 +29,19 @@ class EmbeddingProviderSelectionTests {
     }
 
     @Test
+    void theGeminiEmbeddingAutoConfigurationsAreExcludedUnlessGeminiEmbeddingsAreSelected() {
+        var local = run(new MockEnvironment().withProperty("spring.ai.model.chat", "ollama"));
+        assertThat(local.getProperty("spring.autoconfigure.exclude")).contains("GoogleGenAiEmbeddingConnectionAutoConfiguration")
+            .contains("GoogleGenAiTextEmbeddingAutoConfiguration");
+
+        var keptExisting = run(new MockEnvironment().withProperty("spring.ai.model.chat", "ollama").withProperty("spring.autoconfigure.exclude", "com.example.Other"));
+        assertThat(keptExisting.getProperty("spring.autoconfigure.exclude")).contains("com.example.Other").contains("GoogleGenAiEmbeddingConnectionAutoConfiguration");
+
+        var gemini = run(new MockEnvironment().withProperty("spring.ai.model.chat", "google-genai").withProperty("spring.ai.google.genai.api-key", "k"));
+        assertThat(gemini.getProperty("spring.autoconfigure.exclude")).isNull();
+    }
+
+    @Test
     void geminiChatWithoutAKeyFallsBackToLocalEverywhere() {
         var env = run(new MockEnvironment().withProperty("spring.ai.model.chat", "google-genai").withProperty("spring.ai.google.genai.api-key", ""));
 
