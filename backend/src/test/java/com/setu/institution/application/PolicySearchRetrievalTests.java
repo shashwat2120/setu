@@ -1,6 +1,6 @@
 package com.setu.institution.application;
 
-import com.setu.aiexplain.infrastructure.embedding.HashingTextEmbedder;
+import com.setu.shared.ai.HashingTextEmbedder;
 import com.setu.identity.TestAuthentication;
 import com.setu.identity.domain.RoleCode;
 import com.setu.testsupport.Day14TestFixtures;

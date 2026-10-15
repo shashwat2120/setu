@@ -1,6 +1,6 @@
 package com.setu.institution.domain;
 
-import com.setu.aiexplain.infrastructure.embedding.HashingTextEmbedder;
+import com.setu.shared.ai.HashingTextEmbedder;
 import com.setu.shared.ai.TextEmbedder;
 import org.junit.jupiter.api.Test;
 

@@ -1,6 +1,5 @@
-package com.setu.aiexplain.infrastructure.embedding;
+package com.setu.shared.ai;
 
-import com.setu.shared.ai.TextEmbedder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.embedding.EmbeddingModel;

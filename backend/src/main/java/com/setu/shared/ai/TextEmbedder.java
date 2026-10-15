@@ -3,8 +3,7 @@ package com.setu.shared.ai;
 import java.util.Optional;
 
 /**
- * Turns text into a fixed-size vector for similarity search. A cross-module contract: ai-explain implements it (it owns every model
- * provider), institution uses it to index and search policy documents.
+ * Turns text into a fixed-size vector for similarity search. A shared-kernel contract implemented in this package (see package-info), used by institution to index and search policy documents.
  * <p>
  * {@link #modelId()} identifies the embedding space. Vectors from different models are not comparable, so callers store the id beside
  * each vector and only ever compare vectors that share it. {@link #embed} returns empty, never throws, when no vector can be produced

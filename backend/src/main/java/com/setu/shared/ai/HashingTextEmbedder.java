@@ -1,6 +1,5 @@
-package com.setu.aiexplain.infrastructure.embedding;
+package com.setu.shared.ai;
 
-import com.setu.shared.ai.TextEmbedder;
 
 import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
