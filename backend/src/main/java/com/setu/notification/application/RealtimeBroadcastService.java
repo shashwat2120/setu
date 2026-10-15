@@ -1,7 +1,10 @@
 package com.setu.notification.application;
 
 import org.springframework.messaging.simp.SimpMessagingTemplate;
+import com.setu.shared.websocket.LiveBroadcastRequest;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.event.TransactionPhase;
+import org.springframework.transaction.event.TransactionalEventListener;
 
 /**
  * Day 9 §9 cross-module port: pushes a payload to a STOMP destination.
@@ -18,7 +21,6 @@ import org.springframework.stereotype.Service;
  * instead — see that package's javadoc). Verified via
  * {@code ModularityTests}.
  */
-@org.springframework.modulith.NamedInterface
 @Service
 public class RealtimeBroadcastService {
 
@@ -26,6 +28,15 @@ public class RealtimeBroadcastService {
 
     public RealtimeBroadcastService(SimpMessagingTemplate messagingTemplate) {
         this.messagingTemplate = messagingTemplate;
+    }
+
+    /**
+     * Delivers a {@link LiveBroadcastRequest} published by another module. After the publishing transaction commits, so subscribers never
+     * see an update for something that was then rolled back; at once when published outside a transaction.
+     */
+    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT, fallbackExecution = true)
+    void onLiveBroadcastRequest(LiveBroadcastRequest request) {
+        broadcast(request.destination(), request.payload());
     }
 
     public void broadcast(String destination, Object payload) {

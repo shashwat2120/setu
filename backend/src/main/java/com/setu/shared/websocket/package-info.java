@@ -3,24 +3,13 @@
  * See the parent {@code shared} package's javadoc for why this lives here
  * rather than being module-owned.
  * <p>
- * Added Sprint 5D Day 9 to avoid a genuine module cycle: {@code notification}
- * owns the generic WebSocket/STOMP transport (TRD §2's notifications,
- * delivery tracking, and realtime WebSocket fan-out list), but per-destination
- * SUBSCRIBE authorization for an attendance live board requires
- * attendance-specific knowledge (is this principal the assigned faculty for
- * THIS section) that notification has no business owning. Having
- * notification's channel interceptor call
- * {@code attendance.application.AttendanceSubscriptionAuthorizer} directly
- * would create a notification&nbsp;-&gt;&nbsp;attendance edge; attendance
- * separately needs {@code notification.application.RealtimeBroadcastService}
- * to push events (attendance&nbsp;-&gt;&nbsp;notification) — together those
- * two direct edges would close a cycle. Routing subscription authorization
- * through this shared contract instead — implemented by attendance,
- * discovered as a list by notification's channel interceptor — keeps the
- * dependency graph a DAG (attendance -&gt; notification for broadcast,
- * attendance -&gt; shared &lt;- notification for authorization), the same fix
- * already applied to {@link com.setu.shared.directory.FacultyDirectory} and
- * {@link com.setu.shared.enrollment.CourseSectionDirectory} for analogous
- * cases.
+ * Added Sprint 5D Day 9 to avoid a module cycle: notification owns the generic WebSocket/STOMP transport, but per-destination SUBSCRIBE
+ * authorization for an attendance live board needs attendance-specific knowledge (is this principal the assigned faculty for THIS section).
+ * Routing it through this shared contract, implemented by attendance and discovered as a list by notification's channel interceptor,
+ * keeps notification from depending on attendance's classes.
+ * <p>
+ * Sprint 6 coupling audit: the other direction, attendance pushing live updates, is now an in-process application event
+ * ({@link com.setu.shared.websocket.LiveBroadcastRequest}) that notification listens for, so attendance no longer depends on notification at
+ * all and the two will not call each other once extracted (docs/extraction-audit.md).
  */
 package com.setu.shared.websocket;

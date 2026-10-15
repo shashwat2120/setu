@@ -15,7 +15,8 @@ import com.setu.directory.application.FacultyProfileService;
 import com.setu.directory.application.StudentProfileService;
 import com.setu.enrollment.application.EnrollmentService;
 import com.setu.enrollment.application.FacultyAssignmentService;
-import com.setu.notification.application.RealtimeBroadcastService;
+import com.setu.shared.websocket.LiveBroadcastRequest;
+import org.springframework.context.ApplicationEventPublisher;
 import com.setu.shared.authorization.AuthorizationContext;
 import com.setu.shared.authorization.ResourceRef;
 import com.setu.shared.governance.AuditLogWriter;
@@ -80,7 +81,7 @@ public class AttendanceRecordService {
     private final FacultyProfileService facultyProfileService;
     private final FacultyAssignmentService facultyAssignmentService;
     private final EnrollmentService enrollmentService;
-    private final RealtimeBroadcastService realtimeBroadcastService;
+    private final ApplicationEventPublisher eventPublisher;
     private final AuthorizationContext authorizationContext;
     private final AuditLogWriter auditLogWriter;
     private final OutboxEventWriter outboxEventWriter;
@@ -91,7 +92,7 @@ public class AttendanceRecordService {
                                     AttendanceRecordInsertGuard attendanceRecordInsertGuard, QrTokenHasher qrTokenHasher,
                                     StudentProfileService studentProfileService, FacultyProfileService facultyProfileService,
                                     FacultyAssignmentService facultyAssignmentService, EnrollmentService enrollmentService,
-                                    RealtimeBroadcastService realtimeBroadcastService, AuthorizationContext authorizationContext,
+                                    ApplicationEventPublisher eventPublisher, AuthorizationContext authorizationContext,
                                     AuditLogWriter auditLogWriter, OutboxEventWriter outboxEventWriter) {
         this.attendanceSessionRepository = attendanceSessionRepository;
         this.attendanceQrSessionRepository = attendanceQrSessionRepository;
@@ -102,7 +103,7 @@ public class AttendanceRecordService {
         this.facultyProfileService = facultyProfileService;
         this.facultyAssignmentService = facultyAssignmentService;
         this.enrollmentService = enrollmentService;
-        this.realtimeBroadcastService = realtimeBroadcastService;
+        this.eventPublisher = eventPublisher;
         this.authorizationContext = authorizationContext;
         this.auditLogWriter = auditLogWriter;
         this.outboxEventWriter = outboxEventWriter;
@@ -210,8 +211,8 @@ public class AttendanceRecordService {
             .filter(r -> PRESENT_LIKE.contains(r.status())).count();
         record LiveUpdate(UUID sessionId, UUID sectionId, long presentCount, Instant updatedAt) {
         }
-        realtimeBroadcastService.broadcast("/topic/attendance/section/" + session.sectionId(),
-            new LiveUpdate(session.id(), session.sectionId(), presentCount, Instant.now()));
+        eventPublisher.publishEvent(new LiveBroadcastRequest("/topic/attendance/section/" + session.sectionId(),
+            new LiveUpdate(session.id(), session.sectionId(), presentCount, Instant.now())));
     }
 
     /** Assigned-faculty-or-admin per the Day 9 authorization matrix (faculty limited to their own assigned sections; college admin tenant-wide) — the same idiom as {@link AttendanceSessionService}. */
