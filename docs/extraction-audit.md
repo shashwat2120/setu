@@ -18,7 +18,7 @@ the findings below cannot quietly stop being true.
 - **Academic is the hub** (nine services depend on it) and **Identity is the other** (nine depend on it). Their APIs and events are the
   contracts to get right first.
 - **Academic published no events at all.** The services that keep a view of who is enrolled where (Learning, Attendance, Student Success,
-  Record, Notification) had nothing to build it from. Four enrollment events are now emitted; 34 catalogued events still are not (section 7).
+  Record, Notification) had nothing to build it from. Eight events for enrollment, sections and attendance sessions are now emitted; 30 catalogued events still are not (section 7).
 - **Safest first extractions:** Finance and Career (each depends only on Academic, lightly). **Riskiest:** Student Success (reads from five
   services) and the Identity/Academic pair.
 
@@ -44,7 +44,7 @@ shrink unless someone decides otherwise.
 | F1 | **Academic depended on the AI service** (`institution` used the embedder that lived in `aiexplain`), while AI depends on Academic for its tools: a cycle | contract edge `institution → aiexplain` | The embedders moved into the shared kernel (`shared.ai`) as a library, so any service that needs embeddings uses them directly. Test: nothing depends on `aiexplain`, and `institution` does not |
 | F2 | **Identity depended on Academic** twice: `/identity/me` assembled the caller's student/faculty/guardian ids from the directory, and the guardian-delegation check lived in identity | edges `identity → directory`, `identity → guardianaccess` | Profile ids are served by `GET /directory/me/profiles` (self-only, refused unless the caller holds a role in that college) and the frontend asks both; the delegation adapter moved to `guardianaccess` with the grants it reads. Test: identity depends on no other module |
 | F3 | **Attendance and Notification depended on each other**: attendance called the broadcast service; notification asked attendance who may subscribe | edges in both directions at service level | Attendance publishes an in-process `LiveBroadcastRequest` event; notification delivers it **after commit** (a rollback no longer produces a live update). Test: attendance does not depend on notification |
-| F4 | **Enrollment emitted no events** | no `outbox` call in the module; `StudentEnrolled`, `EnrollmentDropped`… catalogued, never written | `StudentEnrolled`, `StudentWaitlisted`, `WaitlistConverted`, `EnrollmentDropped`, written in the same transaction as the change. Students are now notified when waitlisted or promoted. 6 + 2 tests |
+| F4 | **Enrollment, sections and attendance sessions emitted no events** | no `outbox` call in the enrollment module; `StudentEnrolled`, `EnrollmentDropped`… catalogued, never written | `StudentEnrolled`, `StudentWaitlisted`, `WaitlistConverted`, `EnrollmentDropped`, `CourseSectionOpened`, `CourseSectionCancelled`, `AttendanceSessionOpened`, `AttendanceSessionClosed`, each written in the same transaction as the change. Students are now notified when waitlisted or promoted. 11 + 2 tests |
 | F5 | The notification tests counted on a quiet shared dev database | a running backend's consumer also reacted to test fixtures | The fixtures mark their own events handled; no behaviour change |
 
 Before the fixes the service graph had one cycle containing Identity, Academic, Assessment, Attendance, Learning, Student Success, Record,
@@ -146,8 +146,9 @@ it goes to Academic, calling Identity's API.
 ## 7. Events
 
 **Ownership:** an event belongs to the service that owns the aggregate; the producer is named in the event (`producer`). Emitted today by
-module: assessment (`GradePublished`), attendance (`AttendanceRecorded`, 8 staff-attendance events), career (`PlacementRecorded`), directory
-(`StudentAdmitted`), **enrollment (4, new)**, finance (3 payment events), identity (5), risk (4). 29 events are emitted: 28 of the 62 catalogued (34 are not) and one, `UserReactivated`, that the catalog lacks.
+module: assessment (`GradePublished`), attendance (`AttendanceRecorded`, **2 session events, new**, 8 staff-attendance events), career
+(`PlacementRecorded`), directory (`StudentAdmitted`), **enrollment (6, new: 4 enrollment, 2 section)**, finance (3 payment events), identity
+(5), risk (4). 33 events are emitted: 32 of the 62 catalogued (30 are not) and one, `UserReactivated`, that the catalog lacks.
 
 **Not emitted, and who will need it.** The consumers of Sprint 6 build their own view of other services' data from these; the blocking ones
 are marked.
@@ -155,9 +156,10 @@ are marked.
 | Needed by | Event | Status |
 |---|---|---|
 | Learning, Attendance, Student Success, Notification | `StudentEnrolled`, `EnrollmentDropped`, `StudentWaitlisted`, `WaitlistConverted` | **now emitted** |
-| Learning, Attendance | `CourseSectionOpened`, `CourseSectionCancelled` | **blocking**: a section's existence and state |
+| Learning, Attendance | `CourseSectionOpened`, `CourseSectionCancelled` | **now emitted**. `CourseSectionCancelled` lists the enrollments still active; **cancelling a section does not yet drop them** (the catalog expects Academic to cascade the drops itself), an open behaviour gap |
 | Student Success | `AssignmentSubmitted`, `AssignmentGraded`, `AssessmentAttemptSubmitted`, `AssessmentCompleted` | **blocking** for its feature pipeline |
-| Attendance read models | `AttendanceSessionOpened`, `AttendanceSessionClosed`, `AttendanceCorrected` | blocking for Student Success's trend |
+| Attendance read models | `AttendanceSessionOpened`, `AttendanceSessionClosed` | **now emitted** |
+| Student Success | `AttendanceCorrected` | blocking for its trend (a corrected record changes the percentage) |
 | Assessment (Record) | `EnrollmentCompleted`, `PeriodClosed`, `GraduationApproved/Rejected`, `StudentGraduated` | blocking for transcripts and degree progress |
 | Notification | `RegistrationOpened/Closed`, `WaitlistOffered/Expired`, `AssessmentPublished`, `StudentSuspended`, `CollegeSuspended` | not blocking |
 | Identity consumers | role granted / revoked (not even catalogued) | **blocking** for the authorization read model (section 4) |

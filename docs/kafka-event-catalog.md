@@ -52,12 +52,12 @@ shown implicitly by its aggregate. `event_version` is `1` for every row.
 
 ## Implementation status
 
-**29 events are emitted today:** `GradePublished`; `AttendanceRecorded` and the 8 staff-attendance events; `PlacementRecorded`;
-`StudentAdmitted`; **`StudentEnrolled`, `StudentWaitlisted`, `WaitlistConverted`, `EnrollmentDropped`** (added by the Sprint 6 coupling
+**33 events are emitted today:** `GradePublished`; `AttendanceRecorded`, **`AttendanceSessionOpened`, `AttendanceSessionClosed`** and the 8 staff-attendance events; `PlacementRecorded`;
+`StudentAdmitted`; **`StudentEnrolled`, `StudentWaitlisted`, `WaitlistConverted`, `EnrollmentDropped`, `CourseSectionOpened`, `CourseSectionCancelled`** (added by the Sprint 6 coupling
 audit: the Academic service had published nothing, and Learning, Attendance, Student Success, Record and Notification need them);
 `PaymentSuccessful`, `PaymentFailed`, `PaymentRefunded`; `PasskeyRevoked`, `SessionRevoked`, `UserSuspended`, `UserDeactivated`,
 `UserReactivated` (the last is not in the table below); `InterventionCreated`, `InterventionCompleted`, `RecommendationCreated`,
-`RiskScoreChanged`. **The other 34 catalogued events are not emitted yet**; [extraction-audit.md](extraction-audit.md) section 7 says which
+`RiskScoreChanged`. **The other 30 catalogued events are not emitted yet**; [extraction-audit.md](extraction-audit.md) section 7 says which
 ones block which extraction. Enrollment events use the enrollment id as the Kafka key (aggregate `enrollments`); `WaitlistConverted` uses
 the section id (aggregate `waitlist_entries`) so promotion order is kept per section.
 

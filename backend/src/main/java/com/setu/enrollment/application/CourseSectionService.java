@@ -15,6 +15,7 @@ import com.setu.shared.authorization.ResourceRef;
 import com.setu.shared.directory.FacultyDirectory;
 import com.setu.shared.enrollment.CourseSectionDirectory;
 import com.setu.shared.governance.AuditLogWriter;
+import com.setu.shared.governance.OutboxEventWriter;
 import com.setu.shared.identity.TenantMembership;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
@@ -78,6 +79,7 @@ public class CourseSectionService implements CourseSectionDirectory {
     // repository read is not a module-boundary violation, only a same-module shortcut around that cycle.
     private final EnrollmentRepository enrollmentRepository;
     private final TenantMembership tenantMembership;
+    private final OutboxEventWriter outboxEventWriter;
 
     public CourseSectionService(CourseSectionRepository courseSectionRepository,
                                  CourseSectionInsertGuard courseSectionInsertGuard,
@@ -86,7 +88,9 @@ public class CourseSectionService implements CourseSectionDirectory {
                                  AuthorizationContext authorizationContext, AuditLogWriter auditLogWriter,
                                  FacultyAssignmentService facultyAssignmentService, FacultyDirectory facultyDirectory,
                                  com.setu.directory.application.StudentProfileService studentProfileService,
-                                 EnrollmentRepository enrollmentRepository, TenantMembership tenantMembership) {
+                                 EnrollmentRepository enrollmentRepository, TenantMembership tenantMembership,
+                                 OutboxEventWriter outboxEventWriter) {
+        this.outboxEventWriter = outboxEventWriter;
         this.courseSectionRepository = courseSectionRepository;
         this.courseSectionInsertGuard = courseSectionInsertGuard;
         this.classTenantLookup = classTenantLookup;
@@ -383,11 +387,30 @@ public class CourseSectionService implements CourseSectionDirectory {
         }
         UUID actor = authorizationContext.currentUserId();
         var from = section.status();
-        section.transitionTo(target, actor, Instant.now());
+        Instant now = Instant.now();
+        section.transitionTo(target, actor, now);
         courseSectionRepository.save(section);
         auditLogWriter.write(section.tenantId(), actor, "COURSE_SECTION_STATUS_CHANGED", "enrollment.course_sections",
             section.id(), Map.of("from", from.name(), "to", target.name()));
+        emitStatusEvent(section, target, now);
         return StatusChangeResult.SUCCESS;
+    }
+
+    /** Opening and cancelling are the transitions other services act on; closing and drafting are internal bookkeeping. */
+    private void emitStatusEvent(CourseSection section, CourseSectionStatus target, Instant now) {
+        UUID correlationId = UUID.randomUUID();
+        if (target == CourseSectionStatus.OPEN) {
+            var event = new com.setu.enrollment.domain.CourseSectionOpenedEvent(UUID.randomUUID(), now, section.tenantId(), section.id(),
+                correlationId, null, section.id(), section.courseId(), section.periodId());
+            outboxEventWriter.write("course_sections", section.id(), event.eventType(), event.eventVersion(), event, section.tenantId(), correlationId, null);
+        } else if (target == CourseSectionStatus.CANCELLED) {
+            java.util.List<UUID> affected = enrollmentRepository.findBySectionId(section.id(), org.springframework.data.domain.Pageable.unpaged()).stream()
+                .filter(e -> e.status() == com.setu.enrollment.domain.EnrollmentStatus.ENROLLED || e.status() == com.setu.enrollment.domain.EnrollmentStatus.WAITLISTED)
+                .map(com.setu.enrollment.domain.Enrollment::id).toList();
+            var event = new com.setu.enrollment.domain.CourseSectionCancelledEvent(UUID.randomUUID(), now, section.tenantId(), section.id(),
+                correlationId, null, section.id(), affected);
+            outboxEventWriter.write("course_sections", section.id(), event.eventType(), event.eventVersion(), event, section.tenantId(), correlationId, null);
+        }
     }
 
     /** See this class's javadoc for the {@link CourseSectionDirectory} cross-module justification. */

@@ -19,6 +19,7 @@ import com.setu.shared.authorization.AuthorizationContext;
 import com.setu.shared.authorization.ResourceRef;
 import com.setu.shared.enrollment.CourseSectionDirectory;
 import com.setu.shared.governance.AuditLogWriter;
+import com.setu.shared.governance.OutboxEventWriter;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -86,6 +87,7 @@ public class AttendanceSessionService {
     private final EnrollmentService enrollmentService;
     private final AuthorizationContext authorizationContext;
     private final AuditLogWriter auditLogWriter;
+    private final OutboxEventWriter outboxEventWriter;
 
     public AttendanceSessionService(AttendanceSessionRepository attendanceSessionRepository,
                                      AttendanceQrSessionRepository attendanceQrSessionRepository,
@@ -95,7 +97,8 @@ public class AttendanceSessionService {
                                      CourseSectionDirectory courseSectionDirectory, MeetingPatternService meetingPatternService,
                                      FacultyProfileService facultyProfileService, FacultyAssignmentService facultyAssignmentService,
                                      EnrollmentService enrollmentService, AuthorizationContext authorizationContext,
-                                     AuditLogWriter auditLogWriter) {
+                                     AuditLogWriter auditLogWriter, OutboxEventWriter outboxEventWriter) {
+        this.outboxEventWriter = outboxEventWriter;
         this.attendanceSessionRepository = attendanceSessionRepository;
         this.attendanceQrSessionRepository = attendanceQrSessionRepository;
         this.attendanceRecordRepository = attendanceRecordRepository;
@@ -191,6 +194,10 @@ public class AttendanceSessionService {
 
         auditLogWriter.write(tenant, currentUserId, "ATTENDANCE_SESSION_STARTED", "attendance.attendance_sessions",
             session.id(), Map.of("sectionId", sectionId, "meetingId", meetingId));
+        UUID openedCorrelation = UUID.randomUUID();
+        var openedEvent = new com.setu.attendance.domain.AttendanceSessionOpenedEvent(UUID.randomUUID(), now, tenant, session.id(), openedCorrelation, null,
+            session.id(), sectionId, meetingId);
+        outboxEventWriter.write("attendance_sessions", session.id(), openedEvent.eventType(), openedEvent.eventVersion(), openedEvent, tenant, openedCorrelation, null);
         return new OpenResult.Success(session.id(), rawToken, qrExpiresAt);
     }
 
@@ -289,6 +296,10 @@ public class AttendanceSessionService {
                 // Lost the race to a concurrent scan for this enrollment — that student already has a real record.
             }
         }
+        UUID closedCorrelation = UUID.randomUUID();
+        var closedEvent = new com.setu.attendance.domain.AttendanceSessionClosedEvent(UUID.randomUUID(), now, session.tenantId(), session.id(), closedCorrelation, null,
+            session.id(), session.sectionId(), now, generated);
+        outboxEventWriter.write("attendance_sessions", session.id(), closedEvent.eventType(), closedEvent.eventVersion(), closedEvent, session.tenantId(), closedCorrelation, null);
         return new CloseResult.Success(generated);
     }
 
