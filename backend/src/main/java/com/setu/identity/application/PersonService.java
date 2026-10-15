@@ -1,7 +1,10 @@
 package com.setu.identity.application;
 
 import com.setu.identity.domain.Person;
+import com.setu.identity.domain.PersonRegisteredEvent;
+import com.setu.identity.domain.PersonUpdatedEvent;
 import com.setu.identity.infrastructure.PersonRepository;
+import com.setu.shared.governance.OutboxEventWriter;
 import com.setu.shared.identity.PersonDirectory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -34,17 +37,24 @@ import java.util.UUID;
 public class PersonService implements PersonDirectory {
 
     private final PersonRepository personRepository;
+    private final OutboxEventWriter outboxEventWriter;
 
-    public PersonService(PersonRepository personRepository) {
+    public PersonService(PersonRepository personRepository, OutboxEventWriter outboxEventWriter) {
         this.personRepository = personRepository;
+        this.outboxEventWriter = outboxEventWriter;
     }
 
     @Override
+    @Transactional
     public UUID createPerson(UUID userId, String legalName, String preferredName, LocalDate dob, String gender,
                               String email, String phone, String addressJson) {
         Person person = new Person(UUID.randomUUID(), userId, legalName, preferredName, dob, gender, email, phone,
             addressJson, Instant.now());
         personRepository.save(person);
+        var event = new PersonRegisteredEvent(UUID.randomUUID(), Instant.now(), person.id(), UUID.randomUUID(), null,
+            person.id(), userId, legalName, preferredName, email, phone);
+        outboxEventWriter.write(event.aggregateType(), event.aggregateId(), event.eventType(), event.eventVersion(), event,
+            event.tenantId(), event.correlationId(), event.causationId());
         return person.id();
     }
 
@@ -68,6 +78,10 @@ public class PersonService implements PersonDirectory {
         Person person = maybePerson.get();
         person.update(legalName, preferredName, email, phone, Instant.now());
         personRepository.save(person);
+        var event = new PersonUpdatedEvent(UUID.randomUUID(), Instant.now(), person.id(), UUID.randomUUID(), null,
+            person.id(), person.userId(), legalName, preferredName, email, phone);
+        outboxEventWriter.write(event.aggregateType(), event.aggregateId(), event.eventType(), event.eventVersion(), event,
+            event.tenantId(), event.correlationId(), event.causationId());
         return true;
     }
 

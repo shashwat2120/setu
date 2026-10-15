@@ -9,8 +9,9 @@ the findings below cannot quietly stop being true.
 ## 1. Result in one page
 
 - **The module graph is acyclic**, but grouped into the 13 candidate services it was not: before this pass 11 of them sat in one dependency
-  cycle, held together by four couplings that did not need to exist. All four are fixed (section 3). **One cycle remains:
-  Academic ↔ Identity**, through the authorization engine (section 4). It is a design decision for 6A.2, not an accident.
+  cycle, held together by four couplings that did not need to exist. All four are fixed (section 3). **The last cycle,
+  Academic ↔ Identity, is resolved** (section 4, Sprint 6A.2 and 6A.3): the coupling report now shows no cycle between services, and Academic has
+  no outgoing dependency.
 - **The candidate boundaries mostly hold.** One is revised: **Record does not become its own service; it folds into Assessment**
   (section 6). One is not a candidate yet: **Analytics** has no code and no tables.
 - **Every table has one owner** (93 tables, each in its owning module's schema, none written by another module's code). 34 foreign keys
@@ -50,7 +51,13 @@ shrink unless someone decides otherwise.
 Before the fixes the service graph had one cycle containing Identity, Academic, Assessment, Attendance, Learning, Student Success, Record,
 Finance, Career, Notification and AI. After: the single pair below.
 
-## 4. The one remaining cycle: Academic ↔ Identity
+## 4. The cycle that was left: Academic ↔ Identity (resolved in 6A.2 and 6A.3)
+
+**Resolved.** The sections below are the original finding and the decision; the outcome is in [contracts/identity-service.md](contracts/identity-service.md)
+and [contracts/academic-service.md](contracts/academic-service.md). Short version: the engine became the shared `AuthorizationEngine`; Academic
+feeds it from a read model built from Identity's `UserRoleAssigned`/`UserRoleRevoked`/`PersonRegistered`/`PersonUpdated`; logouts and suspensions
+reach it through the Redis revocation list; guardian grants are Academic's own data, checked in-process with no cache, so a revoked grant stops
+working on the next request. The two direct `UserDirectoryService` calls were replaced by `TenantMembership`.
 
 - **Academic → Identity (12):** every Academic module authorizes through `AuthorizationContext`/`TenantContext`, and `directory` resolves
   people through `PersonDirectory` (persons are Identity-owned, decision H1). Four foreign keys: `directory.student_profiles`,
@@ -58,7 +65,7 @@ Finance, Career, Notification and AI. After: the single pair below.
 - **Identity → Academic (1):** the authorization engine (`AuthorizationService`, in identity) asks `GuardianDelegationChecker` whether a
   guardian holds an active grant; guardian grants are Academic data (decision H2).
 
-**Status after 6A.2** (details in [contracts/identity-service.md](contracts/identity-service.md)): decisions 2 and the Identity side of 1 are built; the rest is open and moves to 6A.3.
+**Status after 6A.2** (kept for the record; 6A.3 then closed the items marked not done):
 
 - Done: access tokens are ES256 and verifiable from `/.well-known/jwks.json` with no shared secret; Identity publishes login and account
   revocations to Redis and `RemoteTokenAuthenticator` (signature + revocation, fail closed) is the check every other service makes; role
@@ -211,8 +218,10 @@ giving Learning, Assessment, Risk and Finance read contracts.
 ## 10. Recommended order
 
 1. **Pre-work (done in this pass):** F1 to F4, the frozen contracts.
-2. **6A.2 Identity (done):** ES256 + JWKS, Redis revocation list, role-change events, standalone entry point. Still open from section 4: role read model and guardian-grant answer, both first needed by 6A.3.
-3. **6A.3 Academic** with the enrollment events it already emits plus the section events (section 7, blocking).
+2. **6A.2 Identity (done):** ES256 + JWKS, Redis revocation list, role-change events, standalone entry point.
+3. **6A.3 Academic (done for the service boundary):** role/person read model, kernel authorization engine, standalone entry point, no Academic-to-Identity
+   dependency. Not done: the onboarding saga, section-cancel cascade, per-service databases (6B.2) and the other services' own read models (each needs
+   the role and, for guardian access, grant data when it is extracted).
 4. **6A.4 gateway, discovery, config**, using the route table above.
 5. **Finance and Career** (leaf services, Academic only): the first feature services out, and the proof that the pattern works.
 6. **Attendance, Learning, Assessment (with Record)**, with the missing learning and assessment events.

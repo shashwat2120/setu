@@ -92,8 +92,10 @@ class SchemaInvariantTests {
                 WHERE column_name = 'tenant_id' AND is_nullable = 'YES' AND table_schema IN (%s)
                 """.formatted(DOMAIN_SCHEMAS)).query(String.class).list());
 
-        // audit_logs and outbox_events describe platform-level actions too; user_roles holds platform roles (docs/kafka-event-catalog.md).
-        assertThat(nullable).containsExactlyInAnyOrder("governance.audit_logs", "governance.outbox_events", "identity.user_roles");
+        // audit_logs and outbox_events describe platform-level actions too; user_roles holds platform roles (docs/kafka-event-catalog.md), and
+        // so does the Academic service's read-model copy of it.
+        assertThat(nullable).containsExactlyInAnyOrder("governance.audit_logs", "governance.outbox_events", "identity.user_roles",
+            "institution.rm_role_grants");
     }
 
     /** Tables that legitimately have no tenant: the login account itself and global reference data, the college row that IS the tenant, and per-user preferences. */
@@ -102,7 +104,9 @@ class SchemaInvariantTests {
         "identity.password_reset_tokens", "identity.webauthn_challenges", "identity.roles", "identity.permissions",
         "identity.role_permissions", "identity.user_roles", "institution.colleges", "governance.audit_logs",
         "governance.outbox_events", "governance.idempotency_keys", "notification.notification_preferences",
-        "notification.processed_events");
+        "notification.processed_events",
+        // The Academic service's read-model copies of the Identity tables above (6A.3): same platform-level data, same absence of a tenant.
+        "institution.rm_role_permissions", "institution.rm_persons", "institution.rm_processed_events");
 
     @Test
     void everyTableIsTenantOwnedOrBelongsToATenantOwnedParent() {

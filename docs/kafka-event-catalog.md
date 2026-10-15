@@ -52,11 +52,11 @@ shown implicitly by its aggregate. `event_version` is `1` for every row.
 
 ## Implementation status
 
-**35 events are emitted today:** `GradePublished`; `AttendanceRecorded`, **`AttendanceSessionOpened`, `AttendanceSessionClosed`** and the 8 staff-attendance events; `PlacementRecorded`;
+**37 events are emitted today:** `GradePublished`; `AttendanceRecorded`, **`AttendanceSessionOpened`, `AttendanceSessionClosed`** and the 8 staff-attendance events; `PlacementRecorded`;
 `StudentAdmitted`; **`StudentEnrolled`, `StudentWaitlisted`, `WaitlistConverted`, `EnrollmentDropped`, `CourseSectionOpened`, `CourseSectionCancelled`** (added by the Sprint 6 coupling
 audit: the Academic service had published nothing, and Learning, Attendance, Student Success, Record and Notification need them);
 `PaymentSuccessful`, `PaymentFailed`, `PaymentRefunded`; `PasskeyRevoked`, `SessionRevoked`, `UserSuspended`, `UserDeactivated`,
-`UserReactivated`, **`UserRoleAssigned`, `UserRoleRevoked`** (the last three are not in the table below; the two role events were added by Sprint 6A.2 so other services can build a local role read model, see [contracts/identity-service.md](contracts/identity-service.md)); `InterventionCreated`, `InterventionCompleted`, `RecommendationCreated`,
+`UserReactivated`, **`UserRoleAssigned`, `UserRoleRevoked`, `PersonRegistered`, `PersonUpdated`** (the last five are not in the table below; the two role events were added by Sprint 6A.2/6A.3 so other services can build local read models of roles and people, see [contracts/identity-service.md](contracts/identity-service.md) and [contracts/academic-service.md](contracts/academic-service.md); the person events carry name, email and phone only, aggregate `persons`, platform-scoped); `InterventionCreated`, `InterventionCompleted`, `RecommendationCreated`,
 `RiskScoreChanged`. **The other 30 catalogued events are not emitted yet**; [extraction-audit.md](extraction-audit.md) section 7 says which
 ones block which extraction. Enrollment events use the enrollment id as the Kafka key (aggregate `enrollments`); `WaitlistConverted` uses
 the section id (aggregate `waitlist_entries`) so promotion order is kept per section.

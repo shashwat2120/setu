@@ -132,6 +132,20 @@ address you control and configure the SMTP sender:
 A send that fails (wrong password, server unreachable, 10 second timeout) never changes what the visitor sees; it is logged with the
 address masked and never with the password.
 
+### Services that can run on their own (Sprint 6)
+
+The monolith is still the default. Two of its parts also start alone, as the first step of the service split; each is inert inside the
+monolith and has its contract in `docs/contracts/`.
+
+| Service | Entry point | Port | Needs |
+|---|---|---|---|
+| Identity | `com.setu.identity.IdentityServiceApplication` | 8081 | Postgres, Redis, Kafka; `JWT_SIGNING_KEY` (see `tools/generate-jwt-key.js`); publishes its keys at `/.well-known/jwks.json` |
+| Academic | `com.setu.academic.AcademicServiceApplication` | 8082 | the same, plus `app.security.jwt.jwks-uri` pointing at Identity's key set; builds its read model of roles and people from Identity's events |
+
+Run one with `./mvnw spring-boot:run -Dspring-boot.run.main-class=com.setu.academic.AcademicServiceApplication`. Neither runs Flyway:
+migrate with the monolith first. On this Windows machine a real embedded server does not start (see "Running on Windows"), so both are
+verified through `IdentityServiceWiringTests` and `AcademicServiceWiringTests`.
+
 ## Tests
 
 ```bash

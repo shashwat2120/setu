@@ -73,6 +73,10 @@ institution.colleges  Academic
 institution.departments  Academic
 institution.policy_chunks  Academic
 institution.policy_documents  Academic
+institution.rm_persons  Academic
+institution.rm_processed_events  Academic
+institution.rm_role_grants  Academic
+institution.rm_role_permissions  Academic
 learning.assignment_submissions  Learning
 learning.assignments  Learning
 learning.course_modules  Learning
