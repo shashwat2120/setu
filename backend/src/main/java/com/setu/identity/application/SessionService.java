@@ -6,6 +6,7 @@ import com.setu.identity.infrastructure.SessionRepository;
 import com.setu.identity.infrastructure.UserRepository;
 import com.setu.identity.infrastructure.security.JwtService;
 import com.setu.identity.infrastructure.security.JwtProperties;
+import com.setu.shared.security.LoginRevocations;
 import com.setu.identity.infrastructure.security.RefreshTokenHasher;
 import com.setu.shared.governance.OutboxEventWriter;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
@@ -34,16 +35,18 @@ public class SessionService {
     private final JwtProperties jwtProperties;
     private final RefreshTokenHasher tokenHasher;
     private final OutboxEventWriter outboxEventWriter;
+    private final LoginRevocations loginRevocations;
 
     public SessionService(SessionRepository sessionRepository, UserRepository userRepository, JwtService jwtService,
                            JwtProperties jwtProperties, RefreshTokenHasher tokenHasher,
-                           OutboxEventWriter outboxEventWriter) {
+                           OutboxEventWriter outboxEventWriter, LoginRevocations loginRevocations) {
         this.sessionRepository = sessionRepository;
         this.userRepository = userRepository;
         this.jwtService = jwtService;
         this.jwtProperties = jwtProperties;
         this.tokenHasher = tokenHasher;
         this.outboxEventWriter = outboxEventWriter;
+        this.loginRevocations = loginRevocations;
     }
 
     @Transactional
@@ -69,6 +72,7 @@ public class SessionService {
         if (session.isRevoked()) {
             int revokedCount = sessionRepository.revokeFamily(session.familyId(), now);
             publishSessionRevoked(session.familyId(), session.userId(), "REFRESH_TOKEN_REUSE_DETECTED", now);
+            loginRevocations.revokeLogin(session.familyId());
             return new RefreshOutcome.ReuseDetected(
                 "refresh token was already used once; " + revokedCount + " session(s) in the family revoked");
         }
@@ -108,6 +112,7 @@ public class SessionService {
         session.revoke(now);
         sessionRepository.save(session);
         publishSessionRevokedSingle(session.id(), session.userId(), "LOGOUT", now);
+        loginRevocations.revokeLogin(session.familyId());
         return true;
     }
 
@@ -121,6 +126,7 @@ public class SessionService {
             sessionRepository.save(s);
             publishSessionRevokedSingle(s.id(), userId, reason, now);
         }
+        loginRevocations.revokeAccount(userId);
         return sessions.size();
     }
 
