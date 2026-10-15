@@ -20,7 +20,7 @@ is the locked build contract. Where anything below (or in `docs/PRD.md` /
 
 | Layer | Choice |
 |---|---|
-| Language | Java 21 (virtual threads) |
+| Language | Java 25 LTS (virtual threads) |
 | Backend | Spring Boot 4.x, Spring Modulith |
 | Security | Spring Security 7 — passkeys/WebAuthn, Argon2id fallback |
 | AI | Spring AI 2.x: Gemini as the primary provider when a key is configured, with a local Ollama model as the fallback |
@@ -74,7 +74,7 @@ role + tenant + resource + action + workflow state + ownership.
 
 ## Quick start (local)
 
-Prerequisites: Java 21, a current Node.js (developed on Node 24), Docker Desktop.
+Prerequisites: Java 25 LTS, a current Node.js (developed on Node 24), Docker Desktop.
 
 ```bash
 # 1. Postgres (pgvector), Redis and Kafka
@@ -123,7 +123,8 @@ backend log at startup, and the click-through is in [docs/demo-script.md](docs/d
 - **Assessment, records, finance, career:** versioned grades, transcripts, fee accounts with idempotent payment webhooks, jobs
   and placements.
 - **Student Success Engine and AI advisor:** a deterministic, reproducible risk score; an advisor that answers only through
-  application-owned, authorization-checked tools and cites its sources.
+  application-owned, authorization-checked tools and cites its sources. College policy questions use retrieval over pgvector
+  embeddings (Gemini first) with the tenant and document-access check applied before ranking (see [backend/README.md](backend/README.md#college-policy-search-rag)).
 - **Platform:** transactional outbox to Kafka, per-module Flyway migrations, an audit log, Actuator health and Modulith endpoints, and Micrometer metrics scraped by Prometheus and drawn on a provisioned Grafana dashboard (see [infra/docker/README.md](infra/docker/README.md#observability)).
 
 - **Kafka consumer:** the notification module consumes the outbox events (grade published, payments, placement, recommendation, intervention,
@@ -139,6 +140,7 @@ Secrets and local overrides live in the git-ignored `backend/.env.local`; nothin
 | Variable | Purpose |
 |---|---|
 | `AI_PROVIDER` | `google-genai` (Gemini primary) or `ollama` (default, used by tests) |
+| `EMBEDDING_PROVIDER` | Policy-search embeddings: `auto` (follows the chat provider), `gemini`, `ollama` or `local`: see [backend/README.md](backend/README.md#college-policy-search-rag) |
 | `GEMINI_API_KEY`, `GEMINI_MODEL` | Gemini credentials and model. Pick a model that actually answers for your key: see [backend/README.md](backend/README.md#ai-advisor) |
 | `AI_PRIMARY_TIMEOUT_SECONDS` | How long Gemini may take before the local fallback is tried (default 25) |
 | `SMTP_USER`, `SMTP_PASSWORD` | Real password-reset email delivery over SMTP, for example Gmail with an app password. Without them the email is not sent: see [backend/README.md](backend/README.md#password-reset-and-email) |

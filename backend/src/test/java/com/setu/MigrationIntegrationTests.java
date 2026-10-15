@@ -66,11 +66,13 @@ class MigrationIntegrationTests {
         // attendance policy (attendance.staff_attendance_policies, V75 — same ERD doc, same schema).
         // +1 for the notification consumer's own processed-event table (notification.processed_events, V78 — canonical spec §8: each consumer keeps its
         // own idempotency table keyed on event_id; owned by the existing notification schema).
+        // +1 for RAG over policy documents (institution.policy_chunks, V79 — passages with a pgvector embedding and a full-text vector, owned by
+        // institution beside policy_documents; no new schema).
         Integer count = jdbc.queryForObject(
             "SELECT count(*) FROM information_schema.tables " +
             "WHERE table_schema = ANY(?) AND table_type = 'BASE TABLE'",
             Integer.class, (Object) EXPECTED_SCHEMAS.toArray(new String[0]));
-        assertThat(count).isEqualTo(92);
+        assertThat(count).isEqualTo(93);
     }
 
     @Test

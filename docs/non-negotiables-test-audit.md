@@ -58,6 +58,8 @@ fixed it and tested it), **open** (no test yet; stated plainly in "Open items").
 | Consumers idempotent; retry; DLQ | `NotificationEventProcessorTests` (redelivery, 8 parallel deliveries, rollback of the event id), `NotificationErrorHandlerTests` | covered |
 | Redis never the source of truth | **`RedisOutageTests`** (sign-in and AI limiters fail open); `AuthRateLimiterTests.redisKeysNeverContainTheRawEmail` | added |
 | AI: tool authorization, prompt injection, schema validation, tenant-safe retrieval, source attribution | `AiToolAuthorizationTests`, `AiChatIntegrationTests.ignoresAnInstructionEmbeddedInsideARetrievedPolicyDocument`, `AiPolicySearchTests`, `AiChatSourcesTests` | covered |
+| RAG: tenant and document-ACL checked **before** retrieval, not after | **`PolicySearchRetrievalTests.theAccessCheckHappensBeforeRankingSoRestrictedPassagesCannotCrowdOutAllowedOnes`** (six better-matching restricted passages cannot displace the one allowed passage; an after-the-fact filter would return nothing), `…aTenantNeverSeesAnotherTenantsPassagesEvenWhenTheyAreIdentical` | added |
+| RAG: embedder failure never blocks search or creation | `PolicySearchEmbedderDownTests` (full-text fallback, vector added on a later pass) | added |
 
 ## §13 Concurrency gate
 

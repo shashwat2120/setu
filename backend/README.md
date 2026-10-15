@@ -1,6 +1,6 @@
 # backend: Spring Boot modular monolith
 
-Java 21, Spring Boot 4.1.1, Spring Modulith, Spring Data JPA, Spring Security 7, Spring AI 2.x, Flyway, Kafka (transactional outbox),
+Java 25 LTS, Spring Boot 4.1.1, Spring Modulith, Spring Data JPA, Spring Security 7, Spring AI 2.x, Flyway, Kafka (transactional outbox),
 Redis. One deployable application split into strictly bounded modules; the design is in [ARCHITECTURE.md](ARCHITECTURE.md) and the
 locked contract is [docs/FINAL_CANONICAL_PROJECT_SPEC.md](../docs/FINAL_CANONICAL_PROJECT_SPEC.md).
 
@@ -59,6 +59,7 @@ git-ignored `backend/.env.local` (it is loaded automatically); never commit keys
 | `DEMO_DATA_ENABLED` | `false` | Seed the demo colleges, people and content |
 | `AI_PROVIDER` | `ollama` | `google-genai` for Gemini as the primary provider |
 | `GEMINI_API_KEY`, `GEMINI_MODEL` | none, `gemini-3.8-flash` | Gemini credentials and model |
+| `EMBEDDING_PROVIDER` | `auto` | Embeddings for college-policy search: `auto` (Gemini when Gemini is the chat provider, otherwise the built-in local embedder), `gemini`, `ollama` (`EMBEDDING_OLLAMA_MODEL`, a 768-dimension model such as `nomic-embed-text`) or `local` |
 | `OLLAMA_BASE_URL`, `OLLAMA_MODEL` | `http://localhost:11434`, `llama3.2:3b` | Local model, always the fallback |
 | `AI_PRIMARY_TIMEOUT_SECONDS`, `AI_REQUEST_TIMEOUT_SECONDS` | `25`, `60` | Budget for the Gemini attempt, and for the whole request |
 | `AI_RATE_LIMIT_MAX_REQUESTS` | `20` | Advisor requests per window per user |
@@ -86,6 +87,23 @@ curl -s -o /dev/null -w "%{http_code} %{time_total}s\n" --max-time 30 \
 ```
 
 Free-tier keys are also rate limited and can return 503 under load; the fallback exists for that.
+
+### College policy search (RAG)
+
+The advisor's `searchCollegePolicy` tool searches the college's own policy documents. Each document is split into passages
+(`institution.policy_chunks`), each with a pgvector embedding and a full-text vector; a question is matched by both and the two
+rankings are merged (reciprocal-rank fusion). The tenant and the document-access check are applied **inside the SQL, before anything is
+ranked**: the caller's college, and the access codes the caller actually holds, so a restricted passage is never ranked, returned or shown
+to the model, and cannot crowd out an allowed one. A question that matches nothing returns nothing.
+
+- **Gemini first**, like chat: with `AI_PROVIDER=google-genai` and a key, passages are embedded with `gemini-embedding-001`
+  (768 dimensions) and a question with none of the policy's words ("how many classes can I miss") still finds the attendance policy.
+- **Fallbacks are honest.** If Gemini is unavailable the vector half is skipped and full-text search answers; chunks are stored without a
+  vector and get one on a later pass (every minute). There is no automatic switch to a second embedding model, because vectors from
+  different models cannot be compared. `ollama` is an explicit, opt-in provider.
+- **No key, or `local`:** a built-in embedder (hashed words and word pairs, deterministic, no download) keeps the same pgvector storage
+  and ranking working offline. It matches shared wording, not meaning, and the tests use it.
+- Changing the embedding model re-embeds existing passages in the background.
 
 ### Password reset and email
 

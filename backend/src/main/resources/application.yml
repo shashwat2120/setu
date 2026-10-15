@@ -75,6 +75,14 @@ spring:
         # Gemini Developer API (api-key only) — vertex-ai stays unset/false, so no GCP
         # project/location/service-account is ever required.
         api-key: ${GEMINI_API_KEY:}
+        embedding:
+          # Embeddings for college-policy search (RAG). Same key as chat; used only when Gemini is the chat provider (see
+          # AiProviderSafetyPostProcessor). 768 dimensions to match institution.policy_chunks.
+          api-key: ${GEMINI_API_KEY:}
+          text:
+            options:
+              model: gemini-embedding-001
+              dimensions: 768
         chat:
           options:
             model: ${GEMINI_MODEL:gemini-3.8-flash}
@@ -86,6 +94,9 @@ spring:
         # equivalent in the Day 14 report); a missing model should fail the
         # chat call with a controlled error, not trigger a multi-GB download.
         pull-model-strategy: never
+      embedding:
+        options:
+          model: ${EMBEDDING_OLLAMA_MODEL:nomic-embed-text}
       chat:
         options:
           model: ${OLLAMA_MODEL:llama3.2:3b}
@@ -188,6 +199,9 @@ app:
     # How long the primary (Gemini) attempt may take before the local fallback is tried. Gemini normally answers in a few
     # seconds; when it hangs, waiting the full 60s above made every answer take ~98s. Capped at the value above.
     primary-timeout-seconds: ${AI_PRIMARY_TIMEOUT_SECONDS:25}
+    embedding:
+      # Policy-search embeddings: auto (Gemini when Gemini is the chat provider, otherwise the built-in local one), gemini, ollama or local.
+      provider: ${EMBEDDING_PROVIDER:auto}
     rate-limit:
       max-requests: ${AI_RATE_LIMIT_MAX_REQUESTS:20}
       window-seconds: ${AI_RATE_LIMIT_WINDOW_SECONDS:60}

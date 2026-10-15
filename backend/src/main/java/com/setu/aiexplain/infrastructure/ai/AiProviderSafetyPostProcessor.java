@@ -35,6 +35,35 @@ public class AiProviderSafetyPostProcessor implements EnvironmentPostProcessor, 
 
     @Override
     public void postProcessEnvironment(ConfigurableEnvironment environment, SpringApplication application) {
+        applyChatFallback(environment);
+        selectEmbeddingProvider(environment);
+    }
+
+    /**
+     * Policy search embeddings follow the chat provider unless told otherwise ({@code app.ai.embedding.provider}: auto, gemini, ollama,
+     * local): Gemini when Gemini is the (still selected) chat provider, otherwise the built-in local embedder. Only the chosen provider's
+     * Spring AI model is created ({@code spring.ai.model.embedding}), so an unused provider can never fail startup, for example Gemini
+     * without a key.
+     */
+    private void selectEmbeddingProvider(ConfigurableEnvironment environment) {
+        String requested = environment.getProperty("app.ai.embedding.provider", "auto").trim().toLowerCase();
+        String chat = environment.getProperty(PROVIDER_PROPERTY, "ollama");
+        boolean geminiUsable = StringUtils.hasText(environment.getProperty("spring.ai.google.genai.api-key"));
+        String resolved = switch (requested) {
+            case "gemini" -> geminiUsable ? "gemini" : "local";
+            case "ollama" -> "ollama";
+            case "local" -> "local";
+            default -> GENAI.equals(chat) && geminiUsable ? "gemini" : "local";
+        };
+        // Spring AI switches the two providers with different keys: Gemini's text-embedding model on "spring.ai.model.embedding.text",
+        // Ollama's on "spring.ai.model.embedding". Each is set so that only the chosen provider's model is created.
+        environment.getPropertySources().addFirst(new MapPropertySource("setuEmbeddingProvider", Map.of(
+            "app.ai.embedding.resolved", resolved,
+            "spring.ai.model.embedding.text", resolved.equals("gemini") ? GENAI : "none",
+            "spring.ai.model.embedding", resolved.equals("ollama") ? "ollama" : "none")));
+    }
+
+    private void applyChatFallback(ConfigurableEnvironment environment) {
         if (!GENAI.equals(environment.getProperty(PROVIDER_PROPERTY))) {
             return;
         }

@@ -1,7 +1,9 @@
 package com.setu.institution.application;
 
 import com.setu.institution.domain.PolicyDocument;
+import com.setu.institution.infrastructure.PolicyChunkStore;
 import com.setu.institution.infrastructure.PolicyDocumentRepository;
+import com.setu.shared.ai.TextEmbedder;
 import com.setu.shared.authorization.AuthorizationContext;
 import com.setu.shared.authorization.ResourceRef;
 import com.setu.shared.governance.AuditLogWriter;
@@ -10,6 +12,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -33,16 +37,25 @@ public class PolicyDocumentService {
 
     private static final String MANAGE_PERMISSION = "MANAGE_INSTITUTION";
     private static final int MAX_RESULTS = 5;
+    private static final int CANDIDATES = 10;
+    private static final int RRF_K = 60;
 
     private final PolicyDocumentRepository policyDocumentRepository;
     private final CollegeService collegeService;
     private final TenantContext tenantContext;
     private final AuthorizationContext authorizationContext;
     private final AuditLogWriter auditLogWriter;
+    private final PolicyChunkStore chunkStore;
+    private final PolicyIndexer indexer;
+    private final TextEmbedder embedder;
 
     public PolicyDocumentService(PolicyDocumentRepository policyDocumentRepository, CollegeService collegeService,
                                   TenantContext tenantContext, AuthorizationContext authorizationContext,
-                                  AuditLogWriter auditLogWriter) {
+                                  AuditLogWriter auditLogWriter, PolicyChunkStore chunkStore, PolicyIndexer indexer,
+                                  TextEmbedder embedder) {
+        this.chunkStore = chunkStore;
+        this.indexer = indexer;
+        this.embedder = embedder;
         this.policyDocumentRepository = policyDocumentRepository;
         this.collegeService = collegeService;
         this.tenantContext = tenantContext;
@@ -67,7 +80,8 @@ public class PolicyDocumentService {
         UUID actor = authorizationContext.currentUserId();
         PolicyDocument document = new PolicyDocument(UUID.randomUUID(), tenantId, title, content,
             requiredPermissionCode, actor, Instant.now());
-        policyDocumentRepository.save(document);
+        policyDocumentRepository.saveAndFlush(document); // flushed so the chunk rows below (plain SQL) can reference it
+        indexer.indexDocument(tenantId, document.id(), content);
         auditLogWriter.write(tenantId, actor, "POLICY_DOCUMENT_CREATED", "institution.policy_documents",
             document.id(), Map.of("title", title));
         return new CreateResult.Success(document.id());
@@ -77,15 +91,17 @@ public class PolicyDocumentService {
     }
 
     /**
-     * No tenant/query parameter is ever taken from an AI prompt — the tool
-     * layer must resolve them itself ({@code tenantId} from {@link
-     * TenantContext}, {@code query} only as the user's own literal
-     * question text, never re-derived from retrieved content). Returns an
-     * empty list rather than throwing when the caller has no single
-     * resolvable tenant (SUPER_ADMIN, or truly no context) — "no policies
-     * found" is a safe, honest answer; a thrown exception here would leak
-     * more about the caller's own account shape than a policy search ever
-     * should.
+     * Hybrid retrieval over the caller's own college's policy passages: nearest passages by embedding (pgvector) and best text matches
+     * (full-text), merged by reciprocal-rank fusion.
+     * <p>
+     * No tenant/query parameter is ever taken from an AI prompt: the tenant comes from {@link TenantContext}, the query is only the
+     * user's own literal question, never re-derived from retrieved content. Both access checks happen BEFORE retrieval, inside the SQL:
+     * the tenant, and the document-ACL codes the caller actually holds (each distinct code the college uses is checked once, up front),
+     * so a passage the caller may not see is never ranked, returned, or handed to the model. Returns an empty list rather than throwing
+     * when the caller has no single resolvable tenant: "no policies found" is a safe, honest answer.
+     * <p>
+     * If the embedder is unavailable the vector half is skipped and full-text alone answers; a passage below the embedder's similarity
+     * floor is treated as unrelated, so a question with no match returns nothing rather than the least-bad passage.
      */
     @Transactional(readOnly = true)
     public List<PolicySearchResult> search(String query) {
@@ -93,17 +109,45 @@ public class PolicyDocumentService {
         if (tenantId.isEmpty() || query == null || query.isBlank()) {
             return List.of();
         }
-        return policyDocumentRepository.search(tenantId.get(), query, MAX_RESULTS).stream()
-            .filter(this::callerMaySee)
-            .map(d -> new PolicySearchResult(d.id(), d.title(), d.content()))
+        List<String> allowed = codesCallerHolds(tenantId.get());
+
+        List<PolicyChunkStore.ChunkHit> vectorHits = embedder.embed(query)
+            .map(v -> chunkStore.vectorSearch(tenantId.get(), allowed, embedder.modelId(), PolicyChunkStore.literal(v), CANDIDATES).stream()
+                .filter(h -> h.score() >= embedder.minSimilarity()).toList())
+            .orElse(List.of());
+        List<PolicyChunkStore.ChunkHit> textHits = chunkStore.textSearch(tenantId.get(), allowed, query, CANDIDATES);
+
+        return fuse(vectorHits, textHits).stream()
+            .limit(MAX_RESULTS)
+            .map(h -> new PolicySearchResult(h.documentId(), h.title(), h.content()))
             .toList();
     }
 
-    private boolean callerMaySee(PolicyDocument document) {
-        if (document.requiredPermissionCode() == null) {
-            return true;
+    /** The document-ACL codes, among those this college's documents use, that the current caller holds. */
+    private List<String> codesCallerHolds(UUID tenantId) {
+        List<String> held = new ArrayList<>();
+        for (String code : chunkStore.distinctAccessCodes(tenantId)) {
+            if (authorizationContext.can(code, ResourceRef.of("policy_document", UUID.randomUUID(), tenantId)).isAllowed()) {
+                held.add(code);
+            }
         }
-        return authorizationContext.can(document.requiredPermissionCode(),
-            ResourceRef.of("policy_document", document.id(), document.tenantId())).isAllowed();
+        return held;
+    }
+
+    /** Reciprocal-rank fusion: a passage ranked well by either list rises, one ranked well by both rises most. */
+    private static List<PolicyChunkStore.ChunkHit> fuse(List<PolicyChunkStore.ChunkHit> vector, List<PolicyChunkStore.ChunkHit> text) {
+        Map<UUID, Double> score = new LinkedHashMap<>();
+        Map<UUID, PolicyChunkStore.ChunkHit> byId = new LinkedHashMap<>();
+        for (List<PolicyChunkStore.ChunkHit> list : List.of(vector, text)) {
+            for (int rank = 0; rank < list.size(); rank++) {
+                PolicyChunkStore.ChunkHit hit = list.get(rank);
+                byId.putIfAbsent(hit.chunkId(), hit);
+                score.merge(hit.chunkId(), 1.0 / (RRF_K + rank + 1), Double::sum);
+            }
+        }
+        return score.entrySet().stream()
+            .sorted(Map.Entry.<UUID, Double>comparingByValue().reversed())
+            .map(e -> byId.get(e.getKey()))
+            .toList();
     }
 }
