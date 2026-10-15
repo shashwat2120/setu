@@ -6,15 +6,15 @@
  * service extraction does not accidentally remove the authorization
  * boundary").
  * <p>
- * Like {@link com.setu.shared.tenant.TenantContext}, this package holds only
- * the CONTRACT (interfaces, value types) — no database access, no business
- * logic (Day 4 instruction §12, {@code shared} restriction). The real
- * engine, {@code AuthorizationService}, lives in
- * {@code com.setu.identity.infrastructure.authorization} because
- * permission/role evaluation is fundamentally identity's own data
- * (identity.roles, identity.permissions, identity.role_permissions,
- * identity.user_roles) — the same reasoning that already put the real
- * {@code TenantContext} implementation there.
+ * Originally this package held only the CONTRACT (interfaces, value types)
+ * and the engine lived in identity, because role evaluation is identity's own
+ * data (identity.roles, identity.role_permissions, identity.user_roles). Sprint
+ * 6A.3 made the engine a library every service embeds: {@link
+ * com.setu.shared.authorization.AuthorizationEngine} holds the decision logic
+ * and takes its role data from a {@link com.setu.shared.authorization.RoleGrantSource}.
+ * Identity's source reads its tables ({@code IdentityRoleGrantSource}); an
+ * extracted service's source is a local read model fed by Identity's role
+ * events. The engine itself still touches no database.
  * <p>
  * See docs/architecture-notes/authorization-engine.md for the full design
  * write-up (decision algorithm, why ownership/assignment resolution is each

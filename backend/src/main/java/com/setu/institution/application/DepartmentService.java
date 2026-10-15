@@ -1,6 +1,6 @@
 package com.setu.institution.application;
 
-import com.setu.identity.application.UserDirectoryService;
+import com.setu.shared.identity.TenantMembership;
 import com.setu.institution.domain.AcademicOrganization;
 import com.setu.institution.domain.Department;
 import com.setu.institution.infrastructure.AcademicOrganizationRepository;
@@ -61,18 +61,18 @@ public class DepartmentService {
     private final DepartmentRepository departmentRepository;
     private final DepartmentInsertGuard departmentInsertGuard;
     private final AcademicOrganizationRepository organizationRepository;
-    private final UserDirectoryService userDirectoryService;
+    private final TenantMembership tenantMembership;
     private final AuthorizationContext authorizationContext;
     private final AuditLogWriter auditLogWriter;
 
     public DepartmentService(DepartmentRepository departmentRepository, DepartmentInsertGuard departmentInsertGuard,
                               AcademicOrganizationRepository organizationRepository,
-                              UserDirectoryService userDirectoryService, AuthorizationContext authorizationContext,
+                              TenantMembership tenantMembership, AuthorizationContext authorizationContext,
                               AuditLogWriter auditLogWriter) {
         this.departmentRepository = departmentRepository;
         this.departmentInsertGuard = departmentInsertGuard;
         this.organizationRepository = organizationRepository;
-        this.userDirectoryService = userDirectoryService;
+        this.tenantMembership = tenantMembership;
         this.authorizationContext = authorizationContext;
         this.auditLogWriter = auditLogWriter;
     }
@@ -131,7 +131,7 @@ public class DepartmentService {
         authorizationContext.assertCan(MANAGE_PERMISSION,
             ResourceRef.of("department", department.id(), department.tenantId()));
 
-        if (!userDirectoryService.hasActiveRoleInTenant(hodUserId, department.tenantId())) {
+        if (!tenantMembership.hasActiveRoleInTenant(hodUserId, department.tenantId())) {
             return new AssignHodResult.HodNotAuthorizedInTenant();
         }
 

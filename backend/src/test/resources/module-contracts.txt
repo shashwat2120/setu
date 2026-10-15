@@ -18,7 +18,6 @@ edge   attendance -> enrollment
 edge   attendance -> institution
 edge   career -> directory
 edge   career -> institution
-edge   catalog -> identity
 edge   catalog -> institution
 edge   enrollment -> catalog
 edge   enrollment -> directory
@@ -26,7 +25,6 @@ edge   enrollment -> institution
 edge   finance -> directory
 edge   finance -> institution
 edge   guardianaccess -> directory
-edge   institution -> identity
 edge   learning -> directory
 edge   learning -> enrollment
 edge   notification -> directory

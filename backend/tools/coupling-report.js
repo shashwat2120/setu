@@ -16,7 +16,7 @@ const path = require('path');
 const root = path.resolve(__dirname, '../src/main/java/com/setu');
 const SERVICE = {
   identity: 'Identity',
-  institution: 'Academic', catalog: 'Academic', enrollment: 'Academic', directory: 'Academic', guardianaccess: 'Academic',
+  institution: 'Academic', catalog: 'Academic', enrollment: 'Academic', directory: 'Academic', guardianaccess: 'Academic', academic: 'Academic',
   learning: 'Learning', assessment: 'Assessment', record: 'Assessment', attendance: 'Attendance', risk: 'StudentSuccess',
   career: 'Career', finance: 'Finance', notification: 'Notification', aiexplain: 'AI', analytics: 'Analytics',
 };
@@ -72,6 +72,7 @@ moduleEdges.forEach((e) => console.log(`${e.from.padEnd(15)} -> ${e.to.padEnd(15
 
 // ---- shared contracts and their implementers
 const contracts = {};
+const KERNEL_IMPLEMENTATIONS = { AuthorizationContext: 'AuthorizationEngine' };   // contract -> kernel class a module extends to implement it
 for (const f of files) {
   const rel = path.relative(root, f).split(path.sep);
   if (rel[0] !== 'shared' || ['admin', 'seed', 'governance', 'web'].includes(rel[1])) continue;
@@ -83,7 +84,11 @@ for (const f of files) {
   if (mod === 'shared') continue;
   const src = strip(fs.readFileSync(f, 'utf8'));
   for (const name of Object.keys(contracts)) {
-    if (new RegExp(`implements[^{]*\\b${name}\\b`).test(src)) contracts[name].implementers.add(mod);
+    // A module provides a contract by implementing it, by extending the kernel class that implements it (AuthorizationService extends
+    // AuthorizationEngine), or by declaring the @Bean that supplies it (Academic's read-model wiring, Sprint 6A.3).
+    const viaKernel = KERNEL_IMPLEMENTATIONS[name] ? new RegExp(`extends\\s+${KERNEL_IMPLEMENTATIONS[name]}\\b`).test(src) : false;
+    const viaBean = new RegExp(`@Bean\\s+[\\w<>]*\\s*\\b${name}\\b\\s+\\w+\\(`).test(src);
+    if (new RegExp(`implements[^{]*\\b${name}\\b`).test(src) || viaKernel || viaBean) contracts[name].implementers.add(mod);
     else if (new RegExp(`\\b${name}\\b`).test(src)) contracts[name].consumers.add(mod);
   }
 }
@@ -98,7 +103,11 @@ const add = (from, to, weight) => {
   edgesBetween[`${a}->${b}`] = (edgesBetween[`${a}->${b}`] || 0) + weight;
 };
 moduleEdges.forEach((e) => add(e.from, e.to, e.types));
-for (const c of Object.values(contracts)) for (const impl of c.implementers) for (const user of c.consumers) add(user, impl, 1);
+// A contract a service implements itself (Academic's read-model authorization, 6A.3) is not a dependency on whoever else implements it.
+for (const c of Object.values(contracts)) {
+  const implementingServices = new Set([...c.implementers].map((m) => SERVICE[m]));
+  for (const impl of c.implementers) for (const user of c.consumers) if (!implementingServices.has(SERVICE[user])) add(user, impl, 1);
+}
 
 const nodes = [...new Set(Object.values(SERVICE))];
 const adj = {};

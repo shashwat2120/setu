@@ -4,7 +4,7 @@ import com.setu.catalog.domain.Course;
 import com.setu.catalog.domain.CourseStatus;
 import com.setu.catalog.infrastructure.CourseInsertGuard;
 import com.setu.catalog.infrastructure.CourseRepository;
-import com.setu.identity.application.UserDirectoryService;
+import com.setu.shared.identity.TenantMembership;
 import com.setu.institution.application.DepartmentService;
 import com.setu.shared.authorization.AuthorizationContext;
 import com.setu.shared.authorization.ResourceRef;
@@ -63,17 +63,17 @@ public class CourseService {
     private final CourseRepository courseRepository;
     private final CourseInsertGuard courseInsertGuard;
     private final DepartmentService departmentService;
-    private final UserDirectoryService userDirectoryService;
+    private final TenantMembership tenantMembership;
     private final AuthorizationContext authorizationContext;
     private final AuditLogWriter auditLogWriter;
 
     public CourseService(CourseRepository courseRepository, CourseInsertGuard courseInsertGuard,
-                          DepartmentService departmentService, UserDirectoryService userDirectoryService,
+                          DepartmentService departmentService, TenantMembership tenantMembership,
                           AuthorizationContext authorizationContext, AuditLogWriter auditLogWriter) {
         this.courseRepository = courseRepository;
         this.courseInsertGuard = courseInsertGuard;
         this.departmentService = departmentService;
-        this.userDirectoryService = userDirectoryService;
+        this.tenantMembership = tenantMembership;
         this.authorizationContext = authorizationContext;
         this.auditLogWriter = auditLogWriter;
     }
@@ -132,7 +132,7 @@ public class CourseService {
     public Optional<Course> get(UUID courseId) {
         Optional<Course> course = courseRepository.findById(courseId);
         course.ifPresent(c -> {
-            if (!userDirectoryService.hasActiveRoleInTenant(authorizationContext.currentUserId(), c.tenantId())) {
+            if (!tenantMembership.hasActiveRoleInTenant(authorizationContext.currentUserId(), c.tenantId())) {
                 authorizationContext.assertCan(VIEW_PERMISSION, ResourceRef.of("course", c.id(), c.tenantId()));
             }
         });
