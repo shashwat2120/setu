@@ -3,6 +3,8 @@ package com.setu.identity.application;
 import com.setu.identity.domain.RoleCode;
 import com.setu.identity.domain.UserPrincipal;
 import com.setu.identity.domain.UserRole;
+import com.setu.identity.domain.UserRoleAssignedEvent;
+import com.setu.shared.governance.OutboxEventWriter;
 import com.setu.identity.infrastructure.RoleRepository;
 import com.setu.identity.infrastructure.UserRoleRepository;
 import com.setu.shared.identity.TenantMembership;
@@ -33,7 +35,11 @@ public class UserDirectoryService implements TenantMembership {
     private final UserRoleRepository userRoleRepository;
     private final RoleRepository roleRepository;
 
-    public UserDirectoryService(UserRoleRepository userRoleRepository, RoleRepository roleRepository) {
+    private final OutboxEventWriter outboxEventWriter;
+
+    public UserDirectoryService(UserRoleRepository userRoleRepository, RoleRepository roleRepository,
+                                 OutboxEventWriter outboxEventWriter) {
+        this.outboxEventWriter = outboxEventWriter;
         this.userRoleRepository = userRoleRepository;
         this.roleRepository = roleRepository;
     }
@@ -88,6 +94,10 @@ public class UserDirectoryService implements TenantMembership {
             .orElseThrow(() -> new IllegalArgumentException("Unknown role code: " + roleCode)).id();
         UserRole assignment = new UserRole(UUID.randomUUID(), userId, roleId, tenantId, Instant.now(), null);
         userRoleRepository.save(assignment);
+        var event = new UserRoleAssignedEvent(UUID.randomUUID(), Instant.now(), assignment.id(), UUID.randomUUID(), null, tenantId,
+            assignment.id(), userId, roleCode.name(), null);
+        outboxEventWriter.write(event.aggregateType(), event.aggregateId(), event.eventType(), event.eventVersion(), event,
+            event.tenantId(), event.correlationId(), event.causationId());
         return assignment.id();
     }
 

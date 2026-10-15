@@ -52,7 +52,8 @@ class EndpointSecurityAuditTests {
         "/v3/api-docs", "endpoint shapes only, no data",
         "/swagger-ui", "endpoint shapes only, no data",
         "/ws", "WebSocket handshake; STOMP CONNECT authenticates (AttendanceStompAuthorizationTests)",
-        "/error", "container error page");
+        "/error", "container error page",
+        "/.well-known/jwks.json", "the public half of the token-signing keys; services verify tokens against it (JwksEndpointTests)");
 
     @Autowired
     MockMvc mockMvc;

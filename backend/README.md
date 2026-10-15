@@ -54,7 +54,9 @@ git-ignored `backend/.env.local` (it is loaded automatically); never commit keys
 | `REDIS_HOST`, `REDIS_PORT` | `localhost`, `6379` | Redis (rate limiting and QR state; never a source of truth) |
 | `KAFKA_BOOTSTRAP_SERVERS` | `localhost:9092` | Outbox publishing |
 | `SERVER_PORT` | `8080` | HTTP port (the dev bridge uses 8089) |
-| `JWT_SECRET` | dev-only value | **Must** be overridden in any real deployment |
+| `JWT_SECRET` | dev-only value | Keys the password-reset-code HMAC only; **must** be overridden in any real deployment |
+| `JWT_SIGNING_KEY` | empty (ephemeral key, warned) | Base64 PKCS#8 EC P-256 private key that signs access tokens (ES256); make one with `node tools/generate-jwt-key.js`. Other services verify with the public keys at `/.well-known/jwks.json` |
+| `JWT_PREVIOUS_PUBLIC_KEYS` | empty | Comma-separated Base64 X.509 public keys of retired signing keys, still published during a rotation |
 | `FRONTEND_BASE_URL` | `http://localhost:5180` | Origin used to build the link to the reset page in emails |
 | `DEMO_DATA_ENABLED` | `false` | Seed the demo colleges, people and content |
 | `AI_PROVIDER` | `ollama` | `google-genai` for Gemini as the primary provider |

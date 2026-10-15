@@ -10,6 +10,7 @@ import com.setu.identity.infrastructure.UserRoleRepository;
 import com.setu.shared.authorization.AccessDecision;
 import com.setu.shared.authorization.AuthorizationContext;
 import com.setu.shared.authorization.GuardianDelegationChecker;
+import org.springframework.beans.factory.ObjectProvider;
 import com.setu.shared.authorization.ResourceRef;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.security.access.AccessDeniedException;
@@ -61,11 +62,11 @@ public class AuthorizationService implements AuthorizationContext {
     private final UserRoleRepository userRoleRepository;
     private final RoleRepository roleRepository;
     private final RolePermissionRepository rolePermissionRepository;
-    private final GuardianDelegationChecker guardianDelegationChecker;
+    private final ObjectProvider<GuardianDelegationChecker> guardianDelegationChecker;
     private final AuthorizationProperties properties;
 
     /**
-     * {@code @Lazy} on {@code guardianDelegationChecker} breaks a genuine
+     * {@code ObjectProvider} on {@code guardianDelegationChecker} (resolved only when called) breaks a genuine
      * Spring bean-creation cycle introduced in Day 6: the real
      * implementation chain (GuardianDelegationAdapter -&gt;
      * GuardianAccessService) now depends on {@code AuthorizationContext}
@@ -81,7 +82,7 @@ public class AuthorizationService implements AuthorizationContext {
      */
     public AuthorizationService(UserRoleRepository userRoleRepository, RoleRepository roleRepository,
                                  RolePermissionRepository rolePermissionRepository,
-                                 @org.springframework.context.annotation.Lazy GuardianDelegationChecker guardianDelegationChecker,
+                                 ObjectProvider<GuardianDelegationChecker> guardianDelegationChecker,
                                  AuthorizationProperties properties) {
         this.userRoleRepository = userRoleRepository;
         this.roleRepository = roleRepository;
@@ -147,7 +148,9 @@ public class AuthorizationService implements AuthorizationContext {
         boolean permissionViaDelegation = false;
         if (!permissionViaRole && isGuardianInScope && resource.delegationTargetStudentId() != null
             && resource.tenantId() != null) {
-            permissionViaDelegation = guardianDelegationChecker.hasActiveDelegatedAccess(
+            // No checker in this process (the Identity service runs without the guardian-access module): delegation is denied, never assumed.
+            GuardianDelegationChecker checker = guardianDelegationChecker.getIfAvailable();
+            permissionViaDelegation = checker != null && checker.hasActiveDelegatedAccess(
                 principalUserId, resource.delegationTargetStudentId(), resource.tenantId(), permissionCode, now);
         }
 

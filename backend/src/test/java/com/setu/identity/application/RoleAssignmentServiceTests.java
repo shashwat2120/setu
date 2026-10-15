@@ -189,4 +189,40 @@ class RoleAssignmentServiceTests {
         UserRole reloaded = userRoleRepository.findById(assignmentId).orElseThrow();
         assertThat(reloaded.isActive(Instant.now())).isFalse();
     }
+
+    @Test
+    void assigningARolePublishesAUserRoleAssignedEventForOtherServices() {
+        UUID tenant = collegeDirectoryService.provisionCollege(
+            "R" + UUID.randomUUID().toString().substring(0, 8), "Role Event College", "Asia/Kolkata");
+        UUID admin = bootstrapCollegeAdmin(tenant);
+        UUID newFaculty = newUser("event-faculty");
+        TestAuthentication.authenticateAs(admin, Instant.now());
+
+        UUID assignmentId = roleAssignmentService.assignRole(newFaculty, RoleCode.FACULTY, tenant);
+
+        entityManager.flush();
+        var row = jdbc.queryForMap("SELECT tenant_id, aggregate_type, payload_json::text AS payload FROM governance.outbox_events "
+            + "WHERE event_type = 'UserRoleAssigned' AND aggregate_id = ?", assignmentId);
+        assertThat(row.get("tenant_id")).isEqualTo(tenant);
+        assertThat(row.get("aggregate_type")).isEqualTo("user_roles");
+        assertThat((String) row.get("payload")).contains(newFaculty.toString()).contains("FACULTY").contains(admin.toString());
+    }
+
+    @Test
+    void revokingARolePublishesAUserRoleRevokedEvent() {
+        UUID tenant = collegeDirectoryService.provisionCollege(
+            "R" + UUID.randomUUID().toString().substring(0, 8), "Role Revoke Event College", "Asia/Kolkata");
+        UUID admin = bootstrapCollegeAdmin(tenant);
+        UUID student = newUser("event-student");
+        TestAuthentication.authenticateAs(admin, null);
+        UUID assignmentId = roleAssignmentService.assignRole(student, RoleCode.STUDENT, tenant);
+
+        roleAssignmentService.revokeRole(assignmentId);
+
+        entityManager.flush();
+        var row = jdbc.queryForMap("SELECT tenant_id, payload_json::text AS payload FROM governance.outbox_events "
+            + "WHERE event_type = 'UserRoleRevoked' AND aggregate_id = ?", assignmentId);
+        assertThat(row.get("tenant_id")).isEqualTo(tenant);
+        assertThat((String) row.get("payload")).contains(student.toString()).contains("STUDENT");
+    }
 }

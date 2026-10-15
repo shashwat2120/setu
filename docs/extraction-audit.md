@@ -58,6 +58,16 @@ Finance, Career, Notification and AI. After: the single pair below.
 - **Identity → Academic (1):** the authorization engine (`AuthorizationService`, in identity) asks `GuardianDelegationChecker` whether a
   guardian holds an active grant; guardian grants are Academic data (decision H2).
 
+**Status after 6A.2** (details in [contracts/identity-service.md](contracts/identity-service.md)): decisions 2 and the Identity side of 1 are built; the rest is open and moves to 6A.3.
+
+- Done: access tokens are ES256 and verifiable from `/.well-known/jwks.json` with no shared secret; Identity publishes login and account
+  revocations to Redis and `RemoteTokenAuthenticator` (signature + revocation, fail closed) is the check every other service makes; role
+  grants and revocations now emit `UserRoleAssigned`/`UserRoleRevoked`; `IdentityServiceApplication` starts the identity module alone, with
+  guardian delegation denied when no checker exists.
+- Not done, needed before Academic leaves the monolith (6A.3): the **role read model** that consumes those events (so Academic authorizes
+  from a local copy), a choice of its staleness bound (it is the time to consume the event, since nothing else delays it), and the
+  **guardian-grant** answer (call Academic, uncached or invalidated by an event; Identity may not cache a revoked grant).
+
 **Decision proposed for 6A.2:** the authorization engine is a *library* every service embeds, not a service it calls per request. A service
 checks a permission from the JWT plus a local read model of roles and permissions, fed by Identity events. The Identity *service* (accounts,
 sessions, passkeys, tokens) then depends on nobody, which is what the frozen test already guarantees for the module. A guardian-delegation
@@ -201,8 +211,8 @@ giving Learning, Assessment, Risk and Finance read contracts.
 ## 10. Recommended order
 
 1. **Pre-work (done in this pass):** F1 to F4, the frozen contracts.
-2. **Before 6A.2:** the decisions in section 4 (role-change events, revocation list, guardian-grant cache) and the role-change events.
-3. **6A.2 Identity**, then **6A.3 Academic** with the enrollment events it already emits plus the section events (section 7, blocking).
+2. **6A.2 Identity (done):** ES256 + JWKS, Redis revocation list, role-change events, standalone entry point. Still open from section 4: role read model and guardian-grant answer, both first needed by 6A.3.
+3. **6A.3 Academic** with the enrollment events it already emits plus the section events (section 7, blocking).
 4. **6A.4 gateway, discovery, config**, using the route table above.
 5. **Finance and Career** (leaf services, Academic only): the first feature services out, and the proof that the pattern works.
 6. **Attendance, Learning, Assessment (with Record)**, with the missing learning and assessment events.

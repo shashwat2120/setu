@@ -2,11 +2,14 @@ package com.setu.identity.application;
 
 import com.setu.identity.domain.RoleCode;
 import com.setu.identity.domain.UserRole;
+import com.setu.identity.domain.UserRoleAssignedEvent;
+import com.setu.identity.domain.UserRoleRevokedEvent;
 import com.setu.identity.infrastructure.RoleRepository;
 import com.setu.identity.infrastructure.UserRoleRepository;
 import com.setu.shared.authorization.AuthorizationContext;
 import com.setu.shared.authorization.ResourceRef;
 import com.setu.shared.governance.AuditLogWriter;
+import com.setu.shared.governance.OutboxEventWriter;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -48,13 +51,16 @@ public class RoleAssignmentService {
     private final UserRoleRepository userRoleRepository;
     private final AuthorizationContext authorizationContext;
     private final AuditLogWriter auditLogWriter;
+    private final OutboxEventWriter outboxEventWriter;
 
     public RoleAssignmentService(RoleRepository roleRepository, UserRoleRepository userRoleRepository,
-                                  AuthorizationContext authorizationContext, AuditLogWriter auditLogWriter) {
+                                  AuthorizationContext authorizationContext, AuditLogWriter auditLogWriter,
+                                  OutboxEventWriter outboxEventWriter) {
         this.roleRepository = roleRepository;
         this.userRoleRepository = userRoleRepository;
         this.authorizationContext = authorizationContext;
         this.auditLogWriter = auditLogWriter;
+        this.outboxEventWriter = outboxEventWriter;
     }
 
     @Transactional
@@ -74,6 +80,10 @@ public class RoleAssignmentService {
 
         auditLogWriter.write(tenantId, actorUserId, "ROLE_ASSIGNED", "identity.user_roles", assignment.id(),
             Map.of("targetUserId", targetUserId, "roleCode", roleCode.name()));
+        var event = new UserRoleAssignedEvent(UUID.randomUUID(), now, assignment.id(), UUID.randomUUID(), null, tenantId,
+            assignment.id(), targetUserId, roleCode.name(), actorUserId);
+        outboxEventWriter.write(event.aggregateType(), event.aggregateId(), event.eventType(), event.eventVersion(), event,
+            event.tenantId(), event.correlationId(), event.causationId());
         return assignment.id();
     }
 
@@ -100,6 +110,11 @@ public class RoleAssignmentService {
 
         auditLogWriter.write(assignment.tenantId(), actorUserId, "ROLE_REVOKED", "identity.user_roles",
             assignment.id(), Map.of("targetUserId", assignment.userId()));
+        String roleCode = roleRepository.findById(assignment.roleId()).map(r -> r.code().name()).orElse("UNKNOWN");
+        var event = new UserRoleRevokedEvent(UUID.randomUUID(), now, assignment.id(), UUID.randomUUID(), null, assignment.tenantId(),
+            assignment.id(), assignment.userId(), roleCode, actorUserId);
+        outboxEventWriter.write(event.aggregateType(), event.aggregateId(), event.eventType(), event.eventVersion(), event,
+            event.tenantId(), event.correlationId(), event.causationId());
         return true;
     }
 }

@@ -209,7 +209,7 @@ app:
     jwt:
       # DEV-ONLY default (Base64 of "dev-only-secret-do-not-use-in-production-replace-me")
       # — every real deployment MUST override this via JWT_SECRET with a
-      # random >=256-bit value. See JwtProperties.
+      # random >=256-bit value. It no longer signs access tokens (see signing-key below); it only keys the reset-code HMAC.
       secret: ${JWT_SECRET:ZGV2LW9ubHktc2VjcmV0LWRvLW5vdC11c2UtaW4tcHJvZHVjdGlvbi1yZXBsYWNlLW1l}
       # Access tokens are signed ES256. JWT_SIGNING_KEY = Base64 PKCS#8 EC P-256 private key; JWT_PREVIOUS_PUBLIC_KEYS = comma-separated
       # Base64 X.509 public keys of retired keys (rotation). Both come from backend/tools/generate-jwt-key.js. With no signing key an
