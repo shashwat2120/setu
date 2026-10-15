@@ -63,7 +63,7 @@ boundaries actually holding up under real coupling.
 **0.1 — Docker Compose + Flyway skeleton** — done. See `infra/docker/`, `infra/db/`.
 
 **0.2 — Backend project skeleton**
-> Scaffold `backend/` as a Spring Boot 4.x + Spring Modulith project (Java 21,
+> Scaffold `backend/` as a Spring Boot 4.x + Spring Modulith project (Java 25 LTS,
 > Maven or Gradle — pick one and note the choice), with empty module packages for
 > every bounded context in TRD.md §2 (identity, directory, guardian-access,
 > institution, catalog, enrollment, attendance, learning, assessment, record,

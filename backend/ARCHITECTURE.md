@@ -1,6 +1,6 @@
 # Setu backend — architecture (Sprint 5A Day 1)
 
-Spring Boot 4.1.1 + Java 21 + Spring Modulith 2.1.1, a strict modular
+Spring Boot 4.1.1 + Java 25 LTS + Spring Modulith 2.1.1, a strict modular
 monolith per [docs/FINAL_CANONICAL_PROJECT_SPEC.md](../docs/FINAL_CANONICAL_PROJECT_SPEC.md)
 §2 and [docs/TRD.md](../docs/TRD.md) §2.
 

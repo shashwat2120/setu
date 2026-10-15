@@ -14,7 +14,7 @@ only the parts specific to how Setu's codebase is organized.
 
 | Layer | Choice | Notes |
 |---|---|---|
-| Language | Java 21 | Virtual threads for request handling |
+| Language | Java 25 LTS | Virtual threads for request handling |
 | Backend | Spring Boot 4.x, Spring Modulith | Modular monolith, not microservices, for v1 |
 | Security | Spring Security 7 | Passkeys/WebAuthn primary, Argon2id password fallback |
 | AI | Spring AI 2.x + Ollama (local) | Requires Boot 4.x — will not load on Boot 3.x |
