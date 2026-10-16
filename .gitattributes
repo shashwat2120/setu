@@ -1,0 +1,2 @@
+# Shell scripts run under bash even on a Windows checkout, where a CRLF would break them.
+*.sh text eol=lf
