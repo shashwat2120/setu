@@ -44,7 +44,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * revocation list. Tokens here are signed by a test key whose JWKS the service is given, exactly as it would fetch Identity's.
  */
 @SpringBootTest(classes = AcademicServiceApplication.class, properties = {
-    "setu.service=academic", "setu.auth.mode=remote", "app.readmodel.consumer.enabled=false"})   // Flyway stays on here only so the test never depends on another test having migrated the schema first
+    "setu.service=academic", "setu.auth.mode=remote", "app.readmodel.consumer.enabled=false", "setu.internal.token=internal-test-token"})   // Flyway stays on here only so the test never depends on another test having migrated the schema first
 @AutoConfigureMockMvc
 @Import(AcademicServiceWiringTests.IdentityKeys.class)
 class AcademicServiceWiringTests {
@@ -181,6 +181,34 @@ class AcademicServiceWiringTests {
         revocations.revokeLogin(family);
 
         assertThat(viewCollegeAs(bearer)).isEqualTo(401);
+    }
+
+    private static final String VERIFY = "/internal/guardian-grants/verify";
+
+    private org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder verify(String internalToken, String bearer) {
+        var request = get(VERIFY).param("guardianUserId", UUID.randomUUID().toString()).param("studentProfileId", UUID.randomUUID().toString())
+            .param("tenantId", tenant.toString()).param("permission", "VIEW_ATTENDANCE");
+        if (internalToken != null) {
+            request.header("X-Internal-Token", internalToken);
+        }
+        if (bearer != null) {
+            request.header("Authorization", "Bearer " + bearer);
+        }
+        return request;
+    }
+
+    @Test
+    void theInternalGrantCheckAnswersOnlyToTheServiceTokenAndNeverToAUser() throws Exception {
+        mockMvc.perform(verify("internal-test-token", null)).andExpect(status().isOk())
+            .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$.active").value(false));
+
+        assertThat(mockMvc.perform(verify(null, null)).andReturn().getResponse().getStatus()).as("no credential").isEqualTo(401);
+        assertThat(mockMvc.perform(verify("wrong", null)).andReturn().getResponse().getStatus()).as("wrong token").isEqualTo(401);
+        assertThat(mockMvc.perform(verify(null, token(admin, null, IDENTITY_KEY, "test-key"))).andReturn().getResponse().getStatus())
+            .as("a college administrator's own valid token is not the service's").isEqualTo(403);
+        assertThat(mockMvc.perform(verify("internal-test-token".toUpperCase(), null)).andReturn().getResponse().getStatus()).as("case matters").isEqualTo(401);
+        assertThat(mockMvc.perform(get("/institution/colleges/" + tenant).header("X-Internal-Token", "internal-test-token")).andReturn()
+            .getResponse().getStatus()).as("the service token opens nothing outside /internal").isEqualTo(401);
     }
 
     @Test

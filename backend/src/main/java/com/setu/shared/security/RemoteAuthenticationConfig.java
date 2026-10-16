@@ -34,7 +34,8 @@ import java.util.UUID;
 public class RemoteAuthenticationConfig {
 
     @Bean
-    SecurityFilterChain remoteSecurityFilterChain(HttpSecurity http, RemoteTokenAuthenticator authenticator, ObjectMapper objectMapper) throws Exception {
+    SecurityFilterChain remoteSecurityFilterChain(HttpSecurity http, RemoteTokenAuthenticator authenticator, ObjectMapper objectMapper,
+                                                  @org.springframework.beans.factory.annotation.Value("${setu.internal.token:}") String internalToken) throws Exception {
         http
             .csrf(AbstractHttpConfigurer::disable)
             .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
@@ -46,7 +47,10 @@ public class RemoteAuthenticationConfig {
             .authorizeHttpRequests(authorize -> authorize
                 .requestMatchers("/actuator/health/**", "/actuator/info").permitAll()
                 .requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
+                // service-to-service questions (docs/contracts/data-ownership.md): only the internal token, never a user's
+                .requestMatchers(InternalCallAuthFilter.PREFIX + "**").hasAuthority(InternalCallAuthFilter.AUTHORITY)
                 .anyRequest().authenticated())
+            .addFilterBefore(new InternalCallAuthFilter(internalToken), UsernamePasswordAuthenticationFilter.class)
             .addFilterBefore(new RemoteTokenFilter(authenticator), UsernamePasswordAuthenticationFilter.class);
         return http.build();
     }

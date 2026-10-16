@@ -28,7 +28,8 @@ class GatewayRouteCoverageTests {
         Map.entry("identity", "identity"),
         Map.entry("institution", "academic"), Map.entry("catalog", "academic"), Map.entry("enrollment", "academic"),
         Map.entry("directory", "academic"), Map.entry("guardianaccess", "academic"),
-        Map.entry("learning", "learning"), Map.entry("assessment", "assessment"), Map.entry("attendance", "attendance"));
+        Map.entry("learning", "learning"), Map.entry("assessment", "assessment"), Map.entry("attendance", "attendance"),
+        Map.entry("notification", "notification"));
     private static final String REMAINING = "core";
 
     @Autowired
@@ -60,6 +61,9 @@ class GatewayRouteCoverageTests {
             }
             String expected = SERVICE_OF_MODULE.getOrDefault(module, REMAINING);
             for (String pattern : entry.getKey().getPathPatternsCondition().getPatternValues()) {
+                if (pattern.startsWith("/internal/")) {
+                    continue;   // service-to-service only: the gateway refuses these by design (internalEndpointsAreNeverRoutable)
+                }
                 checked++;
                 String actual = routes.match(pattern).map(m -> m.route().service()).orElse("NO ROUTE");
                 if (!expected.equals(actual)) {
@@ -69,6 +73,29 @@ class GatewayRouteCoverageTests {
         }
         assertThat(checked).as("the application exposes endpoints").isGreaterThan(100);
         assertThat(wrong).as("endpoints the gateway would send to the wrong service").isEmpty();
+    }
+
+    @Test
+    void internalEndpointsAreExactlyTheOnesUnderTheInternalPrefix() {
+        // The gateway answers 404 for /internal/** whatever the routes say (GatewayFilterTests), so an endpoint that is meant for other services
+        // must live there, and nothing else may: an ordinary endpoint under /internal/ would silently become unreachable from outside.
+        Set<String> misplaced = new TreeSet<>();
+        int internal = 0;
+        for (Map.Entry<RequestMappingInfo, HandlerMethod> entry : handlerMapping.getHandlerMethods().entrySet()) {
+            if (moduleOf(entry.getValue()) == null) {
+                continue;
+            }
+            boolean internalController = entry.getValue().getBeanType().getSimpleName().startsWith("Internal");
+            for (String pattern : entry.getKey().getPathPatternsCondition().getPatternValues()) {
+                boolean internalPath = pattern.startsWith("/internal/");
+                internal += internalPath ? 1 : 0;
+                if (internalController != internalPath) {
+                    misplaced.add(pattern + " (" + entry.getValue().getBeanType().getSimpleName() + ")");
+                }
+            }
+        }
+        assertThat(internal).as("the service-to-service endpoints exist").isGreaterThanOrEqualTo(1);
+        assertThat(misplaced).as("Internal* controllers map only /internal/**, and only they do").isEmpty();
     }
 
     @Test

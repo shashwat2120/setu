@@ -30,7 +30,9 @@ import static org.assertj.core.api.Assertions.assertThat;
  *   <li>every JPA entity maps only a table in its own module's schema: no module's code writes another module's table;</li>
  *   <li>the foreign keys that cross a service boundary are frozen in {@code cross-service-foreign-keys.txt}: these are the constraints that
  *       cannot exist once the services have separate databases and must each be replaced by an application check or an event. A new one is a
- *       decision, and the list can only shrink.</li>
+ *       decision, and the list can only shrink;</li>
+ *   <li>none of those foreign keys starts in a schema whose code already runs as its own service (6B.2, docs/contracts/data-ownership.md):
+ *       what is left in the file belongs to modules still in the core, and goes when they are extracted.</li>
  * </ol>
  * Regenerate the files after a deliberate change with {@code -Dfreeze.update=true}.
  */
@@ -53,6 +55,10 @@ class TableOwnershipTests {
         Map.entry("finance", "Finance"),
         Map.entry("notification", "Notification"),
         Map.entry("governance", "Platform"));
+
+    /** Schemas whose code runs as its own service today, so none of their tables may be tied to another service's table by a constraint. */
+    static final Set<String> EXTRACTED_SCHEMAS = Set.of("directory", "guardian_access", "institution", "catalog", "enrollment", "identity", "notification",
+        "learning", "assessment", "attendance");
 
     private static final String SCHEMAS = "'" + String.join("','", SERVICE_OF_SCHEMA.keySet()) + "'";
 
@@ -156,5 +162,27 @@ class TableOwnershipTests {
             return;
         }
         compare(actual, readFrozen(FOREIGN_KEYS), "cross-service foreign keys", "cross-service-foreign-keys.txt");
+    }
+
+    @Test
+    void noExtractedServiceIsTiedToAnotherServicesTableByAForeignKey() {
+        // Unlike the frozen list above this includes the tenant and user references: once a service has its own database those are ids too.
+        List<String> offenders = new ArrayList<>();
+        jdbc.sql("""
+                SELECT cn.nspname || '.' || c.relname, pn.nspname || '.' || p.relname
+                FROM pg_constraint k
+                JOIN pg_class c ON c.oid = k.conrelid JOIN pg_namespace cn ON cn.oid = c.relnamespace
+                JOIN pg_class p ON p.oid = k.confrelid JOIN pg_namespace pn ON pn.oid = p.relnamespace
+                WHERE k.contype = 'f' AND cn.nspname IN (%s) AND pn.nspname IN (%s)
+                """.formatted(SCHEMAS, SCHEMAS))
+            .query((rs, i) -> new String[] {rs.getString(1), rs.getString(2)}).list().forEach(pair -> {
+                String childSchema = pair[0].substring(0, pair[0].indexOf('.'));
+                String parentSchema = pair[1].substring(0, pair[1].indexOf('.'));
+                if (EXTRACTED_SCHEMAS.contains(childSchema) && !SERVICE_OF_SCHEMA.get(childSchema).equals(SERVICE_OF_SCHEMA.get(parentSchema))) {
+                    offenders.add(pair[0] + " -> " + pair[1]);
+                }
+            });
+        assertThat(offenders).as("an extracted service must reference another service's data by id, checked by the application, not by a constraint")
+            .isEmpty();
     }
 }

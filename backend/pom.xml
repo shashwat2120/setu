@@ -136,6 +136,18 @@
 			<groupId>org.apache.httpcomponents.client5</groupId>
 			<artifactId>httpclient5</artifactId>
 		</dependency>
+		<!-- 6B.2: the core libraries only, not the Spring Boot starters (which track a Boot line this build is ahead of): the guarded synchronous
+		     call (shared.resilience.GuardedCall) uses the circuit breaker and bulkhead directly. -->
+		<dependency>
+			<groupId>io.github.resilience4j</groupId>
+			<artifactId>resilience4j-circuitbreaker</artifactId>
+			<version>2.3.0</version>
+		</dependency>
+		<dependency>
+			<groupId>io.github.resilience4j</groupId>
+			<artifactId>resilience4j-bulkhead</artifactId>
+			<version>2.3.0</version>
+		</dependency>
 		<!-- Day 15: the outbox publisher's Kafka producer — see
 		     com.setu.shared.governance.OutboxPublisher. No consumer exists yet
 		     (matches the audit finding: no @KafkaListener anywhere in this

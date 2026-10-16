@@ -246,16 +246,16 @@ class NotificationEventProcessorTests {
     }
 
     @Test
-    void anUnknownStudentOrEnrollmentIsPoison() {
+    void anUnknownStudentOrEnrollmentIsRetriedThenDeadLetteredNotDelivered() {
         var tenant = fixtures.provisionTenant("NP10");
         UUID eventId = UUID.randomUUID();
 
         assertThatThrownBy(() -> processor.process("StudentAdmitted", eventId.toString(), null,
             json("eventId", eventId, "tenantId", tenant.tenantId(), "studentId", UUID.randomUUID())))
-            .isInstanceOf(PoisonEventException.class);
+            .isInstanceOf(RecipientNotKnownException.class);
         assertThatThrownBy(() -> processor.process("GradePublished", eventId.toString(), null,
             json("eventId", eventId, "tenantId", tenant.tenantId(), "enrollmentId", UUID.randomUUID())))
-            .isInstanceOf(PoisonEventException.class);
+            .isInstanceOf(RecipientNotKnownException.class);
     }
 
     @Test

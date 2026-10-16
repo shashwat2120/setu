@@ -2,6 +2,7 @@ package com.setu.identity.infrastructure.security;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.setu.identity.application.LoginLivenessService;
+import com.setu.shared.security.InternalCallAuthFilter;
 import com.setu.shared.web.ErrorResponse;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
@@ -59,9 +60,12 @@ public class SecurityConfig {
     private final ObjectMapper objectMapper;
     private final String metricsScrapeToken;
     private final LoginLivenessService loginLiveness;
+    private final String internalToken;
 
     public SecurityConfig(JwtService jwtService, WebAuthnProperties webAuthnProperties, ObjectMapper objectMapper,
-                          @Value("${app.metrics.scrape-token:}") String metricsScrapeToken, LoginLivenessService loginLiveness) {
+                          @Value("${app.metrics.scrape-token:}") String metricsScrapeToken, LoginLivenessService loginLiveness,
+                          @Value("${setu.internal.token:}") String internalToken) {
+        this.internalToken = internalToken;
         this.loginLiveness = loginLiveness;
         this.jwtService = jwtService;
         this.webAuthnProperties = webAuthnProperties;
@@ -91,6 +95,8 @@ public class SecurityConfig {
                 // Metrics describe the whole platform: only the dedicated Prometheus scrape token may read them (not public,
                 // and not reachable with an ordinary user token either). See MetricsScrapeAuthFilter.
                 .requestMatchers(MetricsScrapeAuthFilter.PATH).hasAuthority(MetricsScrapeAuthFilter.AUTHORITY)
+                // Service-to-service questions (docs/contracts/data-ownership.md): the internal token only, never a user's.
+                .requestMatchers(InternalCallAuthFilter.PREFIX + "**").hasAuthority(InternalCallAuthFilter.AUTHORITY)
                 // Day 15 §9: the generated OpenAPI spec/UI itself is not sensitive (endpoint shapes only, no
                 // data) — same reasoning as exposing /actuator/health publicly.
                 .requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
@@ -101,6 +107,7 @@ public class SecurityConfig {
                 .requestMatchers("/ws/**").permitAll()
                 .anyRequest().authenticated())
             .addFilterBefore(new MetricsScrapeAuthFilter(metricsScrapeToken), UsernamePasswordAuthenticationFilter.class)
+            .addFilterBefore(new InternalCallAuthFilter(internalToken), UsernamePasswordAuthenticationFilter.class)
             .addFilterBefore(new JwtAuthenticationFilter(jwtService, loginLiveness), UsernamePasswordAuthenticationFilter.class);
         return http.build();
     }

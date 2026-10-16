@@ -19,8 +19,6 @@ edge   enrollment -> institution
 edge   finance -> directory
 edge   finance -> institution
 edge   guardianaccess -> directory
-edge   notification -> directory
-edge   notification -> enrollment
 edge   record -> assessment
 edge   record -> catalog
 edge   record -> directory

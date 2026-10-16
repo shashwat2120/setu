@@ -115,6 +115,14 @@ public class GatewayFilter extends OncePerRequestFilter {
             return;
         }
 
+        // /internal/** is the services' way of asking each other things (docs/contracts/data-ownership.md). The catch-all route would
+        // otherwise carry it to the core, so it is refused here, before routing, whatever routes are configured.
+        if (request.getRequestURI().startsWith("/internal/")) {
+            count("none", "internal_refused");
+            writeError(request, response, 404, "NO_ROUTE", "no route for this path");
+            return;
+        }
+
         Optional<RouteTable.Match> match = routes.match(request.getRequestURI());
         if (match.isEmpty()) {
             count("none", "no_route");

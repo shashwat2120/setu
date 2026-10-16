@@ -227,8 +227,10 @@ app:
         instances: ${GATEWAY_ASSESSMENT_URL:http://localhost:8085}
       attendance:
         instances: ${GATEWAY_ATTENDANCE_URL:http://localhost:8086}
+      notification:
+        instances: ${GATEWAY_NOTIFICATION_URL:http://localhost:8087}
       core:
-        # Everything not extracted yet (record, risk, career, finance, notification, AI, onboarding).
+        # Everything not extracted yet (record, risk, career, finance, AI, onboarding).
         instances: ${GATEWAY_CORE_URL:http://localhost:8083}
     routes:
       - id: identity
@@ -248,6 +250,10 @@ app:
       - id: attendance
         service: attendance
         paths: ["/attendance/**", "/staff-attendance/**"]
+      - id: notification
+        service: notification
+        # Live delivery (/ws) is not proxied: the gateway answers a WebSocket upgrade with 501 and clients connect to the service directly.
+        paths: ["/notifications/**"]
       - id: core
         service: core
         paths: ["/**"]

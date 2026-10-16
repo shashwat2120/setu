@@ -4,12 +4,16 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.setu.directory.application.StudentProfileService;
-import com.setu.enrollment.application.EnrollmentService;
+import com.setu.shared.academic.AcademicDirectory;
+import com.setu.shared.websocket.LiveBroadcastRequest;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Instant;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -21,8 +25,13 @@ import java.util.UUID;
  * guard, not a prior read, so two consumers racing on the same event cannot both create a notification.
  * <p>
  * <b>Who is told</b> is always derived server-side from the event's own ids, never from anything the message says about a person: a
- * student's user is looked up through {@code directory}, a grade's student through {@code enrollment}. The tenant named by the event
- * must match the tenant of the person it resolves to, otherwise the event is poison, not delivered.
+ * student's user and a grade's student are looked up through the {@link AcademicDirectory} port (Academic's tables in a single process, this
+ * service's own copy of them when it runs on its own). The tenant named by the event must match the tenant of the person it resolves to,
+ * otherwise the event is poison, not delivered; an id the directory does not know yet is {@link RecipientNotKnownException}, retried.
+ * <p>
+ * <b>Live delivery</b>: once the notification is stored, its recipient's own topic {@code /topic/notifications/<userId>} is told about it
+ * (after commit, so a rolled-back notification is never announced). The topic is subscribable only by that user
+ * (NotificationSubscriptionAuthorizer); the notification is also always available over REST, so a missed push loses nothing.
  * <p>
  * Events this module has no notification for are acknowledged and recorded as {@link Outcome#IGNORED}, not failed.
  */
@@ -36,15 +45,14 @@ public class NotificationEventProcessor {
 
     private final JdbcClient jdbc;
     private final ObjectMapper objectMapper;
-    private final StudentProfileService studentProfiles;
-    private final EnrollmentService enrollments;
+    private final AcademicDirectory directory;
+    private final ApplicationEventPublisher events;
 
-    public NotificationEventProcessor(JdbcClient jdbc, ObjectMapper objectMapper, StudentProfileService studentProfiles,
-                                       EnrollmentService enrollments) {
+    public NotificationEventProcessor(JdbcClient jdbc, ObjectMapper objectMapper, AcademicDirectory directory, ApplicationEventPublisher events) {
         this.jdbc = jdbc;
         this.objectMapper = objectMapper;
-        this.studentProfiles = studentProfiles;
-        this.enrollments = enrollments;
+        this.directory = directory;
+        this.events = events;
     }
 
     /**
@@ -73,9 +81,18 @@ public class NotificationEventProcessor {
         }
 
         Draft d = draft.get();
-        jdbc.sql("INSERT INTO notification.notifications (tenant_id, user_id, type, payload_json) VALUES (:tenant, :user, :type, CAST(:payload AS jsonb))")
-            .param("tenant", tenantId).param("user", d.userId()).param("type", d.type()).param("payload", write(d.content(eventId, eventType)))
-            .update();
+        ObjectNode content = d.content(eventId, eventType);
+        Map<String, Object> stored = jdbc.sql("INSERT INTO notification.notifications (tenant_id, user_id, type, payload_json) VALUES (:tenant, :user, :type, CAST(:payload AS jsonb)) RETURNING id, created_at")
+            .param("tenant", tenantId).param("user", d.userId()).param("type", d.type()).param("payload", write(content))
+            .query().singleRow();
+        Map<String, Object> live = new LinkedHashMap<>();
+        live.put("id", stored.get("id").toString());
+        live.put("type", d.type());
+        live.put("title", d.title());
+        live.put("message", d.message());
+        live.put("link", d.link());
+        live.put("createdAt", stored.get("created_at") instanceof java.sql.Timestamp t ? t.toInstant().toString() : Instant.now().toString());
+        events.publishEvent(new LiveBroadcastRequest(LiveDestinations.forUser(d.userId()), live));
         return Outcome.CREATED;
     }
 
@@ -83,8 +100,8 @@ public class NotificationEventProcessor {
         return switch (eventType) {
             case "GradePublished" -> {
                 UUID enrollmentId = uuid(text(p, "enrollmentId"), "enrollmentId");
-                EnrollmentService.EnrollmentSummary enrollment = enrollments.findEnrollmentSummary(enrollmentId)
-                    .orElseThrow(() -> new PoisonEventException("GradePublished names an unknown enrollment " + enrollmentId));
+                AcademicDirectory.EnrollmentRef enrollment = directory.enrollment(enrollmentId)
+                    .orElseThrow(() -> new RecipientNotKnownException("GradePublished names an enrollment not known (yet): " + enrollmentId));
                 if (!tenantId.equals(enrollment.tenantId())) {
                     throw new PoisonEventException("GradePublished tenant does not match enrollment " + enrollmentId);
                 }
@@ -118,10 +135,13 @@ public class NotificationEventProcessor {
     }
 
     private Draft student(UUID studentId, UUID tenantId, String type, String title, String message, String link) {
-        StudentProfileService.StudentTenantOwner owner = studentProfiles.findTenantAndOwnerUserId(studentId)
-            .orElseThrow(() -> new PoisonEventException("event names an unknown student " + studentId));
+        AcademicDirectory.TenantOwner owner = directory.studentOwner(studentId)
+            .orElseThrow(() -> new RecipientNotKnownException("event names a student not known (yet): " + studentId));
         if (!tenantId.equals(owner.tenantId())) {
             throw new PoisonEventException("event tenant does not match the tenant of student " + studentId);
+        }
+        if (owner.ownerUserId() == null) {
+            throw new RecipientNotKnownException("student " + studentId + " has no account to notify (yet)");
         }
         return new Draft(owner.ownerUserId(), type, title, message, link);
     }

@@ -10,13 +10,17 @@ import com.setu.shared.authorization.RoleBasedTenantMembership;
 import com.setu.shared.authorization.RoleGrantSource;
 import com.setu.shared.enrollment.CourseSectionDirectory;
 import com.setu.shared.identity.TenantMembership;
+import com.setu.shared.resilience.GuardedCall;
 import com.setu.shared.tenant.TenantContext;
+import io.micrometer.core.instrument.MeterRegistry;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.jdbc.core.simple.JdbcClient;
+
+import java.time.Duration;
 
 /**
  * Everything a service that sits on top of Academic (learning, assessment, attendance) needs in place of what it used to get in-process from
@@ -51,9 +55,36 @@ public class ReadModelServiceConfiguration {
         return new RoleBasedTenantMembership(roles);
     }
 
+    /**
+     * The local copy of the grants, with every "yes" confirmed by Academic when {@code setu.guardian-verify.url} is set (the extracted
+     * deployments set it). Unset, as in a single-process run or a test of the local logic alone, the local copy is trusted as before.
+     */
     @Bean
-    GuardianDelegationChecker guardianDelegationChecker(JdbcClient jdbc, @Value("${app.readmodel.schema}") String schema) {
-        return new ReadModelGuardianDelegationChecker(jdbc, schema);
+    GuardianDelegationChecker guardianDelegationChecker(JdbcClient jdbc, @Value("${app.readmodel.schema}") String schema,
+                                                        ObjectProvider<GuardianGrantVerifier> owner, MeterRegistry meters) {
+        GuardianDelegationChecker local = new ReadModelGuardianDelegationChecker(jdbc, schema);
+        GuardianGrantVerifier verifier = owner.getIfAvailable();
+        return verifier == null ? local : new VerifiedGuardianDelegationChecker(local, verifier, meters);
+    }
+
+    /** Counts, on a schedule, the ids this service holds that its copy of their owner's data does not know (what the dropped foreign keys used to forbid). */
+    @Bean
+    ReferenceReconciler referenceReconciler(JdbcClient jdbc, @Value("${app.readmodel.schema}") String schema, MeterRegistry meters) {
+        return new ReferenceReconciler(jdbc, schema, meters);
+    }
+
+    @Bean
+    @ConditionalOnProperty(name = "setu.guardian-verify.url")
+    GuardianGrantVerifier guardianGrantVerifier(@Value("${setu.guardian-verify.url}") String url,
+                                                @Value("${setu.internal.token:}") String token,
+                                                @Value("${setu.guardian-verify.connect-timeout-ms:300}") long connectMs,
+                                                @Value("${setu.guardian-verify.response-timeout-ms:800}") long responseMs,
+                                                @Value("${setu.guardian-verify.max-concurrent:20}") int maxConcurrent,
+                                                ObjectMapper mapper, MeterRegistry meters) {
+        var settings = new GuardedCall.Settings(50, 10, 20, Duration.ofSeconds(10), maxConcurrent, Duration.ZERO);
+        // a transport failure or an unexpected answer is the dependency failing; nothing else is ever thrown by the call
+        var guard = new GuardedCall("academic-guardian-grants", settings, e -> true, meters);
+        return new RemoteGuardianGrantVerifier(url, token, Duration.ofMillis(connectMs), Duration.ofMillis(responseMs), mapper, guard);
     }
 
     @Bean

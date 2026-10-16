@@ -48,14 +48,15 @@ the rest. So a replay from the start of a topic, a redelivery, and the whole his
 (`AcademicReadModelParityTests` checks all three). One consumer per service (`shared.readmodel.kafka`), group `setu-<service>`, offset
 `earliest`, started in the background and retried, three deliveries with backoff then `{topic}.DLQ`; metrics `setu.readmodel.events`.
 
-The initial content of each copy is taken from the owning schemas by `V81`. That works only while there is one database; once there are
-several (6B.2) it becomes a snapshot export plus the replay.
+The initial content of each copy is taken from the owning schemas by `V81`. That works only while there is one database; once a service has
+its own (6B.2), it becomes the snapshot export of `infra/db/split/split-service.sh` plus the replay, see [data-ownership.md](data-ownership.md) section 4.
 
 ## 3. Known differences from the monolith
 
-- **A revoked guardian grant takes effect when its event is applied** (seconds), not in the same transaction. Academic itself still checks in
-  process, with no delay. The synchronous check with a timeout and an honest failure (6B.2) is what closes the gap; until then this is the one
-  place the "revocation takes immediate effect" rule is bounded rather than absolute. A role change has the same bound; logouts and suspensions
+- **A revoked guardian grant takes effect when its event is applied** (seconds) in the local copy, not in the same transaction. Academic itself
+  checks in process, with no delay, and every other service now confirms a guardian's "yes" with Academic before honouring it (6B.2, timeout,
+  circuit breaker and bulkhead, refused rather than guessed when Academic cannot answer; see [data-ownership.md](data-ownership.md) section 3), so
+  for grants the rule is absolute wherever `setu.guardian-verify.url` is set. A role change keeps the event-lag bound; logouts and suspensions
   do not, because they travel on the revocation list.
 - **An enrollment is known once it has been ENROLLED.** Requests that were refused or are still waiting never appear in the copy; nothing asks
   about those.
@@ -71,8 +72,9 @@ several (6B.2) it becomes a snapshot export plus the replay.
   its live board itself, with the token check behind a `StompTokenAuthenticator` port (Identity's in the monolith, published keys plus revocation
   list in a service). Clients connect to the Attendance service directly: the gateway answers a WebSocket upgrade with 501 rather than
   proxying it. A frame-level proxy is the open item; it could not be verified on this machine.
-- **Foreign keys across services** (for example `learning.course_modules.section_id` to `enrollment.course_sections`) stay until each service
-  has its own database (6B.2); they are frozen in `cross-service-foreign-keys.txt`.
+- **Foreign keys across services**: the 17 that tied Academic, Learning, Assessment and Attendance tables to another service's are dropped by
+  `V83` and replaced by write-time checks and a reconciliation count (data-ownership.md section 2). The 17 on tables of modules still in the core
+  (record, finance, career, risk) stay until those are extracted; they are frozen in `cross-service-foreign-keys.txt`.
 
 ## 5. Running them
 

@@ -172,6 +172,17 @@ class GatewayFilterTests {
     }
 
     @Test
+    void internalEndpointsAreNeverRoutedEvenWithACatchAllRouteAndAValidToken() throws Exception {
+        sent.clear();
+        for (String path : new String[] {"/internal/guardian-grants/verify", "/internal/anything"}) {
+            MockHttpServletResponse response = mvc.perform(signedIn(get(path))).andReturn().getResponse();
+            assertThat(response.getStatus()).as(path).isEqualTo(404);
+            assertThat(body(response).get("code").asText()).isEqualTo("NO_ROUTE");
+        }
+        assertThat(sent).as("nothing reached any service").isEmpty();
+    }
+
+    @Test
     void queryStringBodyAndMethodAreForwardedAndSpoofableHeadersAreReplaced() throws Exception {
         mvc.perform(signedIn(request(HttpMethod.PUT, URI.create("/institution/colleges/1?x=a%20b&y=2")))
             .header("X-Forwarded-For", "6.6.6.6").header("Forwarded", "for=6.6.6.6").header("X-Forwarded-Host", "evil.example")
@@ -287,7 +298,7 @@ class GatewayFilterTests {
     void errorBodiesNeverLeakInstanceAddresses() throws Exception {
         failures.put(A, new Upstream.UpstreamException(Upstream.UpstreamException.Kind.CONNECT, "refused connecting to http://a.internal:8082", null));
         String text = mvc.perform(signedIn(get("/institution/colleges"))).andReturn().getResponse().getContentAsString();
-        assertThat(text).doesNotContain("a.internal").doesNotContain("8082");
+        assertThat(text).doesNotContain("a.internal").doesNotContain(":8082");   // ":" so a timestamp that happens to contain those digits cannot trip it
     }
 
     // --- CORS and WebSocket
