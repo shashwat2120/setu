@@ -1,4 +1,4 @@
-package com.setu.aiexplain.application;
+package com.setu.aifacts.application;
 
 import com.setu.directory.application.FacultyProfileService;
 import com.setu.directory.application.StudentProfileService;
@@ -25,7 +25,7 @@ import java.util.UUID;
  * boundaries, matching that class's own documented precedent ("each
  * module keeps its own small access-support helper").
  * <p>
- * Every tool in {@link AiToolService} calls {@link #assertView} before
+ * Every fact in {@link AiFactsService} calls {@link #assertView} before
  * touching any per-student data — the model NEVER decides authorization;
  * it only supplies which student it is asking about (or omits it, meaning
  * "the caller themselves"), and this class is the single place that

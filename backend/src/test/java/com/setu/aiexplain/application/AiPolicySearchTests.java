@@ -1,5 +1,6 @@
 package com.setu.aiexplain.application;
 
+import com.setu.aifacts.application.AiFactsService;
 import com.setu.identity.TestAuthentication;
 import com.setu.testsupport.Day14TestFixtures;
 import com.setu.testsupport.Day7TestFixtures;
@@ -36,10 +37,10 @@ class AiPolicySearchTests {
     }
 
     @SuppressWarnings("unchecked")
-    private List<AiToolService.PolicySearchResult> searchAs(UUID userId, String query) {
+    private List<AiFactsService.PolicySearchResult> searchAs(UUID userId, String query) {
         TestAuthentication.authenticateAs(userId);
         try {
-            return (List<AiToolService.PolicySearchResult>) aiToolService.searchCollegePolicy(query);
+            return (List<AiFactsService.PolicySearchResult>) aiToolService.searchCollegePolicy(query);
         } finally {
             TestAuthentication.clear();
         }

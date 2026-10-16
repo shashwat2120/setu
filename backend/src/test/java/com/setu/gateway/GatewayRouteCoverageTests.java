@@ -29,7 +29,7 @@ class GatewayRouteCoverageTests {
         Map.entry("institution", "academic"), Map.entry("catalog", "academic"), Map.entry("enrollment", "academic"),
         Map.entry("directory", "academic"), Map.entry("guardianaccess", "academic"),
         Map.entry("learning", "learning"), Map.entry("assessment", "assessment"), Map.entry("attendance", "attendance"),
-        Map.entry("notification", "notification"));
+        Map.entry("notification", "notification"), Map.entry("aiexplain", "ai"));
     private static final String REMAINING = "core";
 
     @Autowired

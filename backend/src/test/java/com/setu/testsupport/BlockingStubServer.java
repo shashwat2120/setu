@@ -32,6 +32,8 @@ public class BlockingStubServer implements AutoCloseable {
     public final ServerSocket server;
     public final List<Seen> seen = new CopyOnWriteArrayList<>();
     public volatile String response = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: 2\r\n\r\nok";
+    /** When set, decides the answer from what was asked (so one stub can play several endpoints); otherwise {@link #response} answers everything. */
+    public volatile java.util.function.Function<Seen, String> responder;
     public volatile long delayMillis;
     public volatile boolean dropWithoutAnswer;
 
@@ -40,6 +42,11 @@ public class BlockingStubServer implements AutoCloseable {
         Thread thread = new Thread(this::serve, "blocking-stub-server");
         thread.setDaemon(true);
         thread.start();
+    }
+
+    /** A complete HTTP reply with a JSON body (or no body for 204). */
+    public static String json(int status, String body) {
+        return "HTTP/1.1 " + status + " X\r\nContent-Type: application/json\r\nContent-Length: " + body.getBytes(StandardCharsets.UTF_8).length + "\r\n\r\n" + body;
     }
 
     public URI uri() {
@@ -75,13 +82,15 @@ public class BlockingStubServer implements AutoCloseable {
                 } else {
                     body.write(in.readNBytes(length));
                 }
-                seen.add(new Seen(requestLine, headers, body.toString(StandardCharsets.UTF_8)));
+                Seen asked = new Seen(requestLine, headers, body.toString(StandardCharsets.UTF_8));
+                seen.add(asked);
                 if (delayMillis > 0) {
                     Thread.sleep(delayMillis);
                 }
                 if (!dropWithoutAnswer) {
                     OutputStream out = socket.getOutputStream();
-                    out.write(response.replaceFirst("\r\n", "\r\nConnection: close\r\n").getBytes(StandardCharsets.UTF_8));
+                    String reply = responder != null ? responder.apply(asked) : response;
+                    out.write(reply.replaceFirst("\r\n", "\r\nConnection: close\r\n").getBytes(StandardCharsets.UTF_8));
                     out.flush();
                 }
             } catch (IOException | InterruptedException e) {

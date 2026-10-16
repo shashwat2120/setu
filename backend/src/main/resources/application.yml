@@ -229,8 +229,10 @@ app:
         instances: ${GATEWAY_ATTENDANCE_URL:http://localhost:8086}
       notification:
         instances: ${GATEWAY_NOTIFICATION_URL:http://localhost:8087}
+      ai:
+        instances: ${GATEWAY_AI_URL:http://localhost:8088}
       core:
-        # Everything not extracted yet (record, risk, career, finance, AI, onboarding).
+        # Everything not extracted yet (record, risk, career, finance, the AI facts, onboarding).
         instances: ${GATEWAY_CORE_URL:http://localhost:8083}
     routes:
       - id: identity
@@ -254,6 +256,10 @@ app:
         service: notification
         # Live delivery (/ws) is not proxied: the gateway answers a WebSocket upgrade with 501 and clients connect to the service directly.
         paths: ["/notifications/**"]
+      - id: ai
+        service: ai
+        # The advisor only (/ai/**). Its facts (/ai-facts/**) are served by the service that holds the data, and fall to the core route.
+        paths: ["/ai/**"]
       - id: core
         service: core
         paths: ["/**"]

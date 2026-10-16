@@ -1,5 +1,7 @@
 package com.setu.audit;
 
+import com.tngtech.archunit.base.DescribedPredicate;
+import com.tngtech.archunit.core.domain.JavaClass;
 import com.tngtech.archunit.core.domain.JavaClasses;
 import com.tngtech.archunit.core.importer.ClassFileImporter;
 import com.tngtech.archunit.core.importer.ImportOption;
@@ -50,6 +52,34 @@ class AiExplainBoundaryTests {
         noClasses().that().resideInAPackage("com.setu.aiexplain..")
             .should().beAnnotatedWith("jakarta.persistence.Entity")
             .orShould().beAssignableTo("org.springframework.data.repository.Repository")
+            .check(AI);
+    }
+
+    /** What the AI module may use of the kernel: the facts contract, the transport it publishes job status on, and the request plumbing every service shares. */
+    private static final String[] ALLOWED_KERNEL = {
+        "com.setu.shared.aifacts..", "com.setu.shared.websocket..", "com.setu.shared.resilience..", "com.setu.shared.web..",
+        "com.setu.shared.authorization..", "com.setu.shared.security..", "com.setu.shared.config.."};
+
+    /**
+     * 6B.3: the AI advisor runs as its own service, so it may depend on no other module at all, not even on its application services: only on
+     * itself and a short list of kernel contracts. Everything it learns about a person arrives through {@code AiFacts}.
+     */
+    @Test
+    void theAiModuleDependsOnNoOtherModuleAndOnlyOnTheKernelContractsItNeeds() {
+        DescribedPredicate<JavaClass> otherSetuCode = JavaClass.Predicates.resideInAPackage("com.setu..")
+            .and(JavaClass.Predicates.resideOutsideOfPackages("com.setu.aiexplain.."))
+            .and(JavaClass.Predicates.resideOutsideOfPackages(ALLOWED_KERNEL));
+        noClasses().that().resideInAPackage("com.setu.aiexplain..")
+            .should().dependOnClassesThat(otherSetuCode)
+            .because("the AI service has no datasource and calls no other module; its facts come through com.setu.shared.aifacts.AiFacts")
+            .check(AI);
+    }
+
+    @Test
+    void theAiModuleDoesNotWriteAuditRowsOrEventsItself() {
+        noClasses().that().resideInAPackage("com.setu.aiexplain..")
+            .should().dependOnClassesThat().resideInAnyPackage("com.setu.shared.governance..", "com.setu.shared.readmodel..")
+            .because("an audit record is written by the service that owns the audit log, on the advisor's behalf, for the token's own user")
             .check(AI);
     }
 }

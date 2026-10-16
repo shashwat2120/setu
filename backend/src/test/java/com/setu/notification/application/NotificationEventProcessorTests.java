@@ -1,11 +1,15 @@
 package com.setu.notification.application;
 
+import com.setu.shared.websocket.LiveBroadcastRequest;
 import com.setu.testsupport.Day7TestFixtures;
 import com.setu.testsupport.Day8TestFixtures;
 import com.setu.testsupport.Day9TestFixtures;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.context.TestConfiguration;
+import org.springframework.context.annotation.Import;
+import org.springframework.context.event.EventListener;
 import org.springframework.jdbc.core.simple.JdbcClient;
 
 import java.util.ArrayList;
@@ -27,7 +31,24 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  * real commits.
  */
 @SpringBootTest
+@Import(NotificationEventProcessorTests.FailingAnnouncement.class)
 class NotificationEventProcessorTests {
+
+    /**
+     * Lets a test make the step after the notification insert fail. The notification's tenant and user were once foreign keys, and a
+     * bad user id was how this test made the write fail; those constraints went when the service was extracted (V86), the invariant did not.
+     */
+    @TestConfiguration
+    static class FailingAnnouncement {
+        static volatile boolean failNext;
+
+        @EventListener
+        void on(LiveBroadcastRequest request) {
+            if (failNext) {
+                throw new IllegalStateException("simulated failure after the notification was written");
+            }
+        }
+    }
 
     @Autowired
     NotificationEventProcessor processor;
@@ -274,16 +295,26 @@ class NotificationEventProcessorTests {
 
     @Test
     void theEventIdIsNotLeftBehindWhenTheNotificationCannotBeWritten() {
-        // An intervention owner that is not a user violates the notifications foreign key. The processed-event row written just before
-        // must roll back with it, otherwise the retry would be skipped as a "duplicate" and the notification lost.
+        // The processed-event row is written first and the notification second. If anything after the first fails, the first must roll back
+        // with it, otherwise the retry would be skipped as a "duplicate" and the notification lost.
         var s = setUp("NP11");
         UUID eventId = UUID.randomUUID();
+        UUID owner = UUID.randomUUID();
         String payload = json("eventId", eventId, "tenantId", s.tenant.tenantId(), "studentId", s.student.studentId(),
-            "ownerUserId", UUID.randomUUID(), "interventionId", UUID.randomUUID());
+            "ownerUserId", owner, "interventionId", UUID.randomUUID());
 
-        assertThatThrownBy(() -> processor.process("InterventionCreated", eventId.toString(), null, payload))
-            .isInstanceOf(org.springframework.dao.DataIntegrityViolationException.class);
+        FailingAnnouncement.failNext = true;
+        try {
+            assertThatThrownBy(() -> processor.process("InterventionCreated", eventId.toString(), null, payload))
+                .isInstanceOf(IllegalStateException.class);
+        } finally {
+            FailingAnnouncement.failNext = false;
+        }
 
-        assertThat(processedRows(eventId)).isZero();
+        assertThat(processedRows(eventId)).as("the event id is not left behind").isZero();
+        assertThat(notificationTypes(owner)).as("nor is the notification").isEmpty();
+        assertThat(processor.process("InterventionCreated", eventId.toString(), null, payload))
+            .as("the retry delivers it").isEqualTo(NotificationEventProcessor.Outcome.CREATED);
+        assertThat(notificationTypes(owner)).containsExactly("INTERVENTION_ASSIGNED");
     }
 }

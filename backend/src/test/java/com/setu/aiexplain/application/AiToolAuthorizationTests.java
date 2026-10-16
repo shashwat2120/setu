@@ -1,5 +1,6 @@
 package com.setu.aiexplain.application;
 
+import com.setu.aifacts.application.AiFactsService;
 import com.setu.career.application.JobService;
 import com.setu.guardianaccess.application.GuardianAccessService;
 import com.setu.identity.TestAuthentication;
@@ -31,7 +32,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  * property under test is "the tool itself refuses unauthorized data,
  * regardless of what the model says" — an LLM's phrasing is not
  * deterministic, but whether {@link AiToolService#getStudentAttendance}
- * returns real data or a {@link AiToolService.ToolError} is. Items 8-10
+ * returns real data or a {@link AiFactsService.ToolError} is. Items 8-10
  * and 13-14 of the §21 list, which genuinely require a live model, are in
  * {@code AiChatIntegrationTests} instead.
  * <p>
@@ -87,8 +88,8 @@ class AiToolAuthorizationTests {
 
         Object result = callAs(s.student().userId(), () -> aiToolService.getStudentAttendance(null));
 
-        assertThat(result).isInstanceOf(AiToolService.AttendanceResult.class);
-        assertThat(((AiToolService.AttendanceResult) result).percentage()).isEqualTo(100.0);
+        assertThat(result).isInstanceOf(AiFactsService.AttendanceResult.class);
+        assertThat(((AiFactsService.AttendanceResult) result).percentage()).isEqualTo(100.0);
     }
 
     @Test
@@ -99,7 +100,7 @@ class AiToolAuthorizationTests {
 
         Object result = callAs(other.userId(), () -> aiToolService.getStudentAttendance(s.student().studentId().toString()));
 
-        assertThat(result).isInstanceOf(AiToolService.ToolError.class);
+        assertThat(result).isInstanceOf(AiFactsService.ToolError.class);
     }
 
     // ---- 3/4: guardian without/with delegation --------------------------------------------------
@@ -111,7 +112,7 @@ class AiToolAuthorizationTests {
 
         Object result = callAs(guardian.guardianUserId(), () -> aiToolService.getStudentAttendance(s.student().studentId().toString()));
 
-        assertThat(result).isInstanceOf(AiToolService.ToolError.class);
+        assertThat(result).isInstanceOf(AiFactsService.ToolError.class);
     }
 
     @Test
@@ -128,7 +129,7 @@ class AiToolAuthorizationTests {
 
         Object result = callAs(guardian.guardianUserId(), () -> aiToolService.getStudentAttendance(s.student().studentId().toString()));
 
-        assertThat(result).isInstanceOf(AiToolService.AttendanceResult.class);
+        assertThat(result).isInstanceOf(AiFactsService.AttendanceResult.class);
     }
 
     // ---- 5/6: faculty advisor PASS, unrelated faculty DENY ----------------------------------------
@@ -140,7 +141,7 @@ class AiToolAuthorizationTests {
 
         Object result = callAs(s.faculty().userId(), () -> aiToolService.getStudentAttendance(s.student().studentId().toString()));
 
-        assertThat(result).isInstanceOf(AiToolService.AttendanceResult.class);
+        assertThat(result).isInstanceOf(AiFactsService.AttendanceResult.class);
     }
 
     @Test
@@ -150,7 +151,7 @@ class AiToolAuthorizationTests {
 
         Object result = callAs(unrelatedFacultyUserId, () -> aiToolService.getStudentAttendance(s.student().studentId().toString()));
 
-        assertThat(result).isInstanceOf(AiToolService.ToolError.class);
+        assertThat(result).isInstanceOf(AiFactsService.ToolError.class);
     }
 
     // ---- 7: cross-tenant DENY ----------------------------------------------------------------------
@@ -162,7 +163,7 @@ class AiToolAuthorizationTests {
 
         Object result = callAs(otherTenant.adminUserId(), () -> aiToolService.getStudentAttendance(s.student().studentId().toString()));
 
-        assertThat(result).isInstanceOf(AiToolService.ToolError.class);
+        assertThat(result).isInstanceOf(AiFactsService.ToolError.class);
     }
 
     // ---- 12: invalid tool parameters DENY -------------------------------------------------------------
@@ -173,7 +174,7 @@ class AiToolAuthorizationTests {
 
         Object result = callAs(s.student().userId(), () -> aiToolService.getStudentAttendance("not-a-uuid"));
 
-        assertThat(result).isInstanceOf(AiToolService.ToolError.class);
+        assertThat(result).isInstanceOf(AiFactsService.ToolError.class);
     }
 
     @Test
@@ -182,7 +183,7 @@ class AiToolAuthorizationTests {
 
         Object result = callAs(s.student().userId(), () -> aiToolService.getSkillGap("not-a-uuid", null));
 
-        assertThat(result).isInstanceOf(AiToolService.ToolError.class);
+        assertThat(result).isInstanceOf(AiFactsService.ToolError.class);
     }
 
     // ---- getAcademicProgress / getAssessmentResults / getUpcomingDeadlines / recommendLearningResources: same authorization shape ----
@@ -194,7 +195,7 @@ class AiToolAuthorizationTests {
 
         Object result = callAs(unrelatedFacultyUserId, () -> aiToolService.getAcademicProgress(s.student().studentId().toString()));
 
-        assertThat(result).isInstanceOf(AiToolService.ToolError.class);
+        assertThat(result).isInstanceOf(AiFactsService.ToolError.class);
     }
 
     @Test
@@ -206,7 +207,7 @@ class AiToolAuthorizationTests {
         Object denied = callAs(other.userId(), () -> aiToolService.getUpcomingDeadlines(s.student().studentId().toString()));
 
         assertThat(own).isInstanceOf(java.util.List.class);
-        assertThat(denied).isInstanceOf(AiToolService.ToolError.class);
+        assertThat(denied).isInstanceOf(AiFactsService.ToolError.class);
     }
 
     @Test
@@ -214,7 +215,7 @@ class AiToolAuthorizationTests {
         var s = day13Fixtures.provisionEnrolledScenario("AIT12");
 
         @SuppressWarnings("unchecked")
-        var result = (java.util.List<AiToolService.LearningResource>)
+        var result = (java.util.List<AiFactsService.LearningResource>)
             callAs(s.student().userId(), () -> aiToolService.recommendLearningResources(null));
 
         // No modules/lessons were ever created for this section — a real absence of data, not an omission.
@@ -238,7 +239,7 @@ class AiToolAuthorizationTests {
         // denial actually comes from the authorization check, not a "job not found" short-circuit.
         Object result = callAs(s.faculty().userId(), () -> aiToolService.getSkillGap(jobId.toString(), s.student().studentId().toString()));
 
-        assertThat(result).isInstanceOf(AiToolService.ToolError.class);
+        assertThat(result).isInstanceOf(AiFactsService.ToolError.class);
     }
 
     // ---- transcript / fee tools: authorization is delegated to the owning service, so prove it still bites ----
@@ -249,7 +250,7 @@ class AiToolAuthorizationTests {
 
         Object result = callAs(s.student().userId(), () -> aiToolService.getTranscript(null));
 
-        assertThat(result).isInstanceOf(AiToolService.TranscriptResult.class);
+        assertThat(result).isInstanceOf(AiFactsService.TranscriptResult.class);
     }
 
     @Test
@@ -259,7 +260,7 @@ class AiToolAuthorizationTests {
 
         Object result = callAs(other.userId(), () -> aiToolService.getTranscript(s.student().studentId().toString()));
 
-        assertThat(result).isInstanceOf(AiToolService.ToolError.class);
+        assertThat(result).isInstanceOf(AiFactsService.ToolError.class);
     }
 
     @Test
@@ -269,7 +270,7 @@ class AiToolAuthorizationTests {
 
         Object result = callAs(guardian.guardianUserId(), () -> aiToolService.getTranscript(s.student().studentId().toString()));
 
-        assertThat(result).isInstanceOf(AiToolService.ToolError.class);
+        assertThat(result).isInstanceOf(AiFactsService.ToolError.class);
     }
 
     @Test
@@ -278,8 +279,8 @@ class AiToolAuthorizationTests {
 
         Object result = callAs(s.student().userId(), () -> aiToolService.getFeeStatus(null));
 
-        assertThat(result).isInstanceOf(AiToolService.FeeStatusResult.class);
-        assertThat(((AiToolService.FeeStatusResult) result).outstanding()).isEqualByComparingTo(BigDecimal.ZERO);
+        assertThat(result).isInstanceOf(AiFactsService.FeeStatusResult.class);
+        assertThat(((AiFactsService.FeeStatusResult) result).outstanding()).isEqualByComparingTo(BigDecimal.ZERO);
     }
 
     @Test
@@ -289,7 +290,7 @@ class AiToolAuthorizationTests {
 
         Object result = callAs(other.userId(), () -> aiToolService.getFeeStatus(s.student().studentId().toString()));
 
-        assertThat(result).isInstanceOf(AiToolService.ToolError.class);
+        assertThat(result).isInstanceOf(AiFactsService.ToolError.class);
     }
 
     @Test
@@ -299,7 +300,7 @@ class AiToolAuthorizationTests {
 
         Object result = callAs(guardian.guardianUserId(), () -> aiToolService.getFeeStatus(s.student().studentId().toString()));
 
-        assertThat(result).isInstanceOf(AiToolService.ToolError.class);
+        assertThat(result).isInstanceOf(AiFactsService.ToolError.class);
     }
 
     /**
@@ -342,8 +343,8 @@ class AiToolAuthorizationTests {
         }
 
         Object progress = callAs(guardian.guardianUserId(), () -> aiToolService.getAcademicProgress(s.student().studentId().toString()));
-        assertThat(progress).isInstanceOf(AiToolService.AcademicProgressResult.class);
-        var risk = ((AiToolService.AcademicProgressResult) progress).risk();
+        assertThat(progress).isInstanceOf(AiFactsService.AcademicProgressResult.class);
+        var risk = ((AiFactsService.AcademicProgressResult) progress).risk();
         assertThat(risk).isNotNull();
         assertThat(risk.band()).isEqualTo("HIGH");
 

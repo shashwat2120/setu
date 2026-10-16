@@ -104,6 +104,8 @@ current by replay: the consumer's group starts from the earliest offset, and the
 
 ## 5. Honest limits
 
+* The AI service has no database at all (not even a replicated audit table): its only write is an audit record sent to the data service ([ai-service.md](ai-service.md) section 3).
+
 * Record, Finance, Career and Risk are still in the core and keep their constraints (section 2) until they are extracted.
 * The reconciler counts orphans; it does not prevent them. The write-time check prevents; the count tells you if it was ever bypassed.
 * `split-service.sh` is a development and rehearsal tool for the compose Postgres. A production cut-over also needs a write freeze on the

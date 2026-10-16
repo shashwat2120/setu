@@ -17,6 +17,9 @@ import java.util.List;
  * Bearer-token authentication for every service except Identity: verifies the token against Identity's published keys and the revocation
  * list ({@link RemoteTokenAuthenticator}) and, if both pass, attaches a {@link ServicePrincipal}. A missing, forged, expired or revoked
  * token leaves the request unauthenticated; the filter chain's own rules then refuse it. Roles and tenant are never read from the token.
+ * <p>
+ * The verified bearer token itself is kept as the authentication's credentials, only so that a service which must ask another service something
+ * <i>on behalf of this user</i> (the AI service, docs/contracts/ai-service.md) can present the user's own token rather than a privileged one.
  */
 public class RemoteTokenFilter extends OncePerRequestFilter {
 
@@ -31,9 +34,10 @@ public class RemoteTokenFilter extends OncePerRequestFilter {
                                      @NonNull FilterChain filterChain) throws ServletException, IOException {
         String header = request.getHeader("Authorization");
         if (header != null && header.startsWith("Bearer ")) {
-            authenticator.authenticate(header.substring("Bearer ".length())).ifPresent(claims -> {
+            String token = header.substring("Bearer ".length());
+            authenticator.authenticate(token).ifPresent(claims -> {
                 var principal = new ServicePrincipal(claims.userId(), claims.jti(), claims.stepUpAt(), claims.familyId());
-                SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken(principal, null, List.of()));
+                SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken(principal, token, List.of()));
             });
         }
         filterChain.doFilter(request, response);

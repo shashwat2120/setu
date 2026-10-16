@@ -2,9 +2,7 @@ package com.setu.aiexplain.application;
 
 import com.setu.aiexplain.infrastructure.ratelimit.AiRateLimiter;
 import com.setu.identity.TestAuthentication;
-import com.setu.shared.authorization.AuthorizationContext;
-import com.setu.shared.governance.AuditLogWriter;
-import com.setu.shared.tenant.TenantContext;
+import com.setu.shared.aifacts.AiFacts;
 import com.setu.testsupport.Day13TestFixtures;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -40,11 +38,7 @@ class AiChatSourcesTests {
     @Autowired
     AiRateLimiter rateLimiter;
     @Autowired
-    TenantContext tenantContext;
-    @Autowired
-    AuthorizationContext authorizationContext;
-    @Autowired
-    AuditLogWriter auditLogWriter;
+    AiFacts facts;
 
     @AfterEach
     void clearSecurityContext() {
@@ -64,8 +58,7 @@ class AiChatSourcesTests {
 
     private AiChatService service(ChatClient client) {
         // "ollama" as the provider label = non-streaming primary path, the one the regression was in
-        return new AiChatService(client, client, aiToolService, invocationRecorder, rateLimiter, tenantContext,
-            authorizationContext, auditLogWriter, new AiConversationMemory(6, 30, 100), "ollama",
+        return new AiChatService(client, client, aiToolService, invocationRecorder, rateLimiter, facts, new AiConversationMemory(6, 30, 100), "ollama",
             "gemini-test", "ollama-test", 30L);
     }
 

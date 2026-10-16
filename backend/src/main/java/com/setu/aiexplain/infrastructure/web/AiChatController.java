@@ -1,6 +1,7 @@
 package com.setu.aiexplain.infrastructure.web;
 
 import com.setu.aiexplain.application.AiChatService;
+import com.setu.aiexplain.application.AiJobService;
 import io.micrometer.core.instrument.MeterRegistry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -10,6 +11,8 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.context.SecurityContext;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -39,11 +42,13 @@ public class AiChatController {
     private static final long STREAM_TIMEOUT_MS = 120_000L;
 
     private final AiChatService aiChatService;
+    private final AiJobService aiJobService;
     private final MeterRegistry meterRegistry;
     private final ExecutorService streamExecutor = Executors.newVirtualThreadPerTaskExecutor();
 
-    public AiChatController(AiChatService aiChatService, MeterRegistry meterRegistry) {
+    public AiChatController(AiChatService aiChatService, AiJobService aiJobService, MeterRegistry meterRegistry) {
         this.aiChatService = aiChatService;
+        this.aiJobService = aiJobService;
         this.meterRegistry = meterRegistry;
     }
 
@@ -137,6 +142,43 @@ public class AiChatController {
             }
         });
         return emitter;
+    }
+
+    public record JobAccepted(UUID jobId, String status, String statusUrl, String topic) {
+    }
+
+    public record JobView(UUID jobId, String status, Instant createdAt, Instant updatedAt, String answer, List<String> sources, String model,
+                          String failure) {
+    }
+
+    /**
+     * Asks a question to be answered in the background. Answers at once (202) with a job id; progress is pushed to the caller's own
+     * {@code /topic/ai/jobs/<userId>} and the result is read from {@code statusUrl}. The same question rules as {@link #chat}: 400 for an
+     * invalid one, and 503 when nothing could be accepted (queue full, or the caller could not be identified), never a silent drop.
+     */
+    @PostMapping("/jobs")
+    public ResponseEntity<?> submitJob(@RequestBody ChatRequest request) {
+        var submission = aiJobService.submit(request == null ? null : request.message());
+        meterRegistry.counter("setu.ai.jobs.submitted", "outcome", switch (submission) {
+            case AiJobService.Submission.Accepted a -> "accepted";
+            case AiJobService.Submission.Invalid i -> "invalid";
+            case AiJobService.Submission.Unavailable u -> "unavailable";
+        }).increment();
+        return switch (submission) {
+            case AiJobService.Submission.Accepted a -> ResponseEntity.accepted().body(new JobAccepted(a.job().id(), a.job().status().name(),
+                "/ai/jobs/" + a.job().id(), AiJobService.topicFor(a.job().userId())));
+            case AiJobService.Submission.Invalid i -> ResponseEntity.status(HttpStatus.BAD_REQUEST).body(new ChatErrorResponse(i.reason()));
+            case AiJobService.Submission.Unavailable u -> ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).body(new ChatErrorResponse(u.reason()));
+        };
+    }
+
+    /** One of the caller's own jobs. Another person's job, and one that does not exist or has expired, are the same 404. */
+    @GetMapping("/jobs/{id}")
+    public ResponseEntity<?> job(@PathVariable UUID id) {
+        return aiJobService.find(id)
+            .<ResponseEntity<?>>map(job -> ResponseEntity.ok(new JobView(job.id(), job.status().name(), job.createdAt(), job.updatedAt(), job.answer(),
+                job.sources(), job.model(), job.failure())))
+            .orElseGet(() -> ResponseEntity.status(HttpStatus.NOT_FOUND).body(new ChatErrorResponse("no such job")));
     }
 
     /** "New conversation": forgets what this user has said to the advisor so far. */

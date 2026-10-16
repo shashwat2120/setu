@@ -96,7 +96,8 @@ class SchemaInvariantTests {
         // audit_logs and outbox_events describe platform-level actions too; user_roles holds platform roles (docs/kafka-event-catalog.md), and
         // so do the read-model copies of it that Academic and each service on top of it keep (V80, V81).
         assertThat(nullable).containsExactlyInAnyOrder("governance.audit_logs", "governance.outbox_events", "identity.user_roles",
-            "institution.rm_role_grants", "learning.rm_role_grants", "assessment.rm_role_grants", "attendance.rm_role_grants");
+            "institution.rm_role_grants", "learning.rm_role_grants", "assessment.rm_role_grants", "attendance.rm_role_grants",
+            "notification.rm_role_grants");
     }
 
     /** Tables that legitimately have no tenant: the login account itself and global reference data, the college row that IS the tenant, and per-user preferences. */
@@ -108,9 +109,9 @@ class SchemaInvariantTests {
         "notification.processed_events",
         // The Academic service's read-model copies of the Identity tables above (6A.3): same platform-level data, same absence of a tenant.
         "institution.rm_role_permissions", "institution.rm_persons", "institution.rm_processed_events"),
-        // The same copies in the learning, assessment and attendance schemas (V81): the role matrix, the processed-event record, and the
+        // The same copies in the learning, assessment, attendance (V81) and notification (V85) schemas: the role matrix, the processed-event record, and the
         // permissions of a guardian grant (a child of rm_guardian_grants, which has the tenant; a read model keeps no foreign keys).
-        Stream.of("learning", "assessment", "attendance").flatMap(schema -> Stream.of(schema + ".rm_role_permissions",
+        Stream.of("learning", "assessment", "attendance", "notification").flatMap(schema -> Stream.of(schema + ".rm_role_permissions",
             schema + ".rm_processed_events", schema + ".rm_guardian_grant_permissions"))).collect(java.util.stream.Collectors.toUnmodifiableSet());
 
     @Test

@@ -2,9 +2,7 @@ package com.setu.aiexplain.application;
 
 import com.setu.aiexplain.infrastructure.ratelimit.AiRateLimiter;
 import com.setu.identity.TestAuthentication;
-import com.setu.shared.authorization.AuthorizationContext;
-import com.setu.shared.governance.AuditLogWriter;
-import com.setu.shared.tenant.TenantContext;
+import com.setu.shared.aifacts.AiFacts;
 import com.setu.testsupport.Day13TestFixtures;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -55,11 +53,7 @@ class AiChatFallbackTests {
     @Autowired
     AiRateLimiter rateLimiter;
     @Autowired
-    TenantContext tenantContext;
-    @Autowired
-    AuthorizationContext authorizationContext;
-    @Autowired
-    AuditLogWriter auditLogWriter;
+    AiFacts facts;
     @Autowired
     RestClient.Builder restClientBuilder;
     @Autowired
@@ -100,8 +94,7 @@ class AiChatFallbackTests {
     }
 
     private AiChatService serviceWith(ChatClient primary, ChatClient fallback, String activeProvider, long timeoutSeconds) {
-        return new AiChatService(primary, fallback, aiToolService, invocationRecorder, rateLimiter, tenantContext,
-            authorizationContext, auditLogWriter, new AiConversationMemory(6, 30, 100), activeProvider,
+        return new AiChatService(primary, fallback, aiToolService, invocationRecorder, rateLimiter, facts, new AiConversationMemory(6, 30, 100), activeProvider,
             "gemini-2.5-flash", ollamaModel, timeoutSeconds);
     }
 
@@ -135,7 +128,7 @@ class AiChatFallbackTests {
             // The primary stalls for 8s; its own budget is 1s while the overall request budget is 30s. Before the split the
             // caller waited the full overall budget for the primary before the fallback even started.
             var service = new AiChatService(scriptedClient(8_000, "too late"), scriptedClient(0, "fallback answer"),
-                aiToolService, invocationRecorder, rateLimiter, tenantContext, authorizationContext, auditLogWriter,
+                aiToolService, invocationRecorder, rateLimiter, facts,
                 new AiConversationMemory(6, 30, 100), "google-genai", "gemini-test", ollamaModel, 30L, 1L);
 
             long started = System.nanoTime();
@@ -160,7 +153,7 @@ class AiChatFallbackTests {
             // There is no fallback to hand over to, so the 1s primary budget must not apply: a 2.5s answer within the 30s request
             // timeout still succeeds. (Regression: a 25s cap made every slow-but-working local Ollama answer fail.)
             var service = new AiChatService(scriptedClient(2_500, "local answer"), scriptedClient(0, "unused fallback"),
-                aiToolService, invocationRecorder, rateLimiter, tenantContext, authorizationContext, auditLogWriter,
+                aiToolService, invocationRecorder, rateLimiter, facts,
                 new AiConversationMemory(6, 30, 100), "ollama", "gemini-test", ollamaModel, 30L, 1L);
 
             var result = service.chat("Hello");
@@ -178,7 +171,7 @@ class AiChatFallbackTests {
         TestAuthentication.authenticateAs(s.student().userId());
         try {
             var service = new AiChatService(scriptedClient(300, "primary answer"), scriptedClient(0, "fallback answer"),
-                aiToolService, invocationRecorder, rateLimiter, tenantContext, authorizationContext, auditLogWriter,
+                aiToolService, invocationRecorder, rateLimiter, facts,
                 new AiConversationMemory(6, 30, 100), "google-genai", "gemini-test", ollamaModel, 30L, 5L);
 
             var result = service.chat("Hello");

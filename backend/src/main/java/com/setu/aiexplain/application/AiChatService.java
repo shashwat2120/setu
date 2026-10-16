@@ -1,9 +1,7 @@
 package com.setu.aiexplain.application;
 
 import com.setu.aiexplain.infrastructure.ratelimit.AiRateLimiter;
-import com.setu.shared.authorization.AuthorizationContext;
-import com.setu.shared.governance.AuditLogWriter;
-import com.setu.shared.tenant.TenantContext;
+import com.setu.shared.aifacts.AiFacts;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.client.ChatClient;
@@ -66,9 +64,7 @@ public class AiChatService {
     private final AiToolService aiToolService;
     private final AiToolInvocationRecorder invocationRecorder;
     private final AiRateLimiter rateLimiter;
-    private final TenantContext tenantContext;
-    private final AuthorizationContext authorizationContext;
-    private final AuditLogWriter auditLogWriter;
+    private final AiFacts facts;
     private final AiConversationMemory memory;
     private final String modelName;
     private final String fallbackModelName;
@@ -88,11 +84,9 @@ public class AiChatService {
      */
     public AiChatService(ChatClient chatClient, ChatClient fallbackChatClient,
                           AiToolService aiToolService, AiToolInvocationRecorder invocationRecorder,
-                          AiRateLimiter rateLimiter, TenantContext tenantContext, AuthorizationContext authorizationContext,
-                          AuditLogWriter auditLogWriter, AiConversationMemory memory,
+                          AiRateLimiter rateLimiter, AiFacts facts, AiConversationMemory memory,
                           String activeProvider, String geminiModel, String ollamaModel, long timeoutSeconds) {
-        this(chatClient, fallbackChatClient, aiToolService, invocationRecorder, rateLimiter, tenantContext,
-            authorizationContext, auditLogWriter, memory, activeProvider, geminiModel, ollamaModel, timeoutSeconds,
+        this(chatClient, fallbackChatClient, aiToolService, invocationRecorder, rateLimiter, facts, memory, activeProvider, geminiModel, ollamaModel, timeoutSeconds,
             timeoutSeconds);
     }
 
@@ -104,8 +98,7 @@ public class AiChatService {
     @org.springframework.beans.factory.annotation.Autowired
     public AiChatService(ChatClient chatClient, @Qualifier("fallbackChatClient") ChatClient fallbackChatClient,
                           AiToolService aiToolService, AiToolInvocationRecorder invocationRecorder,
-                          AiRateLimiter rateLimiter, TenantContext tenantContext, AuthorizationContext authorizationContext,
-                          AuditLogWriter auditLogWriter, AiConversationMemory memory,
+                          AiRateLimiter rateLimiter, AiFacts facts, AiConversationMemory memory,
                           @Value("${spring.ai.model.chat:google-genai}") String activeProvider,
                           @Value("${spring.ai.google.genai.chat.options.model:gemini-2.5-flash}") String geminiModel,
                           @Value("${spring.ai.ollama.chat.options.model:llama3.2:3b}") String ollamaModel,
@@ -116,9 +109,7 @@ public class AiChatService {
         this.aiToolService = aiToolService;
         this.invocationRecorder = invocationRecorder;
         this.rateLimiter = rateLimiter;
-        this.tenantContext = tenantContext;
-        this.authorizationContext = authorizationContext;
-        this.auditLogWriter = auditLogWriter;
+        this.facts = facts;
         this.memory = memory;
         this.modelName = "ollama".equals(activeProvider) ? ollamaModel : geminiModel;
         this.fallbackModelName = ollamaModel;
@@ -166,7 +157,8 @@ public class AiChatService {
 
     /** Forgets this user's current conversation — the "New conversation" action. */
     public void clearHistory() {
-        memory.clear(AiConversationMemory.Key.of(authorizationContext.currentUserId(), tenantContext.tenantId()));
+        AiFacts.Caller caller = facts.caller();
+        memory.clear(AiConversationMemory.Key.of(caller.userId(), Optional.ofNullable(caller.tenantId())));
     }
 
     public ChatResult chat(String message) {
@@ -179,12 +171,20 @@ public class AiChatService {
             return new ChatResult.InvalidRequest(invalid.get());
         }
 
-        UUID userId = authorizationContext.currentUserId();
-        Optional<UUID> tenantId = tenantContext.tenantId();
+        AiFacts.Caller caller;
+        try {
+            caller = facts.caller();
+        } catch (AiFacts.Unavailable e) {
+            // without knowing who is asking, nothing can be answered, rate limited or audited: say so, do not guess
+            log.warn("AI chat refused: the caller could not be identified ({})", e.getMessage());
+            return new ChatResult.ProviderUnavailable();
+        }
+        UUID userId = caller.userId();
+        Optional<UUID> tenantId = Optional.ofNullable(caller.tenantId());
         UUID correlationId = UUID.randomUUID();
 
         if (tenantId.isPresent() && !rateLimiter.tryAcquire(tenantId.get(), userId)) {
-            auditLogWriter.write(tenantId.get(), userId, "AI_CHAT_RATE_LIMITED", "ai_chat", correlationId, Map.of());
+            audit("AI_CHAT_RATE_LIMITED", correlationId, Map.of());
             return new ChatResult.RateLimited();
         }
 
@@ -210,6 +210,9 @@ public class AiChatService {
         try {
             result = attempt(chatClient, message, modelName, primaryCanStream && tracked != null, primaryTimeoutSeconds, tracked, history,
                 tenantId, userId, correlationId);
+        } catch (AuditUnavailableException auditFailure) {
+            log.warn("AI answer withheld: it could not be recorded ({})", auditFailure.getMessage());
+            return new ChatResult.ProviderUnavailable();
         } catch (Exception primaryFailure) {
             logProviderFailure(primaryFailure, tenantId, userId, correlationId, "primary");
             if (fallbackIsRedundant || tokensSent[0]) {
@@ -219,8 +222,10 @@ public class AiChatService {
             try {
                 result = attempt(fallbackChatClient, message, fallbackModelName, false, this.timeoutSeconds, tracked, history,
                     tenantId, userId, correlationId);
-                auditLogWriter.write(tenantId.orElse(null), userId, "AI_CHAT_FALLBACK_USED", "ai_chat", correlationId,
-                    Map.of("fallbackModel", fallbackModelName));
+                audit("AI_CHAT_FALLBACK_USED", correlationId, Map.of("fallbackModel", fallbackModelName));
+            } catch (AuditUnavailableException auditFailure) {
+                log.warn("AI answer withheld: it could not be recorded ({})", auditFailure.getMessage());
+                return new ChatResult.ProviderUnavailable();
             } catch (Exception fallbackFailure) {
                 logProviderFailure(fallbackFailure, tenantId, userId, correlationId, "fallback");
                 return new ChatResult.ProviderUnavailable();
@@ -230,6 +235,22 @@ public class AiChatService {
             memory.append(memoryKey, message, success.answer());
         }
         return result;
+    }
+
+    /** The advisor could not record what it did, so what it did must not stand. */
+    private static final class AuditUnavailableException extends RuntimeException {
+        AuditUnavailableException(Throwable cause) {
+            super(cause.getMessage(), cause);
+        }
+    }
+
+    /** Diagnostic records (rate limited, timeout, provider error, fallback used): worth keeping, never worth failing a call over. */
+    private void audit(String action, UUID correlationId, Map<String, Object> details) {
+        try {
+            facts.audit(action, correlationId, details);
+        } catch (AiFacts.Unavailable e) {
+            log.warn("AI audit record {} could not be written: {}", action, e.getMessage());
+        }
     }
 
     private static List<Message> toMessages(List<AiConversationMemory.Turn> turns) {
@@ -329,9 +350,14 @@ public class AiChatService {
         if (listener != null && !stream) {
             listener.onToken(answer);
         }
-        auditLogWriter.write(tenantId.orElse(null), userId, "AI_CHAT_COMPLETED", "ai_chat", correlationId,
-            Map.of("toolsInvoked", sources, "messageLength", message.length(), "model", modelForResult,
-                "streamed", stream, "priorExchanges", history.size() / 2));
+        // The record of what was answered is part of answering: if it cannot be written the answer is not given (fail closed).
+        try {
+            facts.audit("AI_CHAT_COMPLETED", correlationId,
+                Map.of("toolsInvoked", sources, "messageLength", message.length(), "model", modelForResult,
+                    "streamed", stream, "priorExchanges", history.size() / 2));
+        } catch (AiFacts.Unavailable e) {
+            throw new AuditUnavailableException(e);
+        }
         return new ChatResult.Success(answer, sources, Instant.now(), modelForResult, correlationId);
     }
 
@@ -406,11 +432,10 @@ public class AiChatService {
     private void logProviderFailure(Exception e, Optional<UUID> tenantId, UUID userId, UUID correlationId, String which) {
         invocationRecorder.drain();
         if (e instanceof TimeoutException) {
-            auditLogWriter.write(tenantId.orElse(null), userId, "AI_CHAT_TIMEOUT", "ai_chat", correlationId, Map.of("provider", which));
+            audit("AI_CHAT_TIMEOUT", correlationId, Map.of("provider", which));
         } else {
             log.warn("AI chat {} provider call failed", which, e);
-            auditLogWriter.write(tenantId.orElse(null), userId, "AI_CHAT_PROVIDER_ERROR", "ai_chat", correlationId,
-                Map.of("errorType", e.getClass().getSimpleName(), "provider", which));
+            audit("AI_CHAT_PROVIDER_ERROR", correlationId, Map.of("errorType", e.getClass().getSimpleName(), "provider", which));
         }
     }
 }
