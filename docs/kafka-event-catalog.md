@@ -96,6 +96,8 @@ the section id (aggregate `waitlist_entries`) so promotion order is kept per sec
   cannot be created. On this Windows machine that can take minutes; until then events wait on the topic.
 - **Metrics:** `setu_notification_events_total{event_type, outcome}` (outcome `created`, `duplicate`, `ignored`, `error`) and
   `setu_notification_events_dead_lettered_total{topic}`.
+- **Risk consumer switches:** `app.risk.consumer.enabled` (default on; the test suite turns it off), `app.risk.consumer.group-id` (`setu-risk`),
+  `app.risk.consumer.aggregates` (`grades`), `app.risk.consumer.topic-prefix`, `app.risk.consumer.retry-initial-ms`.
 - **Switches:** `app.notification.consumer.enabled` (default on; the test suite turns it off so only an explicit test consumes),
   `app.notification.consumer.group-id`, `app.notification.consumer.topic-prefix`, `app.notification.consumer.aggregates`.
 - **Shown to the user:** `GET /notifications` and the bell in the app header (see openapi-contract-catalog.md). Not built: email and
@@ -167,6 +169,12 @@ the section id (aggregate `waitlist_entries`) so promotion order is kept per sec
 | `AIJobCompleted` | AI | Notification, Realtime/WebSocket relay | `ai_jobs` (in-memory/Redis job tracking, not a persisted table — see TRD/ERD: AI has no tables) | `job_id` | `job_id, requested_by, status ('COMPLETED'\|'FAILED')` |
 
 ## Notes on specific ordering/idempotency risks
+
+- **Student Success consumes `GradePublished`** (implemented, 6C.3 follow-up): every original publish and every correction recalculates the
+  student's risk (`RiskEventProcessor`, group `setu-risk`, from the earliest offset). The event is only the reason to look again: the
+  recalculation reads the student's current data, so ordering between events does not matter and a replay is harmless. Idempotent on the event id
+  (`risk.processed_events`); recalculations for one student are serialised; a recalculation whose inputs hash to the current score's, under the
+  same rule version, records nothing. `AssessmentCompleted` is listed above as a Student Success input but is not a trigger yet.
 
 - **`GradePublished` corrections**: since `grades` is append-only
   (state-machines.md #19), a correction publishes a *new* event, not an

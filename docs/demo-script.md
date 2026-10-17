@@ -108,7 +108,9 @@ decide their own request, faculty cannot see or decide others', and admins of an
 ## 3. Assessment → grade → risk recalculation
 
 Still as faculty: Assessments → an assessment for the section → record a
-grade for a component. Log out, log in as
+grade for a component. Publishing it writes `GradePublished`; with the broker up, the risk consumer picks it up and the student's risk is
+recalculated within seconds, with no one pressing anything (the audit entry for that calculation has no actor and names the event). **Recalculate**
+stays as the manual path and is the fallback while the Kafka client is still starting (see step 9). Log out, log in as
 `student.assessment.risk@demo.setu.local`, check Grades — the new grade is
 there, versioned (a correction would add a new version, never overwrite).
 
@@ -197,9 +199,9 @@ Then do step 2 (scan attendance) or step 3 (publish a grade) and watch the event
 headers (`event_id`, `event_type`, `event_version`, `correlation_id`, `tenant_id`). `.\infra\scripts\kafka-demo.ps1 tail grades`
 prints the last events on one topic.
 
-**Consumers, stated plainly:** two kinds exist. The notification consumer turns grade published, payments, placement, recommendation,
+**Consumers, stated plainly:** three kinds exist. The notification consumer turns grade published, payments, placement, recommendation,
 intervention and admission events into rows in `notification.notifications` (see `docs/kafka-event-catalog.md`); the bell in the app header lists
-them for the person they belong to (`GET /notifications`). Every extracted service also runs a read-model consumer that keeps its copy of identity
+them for the person they belong to (`GET /notifications`). The risk consumer turns `GradePublished` into a recalculation of that student's risk (`setu.risk.events`). Every extracted service also runs a read-model consumer that keeps its copy of identity
 and academic facts current ([extracted-services](contracts/extracted-services.md)). Both retry three times, then dead-letter to `{topic}.DLQ`.
 An Analytics consumer does not exist.
 
@@ -224,7 +226,6 @@ the canonical §16 flow is [final-demo.md](final-demo.md). In short:
   watched against a live multi-service scrape.
 - **Passkey login** needs a real authenticator; see step 1.
 - **Live WebSocket updates** cannot be watched through the bridge; see step 2.
-- **Risk recalculation is started by a person** (step 3/4), not by the grade event.
 
 ## Anticipated reviewer questions
 

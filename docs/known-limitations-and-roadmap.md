@@ -5,14 +5,14 @@ What is not done, not verified, or different from what the canonical spec or the
 purpose, recorded). Nothing here is hidden elsewhere in the docs; the test audit ([non-negotiables-test-audit.md](non-negotiables-test-audit.md))
 and the validation report ([validation-report.md](validation-report.md)) carry the evidence.
 
-## Needs a decision (spec conflict, flagged per canonical spec §17.11)
+## Resolved since 6C.3
 
-1. **Gap. Risk recalculation does not follow the grade event.** Spec §16 reads "assessment -> grade event -> risk recalculation". In the code,
-   `RiskCalculationService.recalculate` runs when a person presses **Recalculate** (and for seed data); nothing listens to `GradePublished` or
-   `AttendanceRecorded`, and risk is not scheduled. The stored score is reproducible (rule version, snapshot hash, time, evidence ids) but it can
-   be stale until someone recalculates. Not changed in this sprint because it is new behavior (a consumer in the risk module, an idempotency
-   record, a rate rule so a burst of scans does not recalculate per scan, and a choice between event-driven and batch) rather than hardening.
-   Decide: event-driven on grade publish and session close, a scheduled batch, or both; then it is one module's work with tests.
+1. ~~Gap: risk recalculation did not follow the grade event.~~ **Closed.** Spec §16 reads "assessment -> grade event -> risk recalculation"; it used
+   to run only when a person pressed **Recalculate**. A risk consumer now recalculates a student's risk on every `GradePublished` (original or
+   correction): see [kafka-event-catalog.md](kafka-event-catalog.md) and `RiskEventProcessor`. The consumer's logic and its Kafka envelope handling
+   are tested without a broker, with the real outbox payload; consuming from a live broker is the same unverified-here limit as item 2.
+   Still not triggers: attendance, submissions, learning progress and `AssessmentCompleted`; adding one is a line in `RiskEventProcessor.TRIGGERS`
+   and a test.
 
 ## Not verified in this environment
 
@@ -62,7 +62,7 @@ and the validation report ([validation-report.md](validation-report.md)) carry t
 
 In the order that removes the most risk first.
 
-1. **Decide and build risk recalculation on events** (item 1). Smallest change that makes the §16 flow true as written.
+1. **Add the other risk triggers** if wanted (attendance session closed, assignment graded, `AssessmentCompleted`), each with its own test.
 2. **Run the services as real processes**: container images per service and a compose profile, on a machine without the NIO defect; then verify
    Kafka lag, the DLQ against a live broker, and the Grafana panels against a live scrape (items 2, 5).
 3. **Extract Record into Assessment, then Finance and Career**, each behind its own read-model copy, with the frozen foreign keys replaced by

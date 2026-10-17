@@ -114,6 +114,57 @@ public class RiskCalculationService {
         UUID tenantId = studentInfo.get().tenantId();
         assertManage(tenantId, studentId);
 
+        Stored stored = calculateAndStore(studentId, tenantId, authorizationContext.currentUserId(), false, null);
+        return new RecalculateResult.Success(stored.riskScoreId(), stored.band(), stored.bandChanged());
+    }
+
+    /** What an event-driven recalculation did. */
+    enum EventRecalculation {
+        /** A new score row was written (and, if the band changed, its event and recommendation). */
+        RECALCULATED,
+        /** The student's inputs hash to the same snapshot under the same rule as the current score: nothing new to record. */
+        UNCHANGED
+    }
+
+    /**
+     * The event-driven entry point: recalculates one student because an event said their inputs changed (a grade was published or corrected),
+     * with no signed-in user. The authorization gate that {@link #recalculate} puts on a person is replaced by the checks that make a
+     * system action safe, which the caller (the risk consumer) has already done on the event and which are repeated here because this
+     * method must not trust its caller: the student must exist and belong to the tenant the event names, otherwise nothing is calculated.
+     * <p>
+     * Same scoring, same rule version, same stored evidence as a person pressing Recalculate (the calculation does not know who asked); it
+     * differs in three ways, all deliberate: the audit entry has no actor and names the event; a recalculation whose feature snapshot hashes
+     * to the same value as the current score's, under the same rule version, writes nothing (a burst of corrections that change nothing the
+     * rule looks at must not fill the history with identical rows, and "reproducible from stored inputs" is unaffected: the existing row
+     * already reproduces it); and an alert is raised only when the band changes, exactly as for a manual recalculation.
+     *
+     * @throws StudentNotKnownException if the student is not known (yet)
+     * @throws PoisonEventException if the student belongs to a different tenant than the event names
+     */
+    @Transactional
+    EventRecalculation recalculateForEvent(UUID studentId, UUID eventTenantId, UUID eventId, String eventType) {
+        StudentProfileService.StudentTenantOwner student = studentProfileService.findTenantAndOwnerUserId(studentId)
+            .orElseThrow(() -> new StudentNotKnownException("student " + studentId + " is not known (yet)"));
+        if (!student.tenantId().equals(eventTenantId)) {
+            throw new PoisonEventException("event tenant does not match the tenant of student " + studentId);
+        }
+        Stored stored = calculateAndStore(studentId, student.tenantId(), null, true,
+            Map.of("trigger", eventType, "eventId", eventId.toString()));
+        return stored.written() ? EventRecalculation.RECALCULATED : EventRecalculation.UNCHANGED;
+    }
+
+    private record Stored(UUID riskScoreId, RiskBand band, boolean bandChanged, boolean written) {
+    }
+
+    /**
+     * The calculation itself, shared by the person-triggered and the event-triggered paths so they cannot drift apart: compute the snapshot,
+     * score it, append a new row with its factors, audit it, and on a band change emit RiskScoreChanged and propose a recommendation.
+     *
+     * @param actorUserId the person who asked, or null when an event did
+     * @param skipIfUnchanged write nothing when the current score was made from the same snapshot under the same rule version
+     * @param trigger extra audit detail naming what started a system calculation, or null
+     */
+    private Stored calculateAndStore(UUID studentId, UUID tenantId, UUID actorUserId, boolean skipIfUnchanged, Map<String, Object> trigger) {
         RiskFeatureService.FeatureSnapshot snapshot = riskFeatureService.computeFor(studentId);
         RiskScoringEngine.Result result = riskScoringEngine.calculate(snapshot);
 
@@ -122,6 +173,10 @@ public class RiskCalculationService {
         Instant now = Instant.now();
 
         Optional<RiskScore> previous = riskScoreRepository.findFirstByStudentIdOrderByCalculatedAtDesc(studentId);
+        if (skipIfUnchanged && previous.isPresent() && previous.get().featureSnapshotHash().equals(hash)
+            && previous.get().ruleVersion().equals(RiskScoringEngine.RULE_VERSION)) {
+            return new Stored(previous.get().id(), previous.get().band(), false, false);
+        }
 
         RiskScore riskScore = new RiskScore(UUID.randomUUID(), tenantId, studentId, result.score(), result.band(),
             RiskScoringEngine.RULE_VERSION, hash, featureJson, now);
@@ -134,9 +189,14 @@ public class RiskCalculationService {
             riskFactorRepository.save(riskFactor);
         }
 
-        auditLogWriter.write(tenantId, authorizationContext.currentUserId(), "RISK_SCORE_CALCULATED",
-            "risk.risk_scores", riskScore.id(), Map.of("studentId", studentId, "band", result.band().name(),
-                "score", result.score()));
+        Map<String, Object> details = new java.util.LinkedHashMap<>();
+        details.put("studentId", studentId);
+        details.put("band", result.band().name());
+        details.put("score", result.score());
+        if (trigger != null) {
+            details.putAll(trigger);
+        }
+        auditLogWriter.write(tenantId, actorUserId, "RISK_SCORE_CALCULATED", "risk.risk_scores", riskScore.id(), details);
 
         boolean bandChanged = previous.isEmpty() || previous.get().band() != result.band();
         if (bandChanged) {
@@ -159,7 +219,7 @@ public class RiskCalculationService {
             }
         }
 
-        return new RecalculateResult.Success(riskScore.id(), result.band(), bandChanged);
+        return new Stored(riskScore.id(), result.band(), bandChanged, true);
     }
 
     /** Own (student, VIEW_RISK_SCORE — also guardian-delegatable), advisor (FACULTY, advisee-scoped), or admin (VIEW_RISK_SCORE_ALL_SECTIONS). */

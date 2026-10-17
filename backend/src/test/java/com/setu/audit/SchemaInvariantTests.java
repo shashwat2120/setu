@@ -106,7 +106,7 @@ class SchemaInvariantTests {
         "identity.password_reset_tokens", "identity.webauthn_challenges", "identity.roles", "identity.permissions",
         "identity.role_permissions", "identity.user_roles", "institution.colleges", "governance.audit_logs",
         "governance.outbox_events", "governance.idempotency_keys", "notification.notification_preferences",
-        "notification.processed_events",
+        "notification.processed_events", "risk.processed_events",
         // The Academic service's read-model copies of the Identity tables above (6A.3): same platform-level data, same absence of a tenant.
         "institution.rm_role_permissions", "institution.rm_persons", "institution.rm_processed_events"),
         // The same copies in the learning, assessment, attendance (V81) and notification (V85) schemas: the role matrix, the processed-event record, and the

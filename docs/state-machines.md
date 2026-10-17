@@ -419,6 +419,9 @@ terminal states → correction rules → audit → emitted event.
   recalculation is simply the next row; if the *rule itself* was wrong, that's
   a `rule_version` bump, and old scores remain historically accurate to the
   rule version they were computed under
+- **Trigger**: a person pressing Recalculate (audited with that actor), or a `GradePublished` event (original or correction), which
+  recalculates with no actor and an audit entry that names the event. An event-driven recalculation whose feature-snapshot hash and rule
+  version equal the current row's writes nothing, so a burst of events that changes none of the rule's inputs does not pad the history.
 - **Audit**: implicit — the append-only table is its own audit trail
 - **Emitted event**: `RiskScoreChanged` (emitted when the new row's `band`
   differs from the previous current row's `band` — not on every recalculation

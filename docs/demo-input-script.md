@@ -105,6 +105,8 @@ Sign in on the right window.
    → **Publish**. Say: "Grades are versioned; a correction adds a new version and never overwrites."
 
 ## 6. COLLEGE ADMIN again → risk recalculation — 2 min
+With the broker up, publishing the grade in step 5 has already queued a recalculation; the page may show the new band without a click. If the
+Kafka client is still starting (it can take minutes on this machine), **Recalculate** does the same thing by hand.
 1. **Student Success**: Arjun Singh is **MEDIUM 30** (before).
 2. Click **Recalculate** on his row → "Risk recalculated for Arjun Singh: LOW (the band changed)." The score drops to about **17.5**.
    Say: "Risk is a versioned rule over attendance, grades, assignments and learning progress. Same inputs, same score. AI never decides it."

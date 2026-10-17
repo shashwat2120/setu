@@ -141,6 +141,7 @@ record.student_academic_records  Assessment
 record.transcripts  Assessment
 risk.intervention_actions  StudentSuccess
 risk.interventions  StudentSuccess
+risk.processed_events  StudentSuccess
 risk.recommendations  StudentSuccess
 risk.risk_factors  StudentSuccess
 risk.risk_scores  StudentSuccess

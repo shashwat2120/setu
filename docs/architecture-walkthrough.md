@@ -66,9 +66,13 @@ keeps a processed-event table and a redelivery is a no-op; the claim is idempote
 ([kafka-contracts](contracts/kafka-contracts.md)). Each message carries `event_id`, `event_type`, `event_version`, schema version, `correlation_id`,
 `causation_id`, `tenant_id` and the W3C `traceparent` of the request that wrote it.
 
-**Risk, advisor alert.** Risk still runs in the core process and reads grades, attendance and learning progress in process. It is stored
-reproducibly (rule version, feature snapshot hash, calculation time, evidence ids). Recommendation, intervention and the notification
-(Notification consumes the events into per-person rows and pushes to a per-user topic) follow.
+**Risk, advisor alert.** Risk still runs in the core process and reads grades, attendance and learning progress in process. A consumer in the
+risk module reads `GradePublished` from `setu.grades` (group `setu-risk`) and recalculates that student with no signed-in user: the student and
+tenant come from the event's enrollment, the event id is recorded in `risk.processed_events` in the same transaction, and recalculations for one
+student are serialised. The result is stored reproducibly (rule version, feature snapshot hash, calculation time, evidence ids), and an unchanged
+snapshot records nothing. The `RiskScoreChanged` and `RecommendationCreated` events it writes carry the grade event's correlation id and name it
+as their cause, so one trace follows grade to alert. Recommendation, intervention and the notification (Notification consumes the events into
+per-person rows and pushes to a per-user topic) follow.
 
 **AI explanation.** The AI service has no datasource; this is enforced by an architecture test, not a convention. It calls tools
 (`getStudentAttendance`, `getAcademicProgress`, ...) that go through `AiFacts`; in a service layout `RemoteAiFacts` calls the data-holding

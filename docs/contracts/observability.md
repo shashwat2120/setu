@@ -52,6 +52,7 @@ Business and platform meters, all in the **Setu: platform health** dashboard (`i
 | `setu.outbox.pending`, `.events.published{event_type}`, `.events.failed{event_type}` | events written but not yet on Kafka; throughput; publisher trouble |
 | `setu.readmodel.events{event_type,outcome}`, `.dead_lettered{topic}` | read-model consumers per service; events that can never be applied or exhausted retries |
 | `setu.notification.events`, `.dead_lettered` | the notification consumer |
+| `setu.risk.events{event_type,outcome}`, `.dead_lettered{topic}` | the risk consumer: `recalculated`, `unchanged`, `duplicate`, `ignored`, `error` |
 | `setu.ai.chat.requests{outcome,model,channel}`, `setu.ai.jobs.submitted{outcome}` | the advisor |
 
 `DashboardConsistencyTests` fails if a dashboard panel names a meter that no code produces, so a renamed meter cannot leave a blank panel.

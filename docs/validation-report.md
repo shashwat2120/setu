@@ -35,7 +35,7 @@ unsized default stalled 20 scans for 30 s each). A larger classroom, a slower di
 
 ## Regression
 
-Full suite run in 20 chunks against one database, one chunk at a time, on the tree that contains the 6C.1 and 6C.2 changes: **all 20 chunks
+Full suite run in 20 chunks (the risk row below was rerun after the grade-event consumer was added; the other 19 are from the earlier full run, and the suites that could be affected, audit, modularity and notification, were rerun with it) against one database, one chunk at a time, on the tree that contains the 6C.1 and 6C.2 changes: **all 20 chunks
 passed, no failures.**
 
 | Chunk | Tests |
@@ -59,7 +59,7 @@ passed, no failures.**
 | learning | 91 |
 | notification (excluding the broker-backed Kafka test) | 37 |
 | record | 8 |
-| risk | 39 |
+| risk (includes the grade-event consumer: 21 tests) | 60 |
 | shared kernel + `ModularityTests` | 124 |
 
 Excluded by design: tag `live-ollama` (needs a local model), tag `live-gemini` (needs a key and spends embedding quota), tag `performance` (run
@@ -76,6 +76,7 @@ above, separately), and `NotificationKafkaConsumerTests`, which cannot open an N
 | Page size capped | `PageSizeLimitFilterTests` |
 | Tenant isolation across the extracted services' read models | cross-tenant cases in `ExtractedServiceWiringSupport` |
 | Entry-point defaults are not silently shadowed | `EntryPointDefaultsTests`, `EntryPointDefaultsPrecedenceTests` |
+| Risk recalculates on a grade event; idempotent, tenant-checked, one at a time per student, refusals leave nothing | `RiskEventProcessorTests`, `RiskEventListenerTests`, `RiskErrorHandlerTests`, `RiskConsumerWiringTests` (without a broker) |
 | Trace context survives the outbox | `OutboxTraceParentTests`, `shared.observability` tests |
 | Model call and embedder time out visibly; second Gemini model before Ollama | `AiChatSecondaryGeminiTests`, `SpringAiTextEmbedderTests` |
 

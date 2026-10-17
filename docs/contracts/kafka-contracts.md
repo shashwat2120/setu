@@ -36,7 +36,7 @@ So **a consumer will see an event more than once and may see related events out 
 
 ## 3. Consumers: idempotent, convergent, refusing what they do not understand
 
-* **Processed-event table per consumer.** Each consumer records `event_id` in its own table (`notification.processed_events`;
+* **Processed-event table per consumer.** Each consumer records `event_id` in its own table (`notification.processed_events`, `risk.processed_events`;
   `<schema>.rm_processed_events` in each service's read model) in the **same transaction** as its effect. A redelivered event is recognised and skipped.
 * **Convergence.** Read-model rows are last-write-wins by `occurred_at`, so replays and reordering end in the same state
   (`AcademicReadModelParityTests`, `ReadModelParityTests`).
@@ -63,9 +63,12 @@ So **a consumer will see an event more than once and may see related events out 
   standard dead-letter headers (original topic, partition, offset, exception).
 * A failure that cannot succeed on retry goes to the DLQ on the **first** failure: `PoisonEventException` (malformed JSON, missing field, unknown
   reference, tenant mismatch), `DataIntegrityViolationException`, and `UnsupportedEventVersionException`.
-* Dead-lettering is counted (`setu.notification.events.dead_lettered`, `setu.readmodel.events.dead_lettered`, tagged by topic) and logged at
+* Dead-lettering is counted (`setu.notification.events.dead_lettered`, `setu.risk.events.dead_lettered`, `setu.readmodel.events.dead_lettered`, tagged by topic) and logged at
   error level. It never blocks the partition and never drops an event silently.
-* Tests: `NotificationErrorHandlerTests`, `ReadModelErrorHandlerTests` (policy, no broker), `NotificationKafkaConsumerTests` (real broker where reachable).
+* The risk consumer keeps this policy on its **own listener container factory**, not on a `CommonErrorHandler` bean: Spring Boot applies the one such
+  bean to the default factory and none at all when there are two, and the notification consumer in the same process already declares one
+  (`RiskConsumerWiringTests` pins that no second bean exists).
+* Tests: `NotificationErrorHandlerTests`, `RiskErrorHandlerTests`, `ReadModelErrorHandlerTests` (policy, no broker), `NotificationKafkaConsumerTests` (real broker where reachable).
 
 ## 6. Changing an event
 
