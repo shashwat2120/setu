@@ -143,6 +143,25 @@ public class AiChatConfig {
     }
 
     /**
+     * A second Gemini model, tried before the local one when the primary fails. One Gemini model being overloaded (HTTP 503 "high demand", which
+     * the Developer API does regularly and per model) says nothing about another, and the local Ollama model is minutes slower than any of
+     * them, so the first fallback stays on Gemini. It is the same {@link ChatModel} with a different model in the default options, so it
+     * costs nothing to keep. Present only when Gemini is the primary provider and a different fallback model is configured
+     * ({@code app.ai.gemini-fallback-model}, blank to disable).
+     */
+    @Bean(name = "geminiSecondaryChatClient")
+    @org.springframework.boot.autoconfigure.condition.ConditionalOnProperty(name = "spring.ai.model.chat", havingValue = "google-genai")
+    @org.springframework.boot.autoconfigure.condition.ConditionalOnExpression("!'${app.ai.gemini-fallback-model:}'.isBlank()")
+    public ChatClient geminiSecondaryChatClient(ChatModel chatModel,
+                                                @Value("${app.ai.gemini-fallback-model:}") String fallbackModel,
+                                                @Value("${spring.ai.google.genai.chat.options.model:}") String primaryModel) {
+        return ChatClient.builder(chatModel)
+            .defaultSystem(SYSTEM_PROMPT)
+            .defaultOptions(org.springframework.ai.google.genai.GoogleGenAiChatOptions.builder().model(fallbackModel))
+            .build();
+    }
+
+    /**
      * Day 16 §ai-perf: an Ollama-backed client that exists UNCONDITIONALLY, independent of
      * {@code spring.ai.model.chat} — built by hand here (not via
      * {@code OllamaChatAutoConfiguration}, which only activates when Ollama is the PRIMARY
@@ -161,6 +180,7 @@ public class AiChatConfig {
         OllamaChatModel fallbackChatModel = OllamaChatModel.builder()
             .ollamaApi(ollamaApi)
             .toolCallingManager(toolCallingManager)
+            .retryTemplate(org.springframework.ai.retry.RetryUtils.SHORT_RETRY_TEMPLATE)   // our own fallback logic decides what happens next, not ten silent retries
             .options(OllamaChatOptions.builder().model(fallbackModel).build())
             .build();
         return ChatClient.builder(fallbackChatModel)

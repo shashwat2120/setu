@@ -3,7 +3,6 @@ package com.setu.aiexplain.application;
 import com.setu.identity.TestAuthentication;
 import com.setu.testsupport.Day13TestFixtures;
 import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -22,15 +21,15 @@ import static org.assertj.core.api.Assertions.assertThat;
  * codebase's own established discipline of never mocking a provider integration (see
  * AiChatIntegrationTests, the equivalent real-Ollama suite).
  * <p>
- * Tagged {@code live-gemini} and therefore EXCLUDED from a plain {@code mvn test}: it spends the Gemini API key's
- * quota (the free tier has a daily cap that a full test run on top of normal use can exhaust, after which the app
- * correctly falls back to Ollama and this test's {@code contains("gemini")} check fails for reasons that have nothing
- * to do with the code). Run it on purpose: {@code ./mvnw test -DexcludedGroups=none -Dtest=AiChatGeminiTests}.
+ * Gemini is the default provider for everything now, so this runs with the rest of the suite; it is skipped (not failed) when no
+ * {@code GEMINI_API_KEY} is configured. If the key's daily quota is exhausted the application correctly falls back to Ollama and this
+ * test's {@code contains("gemini")} check fails for a reason that has nothing to do with the code: wait for the quota to reset.
  */
-@Tag("live-gemini")
 @SpringBootTest(properties = "spring.ai.model.chat=google-genai")
 class AiChatGeminiTests {
 
+    @Autowired
+    org.springframework.core.env.Environment environment;
     @Autowired
     Day13TestFixtures day13Fixtures;
     @Autowired
@@ -43,6 +42,8 @@ class AiChatGeminiTests {
 
     @Test
     void answersARealQuestionThroughGemini() {
+        org.junit.jupiter.api.Assumptions.assumeTrue(org.springframework.util.StringUtils.hasText(environment.getProperty("spring.ai.google.genai.api-key")),
+            "no GEMINI_API_KEY configured");
         var s = day13Fixtures.provisionEnrolledScenario("AIGM1");
         TestAuthentication.authenticateAs(s.student().userId());
         try {

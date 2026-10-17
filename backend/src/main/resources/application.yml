@@ -6,12 +6,27 @@ spring:
       - optional:file:./backend/.env.local[.properties]
 
   application:
-    name: setu-backend
+    # Each service sets APPLICATION_NAME in its entry point (a default for spring.application.name itself would be ignored: see
+    # EntryPointDefaultsTests). It names the service in metrics (the `application` label), traces and logs.
+    name: ${APPLICATION_NAME:setu-backend}
 
   datasource:
     url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:setu}
     username: ${DB_USER:setu}
     password: ${DB_PASSWORD:setu_dev_password}
+    hikari:
+      # CONNECTION POOL SIZING, a correctness rule and not a tuning knob (docs/contracts/performance.md). A write that uses a nested
+      # REQUIRES_NEW transaction (the insert guards that turn a lost uniqueness race into a clean answer: 43 classes) holds its outer connection
+      # while the inner one is acquired, so one request in flight needs TWO connections. If more requests are in flight than half the pool,
+      # every connection is held by an outer transaction waiting for an inner one, and all of them stall until the connection timeout (measured:
+      # 20 simultaneous QR scans against the default pool of 10 stalled for 30 s). The rule that cannot deadlock:
+      #     worker threads x 2 + background threads x 2 <= maximum-pool-size
+      # i.e. server.tomcat.threads.max (below) x 2 + 16 (outbox publisher, schedulers, consumers) <= this. ConnectionPoolSizingTests enforces it.
+      maximum-pool-size: ${DB_POOL_SIZE:64}
+      # Connections kept ready. Opening one costs about 35 ms and Hikari opens them one at a time, so a burst of 24 simultaneous requests (a
+      # classroom scanning a QR code) needing ~48 connections against a pool that had shrunk to 2 spent ~1.6 s just connecting (measured). 16 ready
+      # connections per service, ten services, is 160 of the 300 the database server allows (docker-compose.yml).
+      minimum-idle: ${DB_POOL_MIN_IDLE:16}
 
   flyway:
     # See infra/db/README.md — migrations live outside the backend module so
@@ -54,22 +69,29 @@ spring:
     # matchIfMissing = true) — with both starters now on the classpath this MUST be set
     # explicitly or both would try to activate).
     #
-    # Defaults to "ollama" here deliberately — this file is shared by the real running
-    # application AND every backend test (there is no test-scope application.yml in this
-    # project; a same-named src/test/resources/application.yml was tried and reverted
-    # because Maven's test classpath ordering makes it REPLACE this whole file for tests
-    # rather than merge with it, silently deleting datasource/redis/kafka config). Flipping
-    # the bare default to Gemini would have made the ENTIRE existing test suite require a
-    # live GEMINI_API_KEY just to run `mvn test`.
+    # Gemini is the primary provider, for the running application and for every backend test alike (there is no test-scope
+    # application.yml in this project; a same-named src/test/resources/application.yml was tried and reverted because Maven's
+    # test classpath ordering makes it REPLACE this whole file for tests rather than merge with it, silently deleting
+    # datasource/redis/kafka config). Ollama is the FALLBACK only: Gemini answers in a few seconds where the local model measured
+    # ~150s/response on this dev machine, so nothing waits on Ollama unless Gemini itself fails.
     #
-    # For an actual demo/dev run (never for `mvn test`), export AI_PROVIDER=google-genai
-    # before starting the app/bridge — see docs/demo-script.md step 0 — since Ollama
-    # measured ~150s/response on this dev machine and Gemini is the fast path for a live
-    # demo. AiChatService additionally holds a real runtime fallback FROM whichever is
-    # primary TO Ollama on provider failure, independent of this switch (see
-    # AiChatConfig#fallbackChatClient) — Gemini failing never takes the AI Advisor down.
+    # Without a GEMINI_API_KEY (a machine or CI run that has none) AiProviderSafetyPostProcessor switches the primary to Ollama for
+    # that run and says so loudly, rather than failing to start. A present-but-wrong key starts normally and fails (and falls back)
+    # at request time. AiChatService holds that runtime fallback FROM whichever is primary TO Ollama on provider failure,
+    # independent of this switch (see AiChatConfig#fallbackChatClient). Set AI_PROVIDER=ollama to force the local model.
     model:
-      chat: ${AI_PROVIDER:ollama}
+      chat: ${AI_PROVIDER:google-genai}
+    # Spring AI retries a failed provider call itself (default: 10 attempts with a backoff that grows to minutes) before the exception ever reaches
+    # AiChatService. That hides a Gemini outage behind minutes of silent retries and delays the fallback to Ollama, which AiChatService
+    # already does, with its own budgets (app.ai.primary-timeout-seconds / request-timeout-seconds). So: one retry, quickly, and only for
+    # transient failures (client errors such as a bad key or an exhausted quota are not retried at all); then the fallback decides.
+    retry:
+      max-attempts: ${AI_RETRY_MAX_ATTEMPTS:2}
+      on-client-errors: false
+      backoff:
+        initial-interval: 500ms
+        multiplier: 2
+        max-interval: 2s
     google:
       genai:
         # Gemini Developer API (api-key only) — vertex-ai stays unset/false, so no GCP
@@ -132,17 +154,27 @@ spring:
       auto-offset-reset: earliest
       enable-auto-commit: false
     listener:
+      # 6C.1: a listener is a span, and it continues the trace named by the record's traceparent header (set by the outbox publisher from the
+      # trace that wrote the event), so an event's consumers appear in the same trace as the request that caused it.
+      observation-enabled: true
       # A topic that has not been created yet (nothing published for that aggregate so far) must not stop the application starting.
       missing-topics-fatal: false
 
 server:
   port: ${SERVER_PORT:8080}
+  tomcat:
+    threads:
+      # at most this many requests are in flight at once; the rest wait in the accept queue (see the pool-sizing rule under spring.datasource.hikari).
+      # The gateway and the AI service have no database and set their own, higher, value.
+      max: ${SERVER_MAX_THREADS:24}
 
 logging:
   pattern:
     # Day 15 §7: correlation id (see CorrelationIdFilter) in every log line, when present — blank outside an HTTP
     # request (e.g. the OutboxPublisher's own scheduled thread, which has no request to tie it to).
-    console: "%d{HH:mm:ss.SSS} %-5level [%thread] %logger{36} [%X{correlationId}] - %msg%n"
+    # 6C.1: and the trace the line belongs to (traceId/spanId are set by tracing; blank outside a traced thread), so a log line can be found from a
+    # trace in Grafana and the other way round.
+    console: "%d{HH:mm:ss.SSS} %-5level [%thread] %logger{36} [%X{correlationId}] [%X{traceId:-}-%X{spanId:-}] - %msg%n"
 
 management:
   endpoints:
@@ -151,11 +183,35 @@ management:
         include: health, info, modulith, prometheus
   metrics:
     tags:
-      application: setu-backend
+      # Each service sets spring.application.name, so every metric says which service it came from; the monolith stays "setu-backend".
+      application: ${spring.application.name:setu-backend}
     distribution:
       # Histogram buckets for request latency, so Grafana can show p95 (see infra/docker/observability).
       percentiles-histogram:
         "[http.server.requests]": true
+        "[setu.outbound]": true
+  # 6C.1 (docs/contracts/observability.md). Every request, Kafka listener and observed outbound call is a span with a trace id that appears in the
+  # log lines. Spans are only SENT anywhere when OTEL_TRACES_EXPORT_ENABLED=true (the compose stack's Tempo); logs likewise with
+  # OTEL_LOGS_EXPORT_ENABLED=true (Loki's OTLP endpoint). Metrics are scraped by Prometheus, never pushed.
+  tracing:
+    sampling:
+      probability: ${TRACING_SAMPLING_PROBABILITY:1.0}
+    export:
+      otlp:
+        enabled: ${OTEL_TRACES_EXPORT_ENABLED:false}
+  logging:
+    export:
+      otlp:
+        enabled: ${OTEL_LOGS_EXPORT_ENABLED:false}
+  opentelemetry:
+    tracing:
+      export:
+        otlp:
+          endpoint: ${OTEL_TRACES_ENDPOINT:http://localhost:4318/v1/traces}
+    logging:
+      export:
+        otlp:
+          endpoint: ${OTEL_LOGS_ENDPOINT:http://localhost:3100/otlp/v1/logs}
 
 app:
   metrics:
@@ -204,7 +260,10 @@ app:
     request-timeout-seconds: ${AI_REQUEST_TIMEOUT_SECONDS:60}
     # How long the primary (Gemini) attempt may take before the local fallback is tried. Gemini normally answers in a few
     # seconds; when it hangs, waiting the full 60s above made every answer take ~98s. Capped at the value above.
-    primary-timeout-seconds: ${AI_PRIMARY_TIMEOUT_SECONDS:25}
+    primary-timeout-seconds: ${AI_PRIMARY_TIMEOUT_SECONDS:40}
+    # Tried before Ollama when the primary Gemini model fails (a 503 "high demand" on one model rarely hits another). Blank disables; ignored when equal to
+    # the primary model. Needs a model this key can use: `GET /v1beta/models` lists them.
+    gemini-fallback-model: ${GEMINI_FALLBACK_MODEL:gemini-3.5-flash}
     embedding:
       # Policy-search embeddings: auto (Gemini when Gemini is the chat provider, otherwise the built-in local one), gemini, ollama or local.
       provider: ${EMBEDDING_PROVIDER:auto}

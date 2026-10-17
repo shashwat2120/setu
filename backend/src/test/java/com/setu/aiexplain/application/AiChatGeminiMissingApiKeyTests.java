@@ -17,6 +17,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * controlled {@code ProviderUnavailable}) — never crash, never leak a stack trace. Runs in its own Spring context so
  * the provider override never affects any other AI test.
  */
+@org.junit.jupiter.api.Tag("live-ollama")   // with no key the primary becomes the real local model: minutes, run on purpose (see pom.xml)
 @SpringBootTest(properties = {"spring.ai.model.chat=google-genai", "spring.ai.google.genai.api-key="})
 class AiChatGeminiMissingApiKeyTests {
 

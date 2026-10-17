@@ -1,0 +1,153 @@
+package com.setu.aiexplain.application;
+
+import com.setu.aiexplain.infrastructure.ratelimit.AiRateLimiter;
+import com.setu.shared.aifacts.AiFacts;
+import com.setu.testsupport.Day13TestFixtures;
+import com.setu.identity.TestAuthentication;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.Test;
+import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.ai.chat.messages.AssistantMessage;
+import org.springframework.ai.chat.model.ChatModel;
+import org.springframework.ai.chat.model.ChatResponse;
+import org.springframework.ai.chat.model.Generation;
+import org.springframework.ai.chat.prompt.ChatOptions;
+import org.springframework.ai.chat.prompt.Prompt;
+import org.springframework.ai.model.tool.ToolCallingChatOptions;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
+
+import java.util.List;
+import java.util.concurrent.atomic.AtomicInteger;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+/**
+ * The order in which models are tried (docs/contracts/ai-service.md section 6): the primary Gemini model, then a second Gemini model, and only then
+ * the local Ollama model. One Gemini model being overloaded must not send a question to the slowest option when another is available. All with
+ * scripted models, so it checks the order and what is recorded, not a provider.
+ */
+@SpringBootTest
+class AiChatSecondaryGeminiTests {
+
+    @Autowired
+    AiToolService aiToolService;
+    @Autowired
+    AiToolInvocationRecorder invocationRecorder;
+    @Autowired
+    AiRateLimiter rateLimiter;
+    @Autowired
+    AiFacts facts;
+    @Autowired
+    Day13TestFixtures day13Fixtures;
+
+    private final AtomicInteger primaryCalls = new AtomicInteger();
+    private final AtomicInteger secondaryCalls = new AtomicInteger();
+    private final AtomicInteger ollamaCalls = new AtomicInteger();
+
+    @AfterEach
+    void clearSecurityContext() {
+        TestAuthentication.clear();
+    }
+
+    /** A model that answers {@code text}, or fails like an overloaded provider ({@code text == null}), counting its calls. */
+    private static ChatClient model(AtomicInteger calls, String text) {
+        ChatModel model = new ChatModel() {
+            @Override
+            public ChatResponse call(Prompt prompt) {
+                calls.incrementAndGet();
+                if (text == null) {
+                    throw new IllegalStateException("503 This model is currently experiencing high demand");
+                }
+                return new ChatResponse(List.of(new Generation(new AssistantMessage(text))));
+            }
+
+            @Override
+            public ChatOptions getDefaultOptions() {
+                return ToolCallingChatOptions.builder().build();
+            }
+        };
+        return ChatClient.builder(model).build();
+    }
+
+    private AiChatService service(ChatClient primary, ChatClient secondary, ChatClient ollama) {
+        AiChatService service = new AiChatService(primary, ollama, aiToolService, invocationRecorder, rateLimiter, facts,
+            new AiConversationMemory(6, 30, 100), "google-genai", "gemini-primary", "ollama-test", 30L, 30L);
+        return secondary == null ? service : service.withSecondaryGemini(secondary, "gemini-secondary");
+    }
+
+    private AiChatService.ChatResult ask(AiChatService service, String prefix) {
+        var s = day13Fixtures.provisionEnrolledScenario(prefix);
+        TestAuthentication.authenticateAs(s.student().userId());
+        return service.chat("How am I doing?");
+    }
+
+    @Test
+    void anAnsweringPrimaryIsTheOnlyModelAsked() {
+        var result = ask(service(model(primaryCalls, "primary answer"), model(secondaryCalls, "secondary answer"), model(ollamaCalls, "ollama answer")), "AIS2A");
+
+        assertThat(result).isInstanceOfSatisfying(AiChatService.ChatResult.Success.class, r -> {
+            assertThat(r.answer()).isEqualTo("primary answer");
+            assertThat(r.model()).isEqualTo("gemini-primary");
+        });
+        assertThat(secondaryCalls.get()).isZero();
+        assertThat(ollamaCalls.get()).isZero();
+    }
+
+    @Test
+    void anOverloadedPrimaryFallsToTheSecondGeminiModelAndNeverReachesOllama() {
+        var result = ask(service(model(primaryCalls, null), model(secondaryCalls, "secondary answer"), model(ollamaCalls, "ollama answer")), "AIS2B");
+
+        assertThat(result).isInstanceOfSatisfying(AiChatService.ChatResult.Success.class, r -> {
+            assertThat(r.answer()).isEqualTo("secondary answer");
+            assertThat(r.model()).as("the answer says which model gave it").isEqualTo("gemini-secondary");
+        });
+        assertThat(primaryCalls.get()).isEqualTo(1);
+        assertThat(secondaryCalls.get()).isEqualTo(1);
+        assertThat(ollamaCalls.get()).as("the slow local model is the last resort, not the next in line").isZero();
+    }
+
+    @Test
+    void whenBothGeminiModelsFailOllamaAnswers() {
+        var result = ask(service(model(primaryCalls, null), model(secondaryCalls, null), model(ollamaCalls, "ollama answer")), "AIS2C");
+
+        assertThat(result).isInstanceOfSatisfying(AiChatService.ChatResult.Success.class, r -> {
+            assertThat(r.answer()).isEqualTo("ollama answer");
+            assertThat(r.model()).isEqualTo("ollama-test");
+        });
+        assertThat(primaryCalls.get()).isEqualTo(1);
+        assertThat(secondaryCalls.get()).isEqualTo(1);
+        assertThat(ollamaCalls.get()).isEqualTo(1);
+    }
+
+    @Test
+    void whenEveryModelFailsTheAnswerIsAControlledUnavailableNeverAStackTrace() {
+        var result = ask(service(model(primaryCalls, null), model(secondaryCalls, null), model(ollamaCalls, null)), "AIS2D");
+
+        assertThat(result).isInstanceOf(AiChatService.ChatResult.ProviderUnavailable.class);
+    }
+
+    @Test
+    void withoutASecondModelItGoesStraightToOllamaAsBefore() {
+        var result = ask(service(model(primaryCalls, null), null, model(ollamaCalls, "ollama answer")), "AIS2E");
+
+        assertThat(result).isInstanceOfSatisfying(AiChatService.ChatResult.Success.class, r -> assertThat(r.model()).isEqualTo("ollama-test"));
+        assertThat(secondaryCalls.get()).isZero();
+    }
+
+    @Test
+    void aSecondModelThatIsTheSameAsThePrimaryIsIgnoredRatherThanAskedTwice() {
+        AiChatService service = service(model(primaryCalls, null), null, model(ollamaCalls, "ollama answer"));
+        ChatClient same = model(secondaryCalls, "would be a second try of the same model");
+
+        service.secondaryGemini(same, "gemini-primary", "gemini-primary");   // configured equal to the primary: ignored
+        var result = ask(service, "AIS2F");
+        assertThat(result).isInstanceOfSatisfying(AiChatService.ChatResult.Success.class, r -> assertThat(r.model()).isEqualTo("ollama-test"));
+        assertThat(secondaryCalls.get()).isZero();
+
+        service.secondaryGemini(same, "", "gemini-primary");                  // blank: no second model
+        service.secondaryGemini(null, "gemini-secondary", "gemini-primary");  // no client: no second model
+        assertThat(ask(service, "AIS2G")).isInstanceOf(AiChatService.ChatResult.Success.class);
+        assertThat(secondaryCalls.get()).isZero();
+    }
+}

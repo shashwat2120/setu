@@ -3,6 +3,7 @@ package com.setu.shared.readmodel;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.setu.shared.authorization.GuardianDelegationChecker;
 import com.setu.shared.readmodel.GuardianGrantVerifier.Verdict;
+import com.setu.shared.observability.Outbound;
 import com.setu.shared.resilience.GuardedCall;
 import com.setu.testsupport.BlockingStubServer;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
@@ -53,7 +54,7 @@ class GuardianGrantVerificationTests {
     private RemoteGuardianGrantVerifier verifier(String token, long responseMs) {
         return new RemoteGuardianGrantVerifier(owner.uri().toString(), token, Duration.ofMillis(500), Duration.ofMillis(responseMs), mapper,
             new GuardedCall("academic-guardian-grants", new GuardedCall.Settings(50, 10, 20, Duration.ofSeconds(10), 20, Duration.ZERO),
-                e -> true, meters));
+                e -> true, meters), Outbound.NONE);
     }
 
     // --- the decision table

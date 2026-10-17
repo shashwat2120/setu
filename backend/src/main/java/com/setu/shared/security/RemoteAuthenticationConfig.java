@@ -35,7 +35,8 @@ public class RemoteAuthenticationConfig {
 
     @Bean
     SecurityFilterChain remoteSecurityFilterChain(HttpSecurity http, RemoteTokenAuthenticator authenticator, ObjectMapper objectMapper,
-                                                  @org.springframework.beans.factory.annotation.Value("${setu.internal.token:}") String internalToken) throws Exception {
+                                                  @org.springframework.beans.factory.annotation.Value("${setu.internal.token:}") String internalToken,
+                                                  @org.springframework.beans.factory.annotation.Value("${app.metrics.scrape-token:}") String metricsScrapeToken) throws Exception {
         http
             .csrf(AbstractHttpConfigurer::disable)
             .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
@@ -46,10 +47,16 @@ public class RemoteAuthenticationConfig {
                     writeError(objectMapper, response, 403, "ACCESS_DENIED", "you do not have permission to perform this operation", request.getRequestURI())))
             .authorizeHttpRequests(authorize -> authorize
                 .requestMatchers("/actuator/health/**", "/actuator/info").permitAll()
+                // Prometheus reads every service's metrics with the one dedicated scrape token and nothing else (MetricsScrapeAuthFilter): never
+                // public, never reachable with a user's token; closed to everyone when no token is configured.
+                .requestMatchers(MetricsScrapeAuthFilter.PATH).hasAuthority(MetricsScrapeAuthFilter.AUTHORITY)
+                // every other management endpoint (the module structure, ...) is for nobody: no user token opens it
+                .requestMatchers("/actuator/**").denyAll()
                 .requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
                 // service-to-service questions (docs/contracts/data-ownership.md): only the internal token, never a user's
                 .requestMatchers(InternalCallAuthFilter.PREFIX + "**").hasAuthority(InternalCallAuthFilter.AUTHORITY)
                 .anyRequest().authenticated())
+            .addFilterBefore(new MetricsScrapeAuthFilter(metricsScrapeToken), UsernamePasswordAuthenticationFilter.class)
             .addFilterBefore(new InternalCallAuthFilter(internalToken), UsernamePasswordAuthenticationFilter.class)
             .addFilterBefore(new RemoteTokenFilter(authenticator), UsernamePasswordAuthenticationFilter.class);
         return http.build();

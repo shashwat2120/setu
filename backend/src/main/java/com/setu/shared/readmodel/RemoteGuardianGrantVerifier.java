@@ -2,6 +2,7 @@ package com.setu.shared.readmodel;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.setu.shared.observability.Outbound;
 import com.setu.shared.resilience.GuardedCall;
 import com.setu.shared.security.InternalCallAuthFilter;
 import com.setu.shared.web.CorrelationIdFilter;
@@ -35,10 +36,12 @@ public class RemoteGuardianGrantVerifier implements GuardianGrantVerifier, Dispo
     private final String token;
     private final ObjectMapper objectMapper;
     private final GuardedCall guard;
+    private final Outbound outbound;
     private final CloseableHttpClient client;
 
     public RemoteGuardianGrantVerifier(String baseUrl, String token, Duration connectTimeout, Duration responseTimeout, ObjectMapper objectMapper,
-                                       GuardedCall guard) {
+                                       GuardedCall guard, Outbound outbound) {
+        this.outbound = outbound;
         this.endpoint = URI.create(baseUrl.replaceAll("/+$", "") + "/internal/guardian-grants/verify");
         this.token = token;
         this.objectMapper = objectMapper;
@@ -74,9 +77,12 @@ public class RemoteGuardianGrantVerifier implements GuardianGrantVerifier, Dispo
         if (correlationId != null) {
             request.addHeader(CorrelationIdFilter.HEADER_NAME, correlationId);
         }
-        ClassicHttpRequest built = request.build();
         try {
-            boolean active = guard.call(() -> client.execute(built, response -> {
+            boolean active = guard.call(() -> outbound.call("academic", "guardian-grant-verify", traceParent -> {
+                if (traceParent != null) {
+                    request.setHeader("traceparent", traceParent);
+                }
+                return client.execute(request.build(), response -> {
                 if (response.getCode() != HttpStatus.SC_OK) {
                     // counts as a failure of the dependency: 401/403 means a misconfigured token, 5xx a sick service
                     throw new IOException("unexpected status " + response.getCode());
@@ -86,6 +92,7 @@ public class RemoteGuardianGrantVerifier implements GuardianGrantVerifier, Dispo
                     throw new IOException("malformed answer");
                 }
                 return body.get("active").asBoolean();
+                });
             }));
             return active ? Verdict.ACTIVE : Verdict.NOT_ACTIVE;
         } catch (GuardedCall.Unavailable e) {

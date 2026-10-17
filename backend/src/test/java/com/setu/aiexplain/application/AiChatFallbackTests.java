@@ -81,6 +81,7 @@ class AiChatFallbackTests {
         OllamaChatModel brokenModel = OllamaChatModel.builder()
             .ollamaApi(brokenApi)
             .toolCallingManager(toolCallingManager)
+            .retryTemplate(org.springframework.ai.retry.RetryUtils.SHORT_RETRY_TEMPLATE)
             .options(OllamaChatOptions.builder().model(ollamaModel).build())
             .build();
         return ChatClient.builder(brokenModel).build();
@@ -186,6 +187,7 @@ class AiChatFallbackTests {
     }
 
     @Test
+    @org.junit.jupiter.api.Tag("live-ollama")   // calls the real local model: minutes, not seconds; run on purpose (see pom.xml)
     void primaryFailureFallsBackToOllamaAndStillSucceeds() {
         var s = day13Fixtures.provisionEnrolledScenario("AIFB1");
         TestAuthentication.authenticateAs(s.student().userId());
@@ -237,6 +239,7 @@ class AiChatFallbackTests {
     }
 
     @Test
+    @org.junit.jupiter.api.Tag("live-ollama")   // calls the real local model: minutes, not seconds; run on purpose (see pom.xml)
     void primarySucceedsDoesNotTouchFallbackAtAll() {
         var s = day13Fixtures.provisionEnrolledScenario("AIFB4");
         TestAuthentication.authenticateAs(s.student().userId());

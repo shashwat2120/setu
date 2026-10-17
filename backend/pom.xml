@@ -34,10 +34,17 @@
 		<spring-ai.version>2.0.1</spring-ai.version>
 		<jedis.version>8.0.1</jedis.version>
 		<springdoc.version>3.1.1</springdoc.version>
-		<!-- Tests tagged live-gemini call the real, quota-limited Gemini API (they need GEMINI_API_KEY and spend its daily
-		     free quota), so a plain `mvn test` skips them. Run them on purpose with:
-		     ./mvnw test -DexcludedGroups=none -Dtest=AiChatGeminiTests -->
-		<excludedGroups>live-gemini</excludedGroups>
+		<!-- not managed by Spring Boot's dependency management; the alpha suffix is how OpenTelemetry names its instrumentation artifacts -->
+		<opentelemetry-instrumentation.version>2.28.1-alpha</opentelemetry-instrumentation.version>
+		<!-- Gemini is the primary AI provider for everything, tests included. Ollama is only the fallback, and it is slow (a single answer measured
+		     minutes on this machine), so the few tests that call the REAL local model on purpose are tagged live-ollama and skipped by a plain
+		     `mvn test`; the fallback logic itself is covered by scripted models. Run them when touching the fallback path:
+		     ./mvnw test -DexcludedGroups=none -Dtest=AiChatFallbackTests,AiChatGeminiMissingApiKeyTests
+		     Tests tagged live-gemini call the Gemini EMBEDDING API, whose free tier allows 1,000 requests a day (every policy document is chunked and
+		     embedded): they are opt-in, ./mvnw test -DexcludedGroups=none -Dtest=GeminiPolicySearchLiveTests. Chat on Gemini needs no such care.
+		     Tests tagged performance measure the demo latency targets (spec section 14); timings taken while other tests run prove nothing, so they are also
+		     skipped by default: ./mvnw test -DexcludedGroups=live-ollama -Dtest=DemoTargetsPerformanceTests -->
+		<excludedGroups>live-ollama,live-gemini,performance</excludedGroups>
 	</properties>
 	<dependencies>
 		<dependency>
@@ -49,6 +56,17 @@
 		<dependency>
 			<groupId>io.micrometer</groupId>
 			<artifactId>micrometer-registry-prometheus</artifactId>
+		</dependency>
+		<!-- 6C.1: traces (OpenTelemetry, exported over OTLP to Tempo when enabled) and the Micrometer tracing bridge that makes every request, Kafka listener and observed outbound call a span -->
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-opentelemetry</artifactId>
+		</dependency>
+		<!-- the Logback appender that turns log lines into OpenTelemetry log records (see src/main/resources/logback-spring.xml); idle unless log export is on -->
+		<dependency>
+			<groupId>io.opentelemetry.instrumentation</groupId>
+			<artifactId>opentelemetry-logback-appender-1.0</artifactId>
+			<version>${opentelemetry-instrumentation.version}</version>
 		</dependency>
 		<dependency>
 			<groupId>org.springframework.boot</groupId>

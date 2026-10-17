@@ -18,7 +18,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * {@code ./mvnw test -DexcludedGroups=none -Dtest=GeminiPolicySearchLiveTests} and a real {@code GEMINI_API_KEY}.
  */
 @Tag("live-gemini")
-@SpringBootTest(properties = "spring.ai.model.chat=google-genai")
+@SpringBootTest(properties = {"spring.ai.model.chat=google-genai", "app.ai.embedding.provider=gemini"})
 class GeminiPolicySearchLiveTests {
 
     @Autowired

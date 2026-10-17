@@ -44,8 +44,10 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * revocation list. Tokens here are signed by a test key whose JWKS the service is given, exactly as it would fetch Identity's.
  */
 @SpringBootTest(classes = AcademicServiceApplication.class, properties = {
-    "setu.service=academic", "setu.auth.mode=remote", "app.readmodel.consumer.enabled=false", "setu.internal.token=internal-test-token"})   // Flyway stays on here only so the test never depends on another test having migrated the schema first
+    "setu.service=academic", "setu.auth.mode=remote", "app.readmodel.consumer.enabled=false", "setu.internal.token=internal-test-token",
+    "app.metrics.scrape-token=scrape-test-token"})   // Flyway stays on here only so the test never depends on another test having migrated the schema first
 @AutoConfigureMockMvc
+@org.springframework.boot.micrometer.metrics.test.autoconfigure.AutoConfigureMetrics   // Spring Boot tests switch metric export off; the scrape endpoint needs it on
 @Import(AcademicServiceWiringTests.IdentityKeys.class)
 class AcademicServiceWiringTests {
 
@@ -209,6 +211,26 @@ class AcademicServiceWiringTests {
         assertThat(mockMvc.perform(verify("internal-test-token".toUpperCase(), null)).andReturn().getResponse().getStatus()).as("case matters").isEqualTo(401);
         assertThat(mockMvc.perform(get("/institution/colleges/" + tenant).header("X-Internal-Token", "internal-test-token")).andReturn()
             .getResponse().getStatus()).as("the service token opens nothing outside /internal").isEqualTo(401);
+    }
+
+    @Test
+    void metricsAreReadableWithTheScrapeTokenOnlyAndSayWhichServiceTheyAreFrom() throws Exception {
+        assertThat(mockMvc.perform(get("/actuator/prometheus")).andReturn().getResponse().getStatus()).as("no credential").isEqualTo(401);
+        assertThat(mockMvc.perform(get("/actuator/prometheus").header("Authorization", "Bearer wrong")).andReturn().getResponse().getStatus())
+            .as("wrong token").isEqualTo(401);
+        assertThat(mockMvc.perform(get("/actuator/prometheus").header("Authorization", "Bearer " + token(admin, null, IDENTITY_KEY, "test-key")))
+            .andReturn().getResponse().getStatus()).as("a college administrator's own token is not the scraper's").isIn(401, 403);
+
+        for (String other : new String[] {"/actuator/modulith", "/actuator/env", "/actuator/beans"}) {
+            assertThat(mockMvc.perform(get(other).header("Authorization", "Bearer " + token(admin, null, IDENTITY_KEY, "test-key")))
+                .andReturn().getResponse().getStatus()).as(other + " with an administrator's token").isIn(403, 404);
+            assertThat(mockMvc.perform(get(other).header("Authorization", "Bearer scrape-test-token")).andReturn().getResponse().getStatus())
+                .as(other + " with the scrape token").isIn(401, 403, 404);
+        }
+
+        var scraped = mockMvc.perform(get("/actuator/prometheus").header("Authorization", "Bearer scrape-test-token")).andReturn().getResponse();
+        assertThat(scraped.getStatus()).isEqualTo(200);
+        assertThat(scraped.getContentAsString()).contains("jvm_memory_used_bytes").contains("application=\"");
     }
 
     @Test

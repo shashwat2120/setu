@@ -7,6 +7,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.setu.shared.events.DomainEvent;
 import com.setu.shared.events.EventContext;
 import com.setu.shared.events.EventEnvelope;
+import com.setu.shared.observability.TraceParents;
 import org.springframework.stereotype.Component;
 
 import java.time.Instant;
@@ -30,6 +31,10 @@ import java.util.UUID;
  * </ul>
  * The payload's own {@code correlationId} and {@code causationId} are rewritten to the same values, so the row, the Kafka headers and the
  * payload never disagree.
+ * <p>
+ * The current trace, if there is one, is stored with the row ({@code trace_parent}) and sent as the standard {@code traceparent} header, so the
+ * spans of whoever consumes the event continue the trace of the request that caused it, even though the event is published later by another
+ * thread (docs/contracts/observability.md).
  */
 @Component
 public class OutboxEventWriter {
@@ -38,10 +43,12 @@ public class OutboxEventWriter {
 
     private final OutboxEventRepository repository;
     private final ObjectMapper objectMapper;
+    private final TraceParents traceParents;
 
-    public OutboxEventWriter(OutboxEventRepository repository, ObjectMapper objectMapper) {
+    public OutboxEventWriter(OutboxEventRepository repository, ObjectMapper objectMapper, TraceParents traceParents) {
         this.repository = repository;
         this.objectMapper = objectMapper;
+        this.traceParents = traceParents;
     }
 
     /** Writes a domain event as the envelope it already describes: its own aggregate, type, version, tenant and producer. */
@@ -76,6 +83,7 @@ public class OutboxEventWriter {
         }
         repository.save(new OutboxEvent(
             UUID.randomUUID(), tenantId, aggregateType, aggregateId, eventType, eventVersion,
-            payloadJson, Instant.now(), effectiveCorrelation, effectiveCausation, producer, EventEnvelope.SCHEMA_VERSION));
+            payloadJson, Instant.now(), effectiveCorrelation, effectiveCausation, producer, EventEnvelope.SCHEMA_VERSION,
+            traceParents.current().orElse(null)));
     }
 }

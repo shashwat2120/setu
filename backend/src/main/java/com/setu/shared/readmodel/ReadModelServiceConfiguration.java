@@ -10,6 +10,7 @@ import com.setu.shared.authorization.RoleBasedTenantMembership;
 import com.setu.shared.authorization.RoleGrantSource;
 import com.setu.shared.enrollment.CourseSectionDirectory;
 import com.setu.shared.identity.TenantMembership;
+import com.setu.shared.observability.Outbound;
 import com.setu.shared.resilience.GuardedCall;
 import com.setu.shared.tenant.TenantContext;
 import io.micrometer.core.instrument.MeterRegistry;
@@ -80,11 +81,11 @@ public class ReadModelServiceConfiguration {
                                                 @Value("${setu.guardian-verify.connect-timeout-ms:300}") long connectMs,
                                                 @Value("${setu.guardian-verify.response-timeout-ms:800}") long responseMs,
                                                 @Value("${setu.guardian-verify.max-concurrent:20}") int maxConcurrent,
-                                                ObjectMapper mapper, MeterRegistry meters) {
+                                                ObjectMapper mapper, MeterRegistry meters, Outbound outbound) {
         var settings = new GuardedCall.Settings(50, 10, 20, Duration.ofSeconds(10), maxConcurrent, Duration.ZERO);
         // a transport failure or an unexpected answer is the dependency failing; nothing else is ever thrown by the call
         var guard = new GuardedCall("academic-guardian-grants", settings, e -> true, meters);
-        return new RemoteGuardianGrantVerifier(url, token, Duration.ofMillis(connectMs), Duration.ofMillis(responseMs), mapper, guard);
+        return new RemoteGuardianGrantVerifier(url, token, Duration.ofMillis(connectMs), Duration.ofMillis(responseMs), mapper, guard, outbound);
     }
 
     @Bean

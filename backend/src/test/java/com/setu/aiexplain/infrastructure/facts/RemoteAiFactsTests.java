@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.setu.shared.aifacts.AiFacts;
 import com.setu.shared.authorization.ServicePrincipal;
+import com.setu.shared.observability.Outbound;
 import com.setu.testsupport.BlockingStubServer;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.AfterEach;
@@ -49,7 +50,7 @@ class RemoteAiFactsTests {
     }
 
     private RemoteAiFacts facts(long responseMs) {
-        return new RemoteAiFacts(owner.uri().toString(), 500, responseMs, 20, 10, mapper, new SimpleMeterRegistry());
+        return new RemoteAiFacts(owner.uri().toString(), 500, responseMs, 20, 10, mapper, new SimpleMeterRegistry(), Outbound.NONE);
     }
 
     private static String request(BlockingStubServer.Seen seen) {

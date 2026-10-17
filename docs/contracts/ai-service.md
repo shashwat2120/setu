@@ -75,7 +75,26 @@ records it for **the token's** user and college (never from the body), only for 
 * `/ai-facts/**` is an ordinary authenticated API: a user who calls it directly gets what the advisor would have got for them, which they could
   already read through the normal endpoints.
 
-## 6. Tests
+## 6. Providers: Gemini first, Ollama only as the fallback
+
+* **Gemini is the primary provider everywhere**: the running services and every backend test (`AI_PROVIDER` defaults to `google-genai`). Ollama
+  (the local `llama3.2:3b`) is the fallback only, because it is slow on this machine, minutes where Gemini takes seconds.
+* **No key, no failure.** A run without `GEMINI_API_KEY` starts with Ollama as primary and says so in the log (`AiProviderSafetyPostProcessor`);
+  a present-but-wrong key starts normally and falls back at request time. `AI_PROVIDER=ollama` forces the local model.
+* **Retries are capped** (`spring.ai.retry`: 2 attempts, quick backoff, none for client errors such as a bad key or an exhausted quota; the hand-built
+  Ollama fallback uses the short retry template). Spring AI's default is ten attempts backing off to minutes, which would hide a Gemini
+  outage from `AiChatService` and delay the fallback it is built to make. The advisor's own budgets decide, not silent retries.
+* **Embeddings for policy search follow the chat provider**: Gemini's `gemini-embedding-001` (768 dimensions) when Gemini is primary and has a key,
+  otherwise the built-in local embedder (not Ollama); Ollama's embedder only when asked for (`app.ai.embedding.provider=ollama`). Chunking is plain
+  code, no model. Stored vectors carry their embedder's model id and a query only uses vectors of the same model, so passages indexed under another
+  embedder are not matched by the vector half of the hybrid search until they are re-indexed (the full-text half still finds them).
+* **Tests that call the real local model are tagged `live-ollama`** and skipped by a plain `mvn test` (`AiChatFallbackTests` real-model cases,
+  `AiChatGeminiMissingApiKeyTests`); the fallback logic itself is covered by scripted models. Run them when touching the fallback path:
+  `./mvnw test -DexcludedGroups=none -Dtest=AiChatFallbackTests,AiChatGeminiMissingApiKeyTests`. `AiChatGeminiTests` runs with the rest (skipped
+  when no key is configured). If the key's daily quota is exhausted the application correctly falls back to Ollama and any test asserting
+  `gemini` fails for a reason that has nothing to do with the code: wait for the quota to reset.
+
+## 7. Tests
 
 `AiServiceWiringTests` (no datasource or other module in the context; every call to the data service carries the asker's own token; the model's
 answer is withheld when the data service is down or the record cannot be written; a job runs to completion and is announced in order on the
@@ -84,7 +103,7 @@ owner's topic only; another user cannot see it), `RemoteAiFactsTests` (paths, to
 other users), `AiJobSubscriptionAuthorizerTests`, `AiExplainBoundaryTests` (the module depends on no other module, no persistence, no
 repository, no audit writer), and the existing authorization, fallback, sources and policy tests, which now run through the same seam.
 
-## 7. Not done
+## 8. Not done
 
 * The data service is still the core (the facts need Risk, Finance, Career, Record, Attendance, Learning, Assessment and Academic in one
   place). Splitting `aifacts` further, one fact per owning service, is possible behind the same `AiFacts` interface and is the natural next

@@ -65,11 +65,13 @@ public class AiServiceApplication {
             "setu.auth.mode", "remote",
             "setu.ai-facts.url", "${GATEWAY_URL:http://localhost:8080}",
             "app.discovery.service", "ai",
-            "spring.application.name", "ai-service",
+            "APPLICATION_NAME", "ai-service",
             "spring.flyway.enabled", "false",
             "app.readmodel.consumer.enabled", "false",
             "app.notification.consumer.enabled", "false",
-            "server.port", "8088"));
+            // no database here, so the pool-sizing rule does not apply: a chat holds its thread for the length of a model call
+            "SERVER_MAX_THREADS", "200",
+            "SERVER_PORT", "8088"));
         // job status is pushed over WebSocket/STOMP from here, so the shared support stays on (app.realtime.enabled defaults to true)
         application.setDefaultProperties(defaults);
         application.run(args);

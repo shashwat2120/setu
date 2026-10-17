@@ -58,7 +58,7 @@ class AiExplainBoundaryTests {
     /** What the AI module may use of the kernel: the facts contract, the transport it publishes job status on, and the request plumbing every service shares. */
     private static final String[] ALLOWED_KERNEL = {
         "com.setu.shared.aifacts..", "com.setu.shared.websocket..", "com.setu.shared.resilience..", "com.setu.shared.web..",
-        "com.setu.shared.authorization..", "com.setu.shared.security..", "com.setu.shared.config.."};
+        "com.setu.shared.authorization..", "com.setu.shared.security..", "com.setu.shared.config..", "com.setu.shared.observability.."};
 
     /**
      * 6B.3: the AI advisor runs as its own service, so it may depend on no other module at all, not even on its application services: only on

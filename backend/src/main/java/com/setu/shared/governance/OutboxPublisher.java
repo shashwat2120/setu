@@ -3,6 +3,7 @@ package com.setu.shared.governance;
 import io.micrometer.core.instrument.Gauge;
 import io.micrometer.core.instrument.MeterRegistry;
 import com.setu.shared.events.EventEnvelope;
+import com.setu.shared.observability.TraceParents;
 import org.apache.kafka.clients.producer.ProducerRecord;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -96,6 +97,10 @@ class OutboxPublisher {
         EventEnvelope.headers(event.id(), event.eventType(), event.eventVersion(), event.schemaVersion(), event.producer(), event.occurredAt(),
             event.tenantId(), event.aggregateType(), event.aggregateId(), event.correlationId(), event.causationId())
             .forEach((name, value) -> record.headers().add(name, EventEnvelope.bytes(value)));
+        // optional, standard (W3C) and only ever passed on if well formed: lets a consumer's spans join the trace that wrote the event
+        if (TraceParents.isWellFormed(event.traceParent())) {
+            record.headers().add("traceparent", EventEnvelope.bytes(event.traceParent()));
+        }
         try {
             // Synchronous within this transaction on purpose: the row lock (FOR UPDATE SKIP LOCKED) is held until
             // the send is acknowledged or fails, so a concurrent publisher instance can never see this row as

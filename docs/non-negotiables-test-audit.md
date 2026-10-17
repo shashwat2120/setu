@@ -75,21 +75,45 @@ career and risk concurrency tests.
   signature. The code is an authenticated stand-in (`POST /finance/payments/{paymentId}/events`, administrator only, idempotent on the
   provider event id); no provider signature scheme exists. The catalog now says so.
 
+## Defects found by the Sprint 6C.2 failure/security/performance pass
+
+Each is fixed and has a test that fails without the fix.
+
+- **The gateway exposed `/actuator/**` unauthenticated** and proxied it onward. `ActuatorGuardFilter` now answers it itself;
+  `ActuatorGuardFilterTests`. The services deny `/actuator/**` except health, info and a token-guarded Prometheus scrape
+  (`ManagementEndpointsTests`).
+- **No upper bound on page size.** `PageSizeLimitFilter` clamps `size` (`PageSizeLimitFilterTests`).
+- **Entry-point defaults were silently shadowed** by `application.yml`, so every service would have started on port 8080 and named itself
+  `setu-backend` in metrics and traces. `EntryPointDefaultsTests`, `EntryPointDefaultsPrecedenceTests`.
+- **Connection-pool deadlock** under a burst (nested `REQUIRES_NEW` needs two connections per request). Sizing rule enforced by
+  `ConnectionPoolSizingTests`.
+- **Silent timeouts** on the model call and on the embedder; both now bounded and reported as unavailable, not as an empty answer
+  (`AiChatSecondaryGeminiTests`, `SpringAiTextEmbedderTests`).
+- **Role versus assignment is inconsistent between services.** Learning and Attendance admit a faculty member by section assignment alone,
+  while Assessment also requires the permission. This is a design property, not a leak (assignment is still required everywhere), so it is
+  recorded, not changed here. See open item 9.
+
 ## Open items (no automated test, or a known gap)
 
-1. **Event envelope is narrower than canonical spec §8.** Messages carry `event_id`, `event_type`, `event_version`,
-   `correlation_id` and `tenant_id` as headers, and `eventId`, `tenantId`, `occurredAt`, `aggregateId`, `causationId` in the payload.
-   There is no `producer` or `schema_version` field. This is a contract change across every event; it belongs to Sprint 6B
-   ("Kafka contracts"), together with a schema-compatibility test.
+1. ~~Event envelope is narrower than canonical spec §8.~~ **Closed in 6B.1**: events carry the envelope headers and schema/event
+   versions; `EventEnvelopeTests` and `EventConsumerContractTests` pin them (`docs/contracts/kafka-contracts.md`).
 2. **Client-supplied `tenantId` in request bodies** (for example `POST /career/jobs`) is authorized, and per-service cross-tenant tests
    cover many of them, but the generic sweep covers GET endpoints only; write endpoints still rely on those per-service tests.
 3. **Access-token liveness costs two indexed queries per request** and fails closed on a database error. Acceptable at this scale; a
    short per-instance cache or the Redis denylist the spec mentions would be the optimisation, not a correctness change.
 4. **Accessibility** (spec §13): fixed and checked by hand and with the browser's own tooling earlier, but there is no automated
    accessibility test in the frontend (no test runner is set up there).
-5. **Performance** (spec §13): pagination is tested on a few lists; there is no N+1 detection test and no load or Kafka-lag test.
-6. **Contracts** (spec §13): OpenAPI generation is tested (`OpenApiTests`); event schemas have no compatibility test yet (see 1).
+5. ~~Performance: no N+1 detection test.~~ **Closed in 6C.2** for the paths measured: `QueryCountTests` (same statement count for 3 and
+   20 rows), `DemoTargetsPerformanceTests` (spec §14 targets, tag `performance`), `ConnectionPoolSizingTests`. Still open: no load test
+   over a real network and no Kafka-lag measurement (no consumer can run on this machine); see `docs/contracts/performance.md`.
+6. ~~Contracts: event schemas have no compatibility test.~~ **Closed in 6B.1** (see 1). OpenAPI generation is tested (`OpenApiTests`).
 7. **WebSocket fan-out and live QR through the dev bridge** cannot be exercised on the Windows development machine (known JDK defect);
    they are covered by `AttendanceStompAuthorizationTests`, which runs the real STOMP stack in-process.
 8. **The broker-backed Kafka consumer test** (`NotificationKafkaConsumerTests`) skips itself where the JDK cannot open an NIO
    selector, which includes this machine; the retry and dead-letter policy is covered without a broker by `NotificationErrorHandlerTests`.
+9. **Assigned-faculty access is not tied to the faculty role in Learning and Attendance** (Assessment requires the permission as well). A
+   faculty assignment that outlives a role change would keep access to that section's learning and attendance data. Decide whether the role is
+   required everywhere before relying on it; no test asserts either way yet.
+10. **The gateway cannot proxy WebSocket upgrades** (it answers 501); STOMP clients connect to the Notification/Attendance service directly.
+11. **Distributed state is verified in-process only.** Cross-service behavior (grant confirmation, remote AI facts, circuit breakers) is
+    covered with blocking-socket stubs and MockMvc (`ExtractedServiceWiringSupport`, `GuardedCall` tests), not across real processes.

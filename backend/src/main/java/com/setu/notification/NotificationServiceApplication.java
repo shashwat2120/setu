@@ -60,9 +60,9 @@ public class NotificationServiceApplication {
             "app.readmodel.consumer.group-id", "setu-notification-readmodel",
             "app.readmodel.consumer.aggregates", FOLLOWED_AGGREGATES,
             "app.discovery.service", "notification",
-            "spring.application.name", "notification-service",
+            "APPLICATION_NAME", "notification-service",
             "spring.flyway.enabled", "false",
-            "server.port", "8087"));
+            "SERVER_PORT", "8087"));
         // live notifications are pushed from here, so the shared WebSocket/STOMP support stays on (app.realtime.enabled defaults to true)
         application.setDefaultProperties(defaults);
         application.run(args);

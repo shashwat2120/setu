@@ -139,7 +139,7 @@ Secrets and local overrides live in the git-ignored `backend/.env.local`; nothin
 
 | Variable | Purpose |
 |---|---|
-| `AI_PROVIDER` | `google-genai` (Gemini primary) or `ollama` (default, used by tests) |
+| `AI_PROVIDER` | `google-genai` (default: Gemini primary, Ollama as the fallback; with no `GEMINI_API_KEY` the run starts on Ollama instead) or `ollama` to force the local model |
 | `EMBEDDING_PROVIDER` | Policy-search embeddings: `auto` (follows the chat provider), `gemini`, `ollama` or `local`: see [backend/README.md](backend/README.md#college-policy-search-rag) |
 | `GEMINI_API_KEY`, `GEMINI_MODEL` | Gemini credentials and model. Pick a model that actually answers for your key: see [backend/README.md](backend/README.md#ai-advisor) |
 | `AI_PRIMARY_TIMEOUT_SECONDS` | How long Gemini may take before the local fallback is tried (default 25) |

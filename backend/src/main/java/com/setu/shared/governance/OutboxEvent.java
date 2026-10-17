@@ -58,12 +58,23 @@ public class OutboxEvent {
     @Column(name = "schema_version", nullable = false)
     private int schemaVersion;
 
+    /** W3C traceparent of the span that wrote this event, so the consumer's spans continue the trace that caused it (V87); null when not traced. */
+    @Column(name = "trace_parent")
+    private String traceParent;
+
     protected OutboxEvent() {
     }
 
     public OutboxEvent(UUID id, UUID tenantId, String aggregateType, UUID aggregateId, String eventType,
                         int eventVersion, String payloadJson, Instant occurredAt, UUID correlationId,
                         UUID causationId, String producer, int schemaVersion) {
+        this(id, tenantId, aggregateType, aggregateId, eventType, eventVersion, payloadJson, occurredAt, correlationId, causationId, producer,
+            schemaVersion, null);
+    }
+
+    public OutboxEvent(UUID id, UUID tenantId, String aggregateType, UUID aggregateId, String eventType,
+                        int eventVersion, String payloadJson, Instant occurredAt, UUID correlationId,
+                        UUID causationId, String producer, int schemaVersion, String traceParent) {
         this.id = id;
         this.tenantId = tenantId;
         this.aggregateType = aggregateType;
@@ -77,6 +88,7 @@ public class OutboxEvent {
         this.causationId = causationId;
         this.producer = producer;
         this.schemaVersion = schemaVersion;
+        this.traceParent = traceParent;
     }
 
     public UUID id() {
@@ -129,6 +141,10 @@ public class OutboxEvent {
 
     public int schemaVersion() {
         return schemaVersion;
+    }
+
+    public String traceParent() {
+        return traceParent;
     }
 
     /** Day 15: the outbox publisher marks a row published only after a successful, acknowledged Kafka send — see {@code OutboxPublisher}. */

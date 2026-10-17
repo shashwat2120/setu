@@ -54,7 +54,8 @@ import java.util.Map;
     "org.springframework.modulith.observability.autoconfigure.SpringDataRestModuleObservabilityAutoConfiguration"
 })
 @ComponentScan(basePackages = "com.setu.gateway")
-@Import({JacksonConfig.class, CorrelationIdFilterConfig.class, RemoteVerificationConfig.class, LoginRevocationsConfig.class})
+@Import({JacksonConfig.class, CorrelationIdFilterConfig.class, RemoteVerificationConfig.class, LoginRevocationsConfig.class,
+    com.setu.shared.observability.TraceParents.class, com.setu.shared.observability.ObservabilityConfiguration.class})
 @ConditionalOnProperty(name = "setu.service", havingValue = "gateway")
 public class GatewayApplication {
 
@@ -63,9 +64,11 @@ public class GatewayApplication {
         application.setDefaultProperties(Map.of(
             "setu.service", "gateway",
             "setu.auth.mode", "remote",
-            "spring.application.name", "gateway",
+            "APPLICATION_NAME", "gateway",
             "spring.flyway.enabled", "false",
-            "server.port", "8080"));
+            // no database here, so the pool-sizing rule does not apply: the gateway holds a thread per proxied exchange
+            "SERVER_MAX_THREADS", "200",
+            "SERVER_PORT", "8080"));
         application.run(args);
     }
 }

@@ -4,6 +4,8 @@ services:
   postgres:
     image: pgvector/pgvector:pg16
     restart: unless-stopped
+    # every service has its own connection pool against this one server (docs/contracts/performance.md); the default of 100 is too few for ten
+    command: ["postgres", "-c", "max_connections=300"]
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-setu}
       POSTGRES_USER: ${POSTGRES_USER:-setu}
@@ -77,11 +79,38 @@ services:
       - ./observability/scrape-token.local:/etc/prometheus/scrape-token:ro
       - setu_prometheus_data:/prometheus
 
+  # Traces and logs (Sprint 6C.1, docs/contracts/observability.md). The services send to these only when OTEL_TRACES_EXPORT_ENABLED /
+  # OTEL_LOGS_EXPORT_ENABLED are true; otherwise nothing is sent anywhere and these simply sit idle.
+  tempo:
+    image: grafana/tempo:2.5.0
+    restart: unless-stopped
+    command: ["-config.file=/etc/tempo/tempo.yaml"]
+    ports:
+      - "${TEMPO_PORT:-3200}:3200"
+      # OTLP over HTTP: where the services' spans go (OTEL_TRACES_ENDPOINT=http://localhost:4318/v1/traces)
+      - "${OTLP_HTTP_PORT:-4318}:4318"
+    volumes:
+      - ./observability/tempo/tempo.yaml:/etc/tempo/tempo.yaml:ro
+      - setu_tempo_data:/var/tempo
+
+  loki:
+    image: grafana/loki:3.1.1
+    restart: unless-stopped
+    command: ["-config.file=/etc/loki/loki.yaml"]
+    ports:
+      # also OTLP log ingestion at /otlp/v1/logs (OTEL_LOGS_ENDPOINT=http://localhost:3100/otlp/v1/logs)
+      - "${LOKI_PORT:-3100}:3100"
+    volumes:
+      - ./observability/loki/loki.yaml:/etc/loki/loki.yaml:ro
+      - setu_loki_data:/loki
+
   grafana:
     image: grafana/grafana:11.1.4
     restart: unless-stopped
     depends_on:
       - prometheus
+      - tempo
+      - loki
     ports:
       - "${GRAFANA_PORT:-3001}:3000"
     environment:
@@ -100,3 +129,5 @@ volumes:
   setu_kafka_data:
   setu_prometheus_data:
   setu_grafana_data:
+  setu_tempo_data:
+  setu_loki_data:

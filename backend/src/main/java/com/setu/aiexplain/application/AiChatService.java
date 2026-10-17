@@ -72,6 +72,9 @@ public class AiChatService {
     private final boolean primaryCanStream;
     private final long timeoutSeconds;
     private final long primaryTimeoutSeconds;
+    /** A second Gemini model tried before Ollama when the primary fails; null when there is none (Ollama primary, or no different model configured). */
+    private ChatClient secondaryChatClient;
+    private String secondaryModelName;
     private final ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor();
 
     /**
@@ -103,7 +106,7 @@ public class AiChatService {
                           @Value("${spring.ai.google.genai.chat.options.model:gemini-2.5-flash}") String geminiModel,
                           @Value("${spring.ai.ollama.chat.options.model:llama3.2:3b}") String ollamaModel,
                           @Value("${app.ai.request-timeout-seconds:30}") long timeoutSeconds,
-                          @Value("${app.ai.primary-timeout-seconds:25}") long primaryTimeoutSeconds) {
+                          @Value("${app.ai.primary-timeout-seconds:40}") long primaryTimeoutSeconds) {
         this.chatClient = chatClient;
         this.fallbackChatClient = fallbackChatClient;
         this.aiToolService = aiToolService;
@@ -119,6 +122,27 @@ public class AiChatService {
         // The shorter budget exists so a hung remote primary hands over to the local fallback quickly. When the primary IS the local
         // model there is nothing to hand over to, and a small local model doing tool calls genuinely needs the full request timeout.
         this.primaryTimeoutSeconds = this.fallbackIsRedundant ? timeoutSeconds : Math.min(primaryTimeoutSeconds, timeoutSeconds);
+    }
+
+    /**
+     * Wired by Spring when Gemini is the primary provider and a different fallback model is configured ({@code app.ai.gemini-fallback-model}); not
+     * called otherwise. A model equal to the primary is ignored: retrying the model that just failed is what the primary's own retry is for.
+     */
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    void secondaryGemini(@Qualifier("geminiSecondaryChatClient") ChatClient client,
+                         @Value("${app.ai.gemini-fallback-model:}") String model,
+                         @Value("${spring.ai.google.genai.chat.options.model:}") String primaryModel) {
+        if (client != null && model != null && !model.isBlank() && !model.equals(primaryModel)) {
+            this.secondaryChatClient = client;
+            this.secondaryModelName = model;
+        }
+    }
+
+    /** For tests and hand-built services: the second Gemini model, or null for none. */
+    public AiChatService withSecondaryGemini(ChatClient client, String model) {
+        this.secondaryChatClient = client;
+        this.secondaryModelName = model;
+        return this;
     }
 
     public sealed interface ChatResult {
@@ -215,20 +239,42 @@ public class AiChatService {
             return new ChatResult.ProviderUnavailable();
         } catch (Exception primaryFailure) {
             logProviderFailure(primaryFailure, tenantId, userId, correlationId, "primary");
-            if (fallbackIsRedundant || tokensSent[0]) {
-                return new ChatResult.ProviderUnavailable();
+            if (tokensSent[0]) {
+                return new ChatResult.ProviderUnavailable();   // an answer already started cannot be spliced with another model's
             }
-            invocationRecorder.drain();
-            try {
-                result = attempt(fallbackChatClient, message, fallbackModelName, false, this.timeoutSeconds, tracked, history,
-                    tenantId, userId, correlationId);
-                audit("AI_CHAT_FALLBACK_USED", correlationId, Map.of("fallbackModel", fallbackModelName));
-            } catch (AuditUnavailableException auditFailure) {
-                log.warn("AI answer withheld: it could not be recorded ({})", auditFailure.getMessage());
-                return new ChatResult.ProviderUnavailable();
-            } catch (Exception fallbackFailure) {
-                logProviderFailure(fallbackFailure, tenantId, userId, correlationId, "fallback");
-                return new ChatResult.ProviderUnavailable();
+            // First fallback: another Gemini model (the local model is minutes slower than any hosted one).
+            ChatResult recovered = null;
+            if (secondaryChatClient != null) {
+                invocationRecorder.drain();
+                try {
+                    recovered = attempt(secondaryChatClient, message, secondaryModelName, false, primaryTimeoutSeconds, tracked, history,
+                        tenantId, userId, correlationId);
+                    audit("AI_CHAT_FALLBACK_USED", correlationId, Map.of("fallbackModel", secondaryModelName));
+                } catch (AuditUnavailableException auditFailure) {
+                    log.warn("AI answer withheld: it could not be recorded ({})", auditFailure.getMessage());
+                    return new ChatResult.ProviderUnavailable();
+                } catch (Exception secondaryFailure) {
+                    logProviderFailure(secondaryFailure, tenantId, userId, correlationId, "secondary");
+                }
+            }
+            if (recovered != null) {
+                result = recovered;
+            } else {
+                if (fallbackIsRedundant) {
+                    return new ChatResult.ProviderUnavailable();
+                }
+                invocationRecorder.drain();
+                try {
+                    result = attempt(fallbackChatClient, message, fallbackModelName, false, this.timeoutSeconds, tracked, history,
+                        tenantId, userId, correlationId);
+                    audit("AI_CHAT_FALLBACK_USED", correlationId, Map.of("fallbackModel", fallbackModelName));
+                } catch (AuditUnavailableException auditFailure) {
+                    log.warn("AI answer withheld: it could not be recorded ({})", auditFailure.getMessage());
+                    return new ChatResult.ProviderUnavailable();
+                } catch (Exception fallbackFailure) {
+                    logProviderFailure(fallbackFailure, tenantId, userId, correlationId, "fallback");
+                    return new ChatResult.ProviderUnavailable();
+                }
             }
         }
         if (result instanceof ChatResult.Success success) {
@@ -432,6 +478,7 @@ public class AiChatService {
     private void logProviderFailure(Exception e, Optional<UUID> tenantId, UUID userId, UUID correlationId, String which) {
         invocationRecorder.drain();
         if (e instanceof TimeoutException) {
+            log.warn("AI chat {} provider timed out (primary budget {}s, overall {}s)", which, primaryTimeoutSeconds, timeoutSeconds);
             audit("AI_CHAT_TIMEOUT", correlationId, Map.of("provider", which));
         } else {
             log.warn("AI chat {} provider call failed", which, e);

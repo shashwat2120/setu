@@ -93,6 +93,11 @@ public abstract class ExtractedServiceWiringSupport {
     protected UUID studentUser;
     protected UUID enrollment;
     protected UUID stranger;
+    /** A second college, its section, a faculty member who holds a role there only, and another section of the first college that nobody is assigned to or enrolled in. */
+    protected UUID otherTenant;
+    protected UUID otherSection;
+    protected UUID outsiderFaculty;
+    protected UUID siblingSection;
 
     private static KeyPair newPair() {
         try {
@@ -115,6 +120,10 @@ public abstract class ExtractedServiceWiringSupport {
         studentUser = UUID.randomUUID();
         enrollment = UUID.randomUUID();
         stranger = UUID.randomUUID();
+        otherTenant = UUID.randomUUID();
+        otherSection = UUID.randomUUID();
+        outsiderFaculty = UUID.randomUUID();
+        siblingSection = UUID.randomUUID();
         jdbc.sql("INSERT INTO " + schema() + ".rm_sections (section_id, tenant_id, updated_at) VALUES (:s, :t, now())").param("s", section).param("t", tenant).update();
         jdbc.sql("INSERT INTO " + schema() + ".rm_faculty (faculty_id, tenant_id, owner_user_id, status, updated_at) VALUES (:f, :t, :u, 'ACTIVE', now())")
             .param("f", faculty).param("t", tenant).param("u", facultyUser).update();
@@ -125,6 +134,10 @@ public abstract class ExtractedServiceWiringSupport {
             jdbc.sql("INSERT INTO " + schema() + ".rm_role_grants (user_role_id, user_id, tenant_id, role_code, starts_at) VALUES (:id, :u, :t, :r, now() - interval '1 minute')")
                 .param("id", UUID.randomUUID()).param("u", grant.getKey()).param("t", tenant).param("r", grant.getValue()).update();
         }
+        jdbc.sql("INSERT INTO " + schema() + ".rm_sections (section_id, tenant_id, updated_at) VALUES (:s, :t, now())").param("s", otherSection).param("t", otherTenant).update();
+        jdbc.sql("INSERT INTO " + schema() + ".rm_sections (section_id, tenant_id, updated_at) VALUES (:s, :t, now())").param("s", siblingSection).param("t", tenant).update();
+        jdbc.sql("INSERT INTO " + schema() + ".rm_role_grants (user_role_id, user_id, tenant_id, role_code, starts_at) VALUES (:id, :u, :t, 'FACULTY', now() - interval '1 minute')")
+            .param("id", UUID.randomUUID()).param("u", outsiderFaculty).param("t", otherTenant).update();
         jdbc.sql("INSERT INTO " + schema() + ".rm_students (student_id, tenant_id, owner_user_id, updated_at) VALUES (:s, :t, :u, now())")
             .param("s", student).param("t", tenant).param("u", studentUser).update();
         jdbc.sql("INSERT INTO " + schema() + ".rm_enrollments (enrollment_id, tenant_id, section_id, student_id, active, updated_at) VALUES (:e, :t, :sec, :st, true, now())")
@@ -134,7 +147,7 @@ public abstract class ExtractedServiceWiringSupport {
     @AfterEach
     void cleanReadModel() {
         for (String table : List.of("rm_sections", "rm_faculty", "rm_faculty_assignments", "rm_students", "rm_enrollments", "rm_role_grants")) {
-            jdbc.sql("DELETE FROM " + schema() + "." + table + " WHERE tenant_id = :t").param("t", tenant).update();
+            jdbc.sql("DELETE FROM " + schema() + "." + table + " WHERE tenant_id IN (:t, :o)").param("t", tenant).param("o", otherTenant).update();
         }
     }
 
@@ -149,7 +162,11 @@ public abstract class ExtractedServiceWiringSupport {
     }
 
     protected int read(String bearer) throws Exception {
-        var request = sectionRead(section, tenant);
+        return read(bearer, section, tenant);
+    }
+
+    protected int read(String bearer, UUID sectionId, UUID tenantId) throws Exception {
+        var request = sectionRead(sectionId, tenantId);
         if (bearer != null) {
             request.header("Authorization", "Bearer " + bearer);
         }
@@ -216,5 +233,34 @@ public abstract class ExtractedServiceWiringSupport {
         revocations.revokeLogin(family);
 
         assertThat(read(bearer)).isEqualTo(401);
+    }
+
+    // --- tenant escape and wrong-section (IDOR) checks, the same for every service on top of Academic
+
+    @Test
+    void aFacultyMemberOfAnotherCollegeCannotReachThisCollegesSectionHoweverTheRequestNamesTheTenant() throws Exception {
+        String bearer = token(outsiderFaculty, null, IDENTITY_KEY, "test-key");
+
+        assertThat(read(bearer, section, tenant)).as("this college's section, this college's id").isIn(403, 404);
+        assertThat(read(bearer, section, otherTenant)).as("this college's section, naming their own college").isIn(403, 404);
+        assertThat(read(bearer, otherSection, tenant)).as("their section, naming this college").isIn(403, 404);
+        assertThat(read(bearer, otherSection, otherTenant)).as("their own college's section, but they are not assigned to it").isIn(403, 404);
+    }
+
+    @Test
+    void theFacultyRoleAloneIsNotEnoughWithoutBeingAssignedToThatSection() throws Exception {
+        String bearer = token(facultyUser, null, IDENTITY_KEY, "test-key");
+
+        assertThat(read(bearer, section, tenant)).as("the section they are assigned to").isEqualTo(200);
+        assertThat(read(bearer, siblingSection, tenant)).as("another section of the same college").isIn(403, 404);
+        assertThat(read(bearer, otherSection, otherTenant)).as("another college's section").isIn(403, 404);
+    }
+
+    @Test
+    void anEnrolledStudentCannotReadAnotherSectionOfTheSameCollege() throws Exception {
+        String bearer = token(studentUser, null, IDENTITY_KEY, "test-key");
+
+        assertThat(read(bearer, siblingSection, tenant)).isIn(403, 404);
+        assertThat(read(bearer, otherSection, otherTenant)).isIn(403, 404);
     }
 }

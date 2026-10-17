@@ -58,9 +58,9 @@ public class ConfigServerApplication {
         SpringApplication application = new SpringApplication(ConfigServerApplication.class);
         application.setDefaultProperties(Map.of(
             "setu.service", "config",
-            "spring.application.name", "config-server",
+            "APPLICATION_NAME", "config-server",
             "spring.flyway.enabled", "false",
-            "server.port", "8888"));
+            "SERVER_PORT", "8888"));
         application.run(args);
     }
 }

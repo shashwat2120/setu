@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Logging, as Spring Boot's own defaults (console, with the pattern from application.yml's logging.pattern.console, which carries the
+  correlation id and the trace id) plus one more destination: the OpenTelemetry appender. It does nothing on its own. Spring Boot hands it the
+  OpenTelemetry SDK, and the SDK sends log records (with the trace id and span id of the thread that logged them) over OTLP to Loki only when
+  OTEL_LOGS_EXPORT_ENABLED=true; otherwise the records are dropped by an SDK that has no exporter. See docs/contracts/observability.md.
+-->
+<configuration>
+    <include resource="org/springframework/boot/logging/logback/base.xml"/>
+
+    <appender name="OTEL" class="io.opentelemetry.instrumentation.logback.appender.v1_0.OpenTelemetryAppender">
+        <!-- the business flow id travels with every exported line, next to the trace id -->
+        <captureMdcAttributes>correlationId</captureMdcAttributes>
+    </appender>
+
+    <root level="INFO">
+        <appender-ref ref="OTEL"/>
+    </root>
+</configuration>

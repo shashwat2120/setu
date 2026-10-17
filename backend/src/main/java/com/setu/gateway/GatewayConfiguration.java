@@ -1,5 +1,6 @@
 package com.setu.gateway;
 
+import com.setu.shared.observability.Outbound;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.setu.shared.security.RemoteTokenAuthenticator;
 import io.micrometer.core.instrument.MeterRegistry;
@@ -41,8 +42,18 @@ public class GatewayConfiguration {
     }
 
     @Bean
-    Upstream upstream(GatewayProperties properties) {
-        return new ApacheUpstream(properties.upstream().connectTimeout(), properties.upstream().responseTimeout());
+    Upstream upstream(GatewayProperties properties, Outbound outbound) {
+        return new ApacheUpstream(properties.upstream().connectTimeout(), properties.upstream().responseTimeout(), outbound);
+    }
+
+    /** The edge's own management endpoints: health and info are public, metrics need the scrape token, nothing else is served (ActuatorGuardFilter). */
+    @Bean
+    FilterRegistrationBean<ActuatorGuardFilter> actuatorGuardFilter(ObjectMapper objectMapper,
+                                                                    @org.springframework.beans.factory.annotation.Value("${app.metrics.scrape-token:}") String scrapeToken) {
+        FilterRegistrationBean<ActuatorGuardFilter> registration = new FilterRegistrationBean<>(new ActuatorGuardFilter(scrapeToken, objectMapper));
+        registration.setOrder(Ordered.HIGHEST_PRECEDENCE + 5);   // after the correlation id filter, before the gateway proper
+        registration.addUrlPatterns("/actuator", "/actuator/*");
+        return registration;
     }
 
     @Bean

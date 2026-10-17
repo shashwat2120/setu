@@ -50,9 +50,9 @@ public class IdentityServiceApplication {
         Map<String, Object> defaults = new HashMap<>(Map.of(
             "setu.service", "identity",
             "app.discovery.service", "identity",
-            "spring.application.name", "identity-service",
+            "APPLICATION_NAME", "identity-service",
             "spring.flyway.enabled", "false",
-            "server.port", "8081"));
+            "SERVER_PORT", "8081"));
         // no live connections here: leave the shared WebSocket/STOMP support to the services that serve them
         defaults.put("app.realtime.enabled", "false");
         application.setDefaultProperties(defaults);

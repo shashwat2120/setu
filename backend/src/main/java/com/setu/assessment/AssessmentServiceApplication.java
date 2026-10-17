@@ -57,9 +57,9 @@ public class AssessmentServiceApplication {
             "app.readmodel.consumer.group-id", "setu-assessment",
             "app.readmodel.consumer.aggregates", FOLLOWED_AGGREGATES,
             "app.discovery.service", "assessment",
-            "spring.application.name", "assessment-service",
+            "APPLICATION_NAME", "assessment-service",
             "spring.flyway.enabled", "false",
-            "server.port", "8085"));
+            "SERVER_PORT", "8085"));
         // no live connections here: leave the shared WebSocket/STOMP support to the services that serve them
         defaults.put("app.realtime.enabled", "false");
         application.setDefaultProperties(defaults);

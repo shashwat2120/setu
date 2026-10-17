@@ -119,6 +119,25 @@ class OutboxPublisherTests {
     }
 
     @Test
+    void theTraceThatWroteAnEventTravelsWithItAsTheStandardHeaderAndNothingIsInventedWhenThereIsNone() {
+        String traced = "test_outbox_" + UUID.randomUUID().toString().substring(0, 8);
+        String untraced = "test_outbox_" + UUID.randomUUID().toString().substring(0, 8);
+        UUID tracedId = UUID.randomUUID();
+        UUID untracedId = UUID.randomUUID();
+        String traceParent = "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01";
+        repository.saveAndFlush(new OutboxEvent(UUID.randomUUID(), UUID.randomUUID(), traced, tracedId, "TestEvent", 1, "{\"test\":true}",
+            Instant.now(), UUID.randomUUID(), null, "test", 1, traceParent));
+        writeTestRow(untraced, untracedId, "TestEvent");
+
+        publisher.publishPending();
+
+        var tracedRecord = recording().sent.stream().filter(r -> r.key().equals(tracedId.toString())).findFirst().orElseThrow();
+        var untracedRecord = recording().sent.stream().filter(r -> r.key().equals(untracedId.toString())).findFirst().orElseThrow();
+        assertThat(new String(tracedRecord.headers().lastHeader("traceparent").value(), java.nio.charset.StandardCharsets.UTF_8)).isEqualTo(traceParent);
+        assertThat(untracedRecord.headers().lastHeader("traceparent")).isNull();
+    }
+
+    @Test
     void publishedRowIsMarkedPublishedWithCorrectTopicKeyAndHeaders() {
         String aggregateType = "test_outbox_" + UUID.randomUUID().toString().substring(0, 8);
         UUID aggregateId = UUID.randomUUID();

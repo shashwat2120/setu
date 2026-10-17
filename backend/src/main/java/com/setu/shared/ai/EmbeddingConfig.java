@@ -28,6 +28,7 @@ class EmbeddingConfig {
     TextEmbedder textEmbedder(@Value("${app.ai.embedding.resolved:local}") String provider,
                                @Value("${spring.ai.google.genai.embedding.text.options.model:gemini-embedding-001}") String geminiModel,
                                @Value("${spring.ai.ollama.embedding.options.model:nomic-embed-text}") String ollamaModel,
+                               @Value("${app.ai.embedding.timeout-seconds:8}") long timeoutSeconds,
                                ObjectProvider<EmbeddingModel> embeddingModelProvider) {
         List<EmbeddingModel> embeddingModels = embeddingModelProvider.orderedStream().toList();
         switch (provider) {
@@ -35,7 +36,7 @@ class EmbeddingConfig {
                 EmbeddingModel model = find(embeddingModels, "GoogleGenAi");
                 if (model != null) {
                     log.info("policy search embeddings: gemini:{} (full-text search if Gemini is unavailable)", geminiModel);
-                    return new SpringAiTextEmbedder(model, "gemini:" + geminiModel, GEMINI_MIN_SIMILARITY);
+                    return new SpringAiTextEmbedder(model, "gemini:" + geminiModel, GEMINI_MIN_SIMILARITY, java.time.Duration.ofSeconds(timeoutSeconds));
                 }
                 log.warn("Gemini embeddings were selected but no Gemini embedding model was created; using the built-in local embedder");
             }
@@ -43,7 +44,7 @@ class EmbeddingConfig {
                 EmbeddingModel model = find(embeddingModels, "Ollama");
                 if (model != null) {
                     log.info("policy search embeddings: ollama:{}", ollamaModel);
-                    return new SpringAiTextEmbedder(model, "ollama:" + ollamaModel, 0.45);
+                    return new SpringAiTextEmbedder(model, "ollama:" + ollamaModel, 0.45, java.time.Duration.ofSeconds(timeoutSeconds));
                 }
                 log.warn("Ollama embeddings were selected but no Ollama embedding model was created; using the built-in local embedder");
             }

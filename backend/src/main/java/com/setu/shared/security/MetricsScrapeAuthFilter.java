@@ -1,4 +1,4 @@
-package com.setu.identity.infrastructure.security;
+package com.setu.shared.security;
 
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;

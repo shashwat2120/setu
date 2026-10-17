@@ -57,9 +57,9 @@ public class LearningServiceApplication {
             "app.readmodel.consumer.group-id", "setu-learning",
             "app.readmodel.consumer.aggregates", FOLLOWED_AGGREGATES,
             "app.discovery.service", "learning",
-            "spring.application.name", "learning-service",
+            "APPLICATION_NAME", "learning-service",
             "spring.flyway.enabled", "false",
-            "server.port", "8084"));
+            "SERVER_PORT", "8084"));
         // no live connections here: leave the shared WebSocket/STOMP support to the services that serve them
         defaults.put("app.realtime.enabled", "false");
         application.setDefaultProperties(defaults);

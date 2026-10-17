@@ -3,6 +3,7 @@ package com.setu.identity.infrastructure.security;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.setu.identity.application.LoginLivenessService;
 import com.setu.shared.security.InternalCallAuthFilter;
+import com.setu.shared.security.MetricsScrapeAuthFilter;
 import com.setu.shared.web.ErrorResponse;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
@@ -95,6 +96,8 @@ public class SecurityConfig {
                 // Metrics describe the whole platform: only the dedicated Prometheus scrape token may read them (not public,
                 // and not reachable with an ordinary user token either). See MetricsScrapeAuthFilter.
                 .requestMatchers(MetricsScrapeAuthFilter.PATH).hasAuthority(MetricsScrapeAuthFilter.AUTHORITY)
+                // every other management endpoint (the module structure, ...) is for nobody: no user token opens it
+                .requestMatchers("/actuator/**").denyAll()
                 // Service-to-service questions (docs/contracts/data-ownership.md): the internal token only, never a user's.
                 .requestMatchers(InternalCallAuthFilter.PREFIX + "**").hasAuthority(InternalCallAuthFilter.AUTHORITY)
                 // Day 15 §9: the generated OpenAPI spec/UI itself is not sensitive (endpoint shapes only, no

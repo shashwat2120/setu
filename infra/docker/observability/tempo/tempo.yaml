@@ -1,0 +1,28 @@
+# Tempo for local development: receives spans over OTLP/HTTP from the services (OTEL_TRACES_EXPORT_ENABLED=true) and keeps them on a local disk
+# for a day. Grafana queries it on :3200 (datasource "Tempo"). Not a production configuration.
+stream_over_http_enabled: true
+
+server:
+  http_listen_port: 3200
+
+distributor:
+  receivers:
+    otlp:
+      protocols:
+        http:
+          endpoint: 0.0.0.0:4318
+
+ingester:
+  max_block_duration: 5m
+
+compactor:
+  compaction:
+    block_retention: 24h
+
+storage:
+  trace:
+    backend: local
+    wal:
+      path: /var/tempo/wal
+    local:
+      path: /var/tempo/blocks

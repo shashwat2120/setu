@@ -12,6 +12,7 @@ import org.apache.hc.core5.http.NoHttpResponseException;
 import org.apache.hc.core5.http.io.entity.InputStreamEntity;
 import org.apache.hc.core5.http.message.BasicClassicHttpRequest;
 import org.apache.hc.core5.util.Timeout;
+import com.setu.shared.observability.Outbound;
 import org.springframework.beans.factory.DisposableBean;
 
 import java.io.IOException;
@@ -32,8 +33,14 @@ import java.util.List;
 public class ApacheUpstream implements Upstream, DisposableBean {
 
     private final CloseableHttpClient client;
+    private final Outbound outbound;
 
     public ApacheUpstream(java.time.Duration connectTimeout, java.time.Duration responseTimeout) {
+        this(connectTimeout, responseTimeout, Outbound.NONE);
+    }
+
+    public ApacheUpstream(java.time.Duration connectTimeout, java.time.Duration responseTimeout, Outbound outbound) {
+        this.outbound = outbound;
         PoolingHttpClientConnectionManager connections = PoolingHttpClientConnectionManagerBuilder.create()
             .setMaxConnTotal(256)
             .setMaxConnPerRoute(64)
@@ -67,7 +74,13 @@ public class ApacheUpstream implements Upstream, DisposableBean {
         }
         ClassicHttpResponse response = null;
         try {
-            response = client.executeOpen(null, outgoing, null);
+            // a span and a timer for the hop, and the trace id the service will continue (replacing any traceparent the caller sent)
+            response = outbound.call("upstream", request.method(), traceParent -> {
+                if (traceParent != null) {
+                    outgoing.setHeader("traceparent", traceParent);
+                }
+                return client.executeOpen(null, outgoing, null);
+            });
             List<Header> headers = new ArrayList<>();
             for (org.apache.hc.core5.http.Header h : response.getHeaders()) {
                 headers.add(new Header(h.getName(), h.getValue()));

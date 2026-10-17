@@ -18,7 +18,8 @@ import static org.assertj.core.api.Assertions.assertThat;
  * own Spring context (different property set than every other test
  * class) so it never affects the real-Ollama tests elsewhere.
  */
-@SpringBootTest(properties = "spring.ai.ollama.base-url=http://localhost:1")
+// Gemini is the default primary now, so "no provider answers" needs the local model forced as primary AND unreachable
+@SpringBootTest(properties = {"spring.ai.model.chat=ollama", "spring.ai.ollama.base-url=http://localhost:1"})
 class AiChatProviderUnavailableTests {
 
     @Autowired

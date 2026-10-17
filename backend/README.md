@@ -59,11 +59,17 @@ git-ignored `backend/.env.local` (it is loaded automatically); never commit keys
 | `JWT_PREVIOUS_PUBLIC_KEYS` | empty | Comma-separated Base64 X.509 public keys of retired signing keys, still published during a rotation |
 | `FRONTEND_BASE_URL` | `http://localhost:5180` | Origin used to build the link to the reset page in emails |
 | `DEMO_DATA_ENABLED` | `false` | Seed the demo colleges, people and content |
-| `AI_PROVIDER` | `ollama` | `google-genai` for Gemini as the primary provider |
+| `AI_PROVIDER` | `google-genai` | Gemini is the primary provider (needs `GEMINI_API_KEY`; without one the run starts on Ollama and logs a warning). `ollama` forces the local model, which is the fallback only |
 | `GEMINI_API_KEY`, `GEMINI_MODEL` | none, `gemini-3.8-flash` | Gemini credentials and model |
 | `EMBEDDING_PROVIDER` | `auto` | Embeddings for college-policy search: `auto` (Gemini when Gemini is the chat provider, otherwise the built-in local embedder), `gemini`, `ollama` (`EMBEDDING_OLLAMA_MODEL`, a 768-dimension model such as `nomic-embed-text`) or `local` |
 | `OLLAMA_BASE_URL`, `OLLAMA_MODEL` | `http://localhost:11434`, `llama3.2:3b` | Local model, always the fallback |
-| `AI_PRIMARY_TIMEOUT_SECONDS`, `AI_REQUEST_TIMEOUT_SECONDS` | `25`, `60` | Budget for the Gemini attempt, and for the whole request |
+| `GEMINI_FALLBACK_MODEL` | `gemini-3.5-flash` | Second Gemini model tried before the local model when the first fails |
+| `AI_PRIMARY_TIMEOUT_SECONDS`, `AI_REQUEST_TIMEOUT_SECONDS` | `40`, `60` | Budget for the Gemini attempt, and for the whole request |
+| `APPLICATION_NAME` | `setu-backend` | Names the service in metrics (`application` label), traces and logs; each service's entry point sets its own |
+| `SERVER_MAX_THREADS` | `24` (`200` on the gateway and AI service) | Request threads; bounded by the connection pool, see [docs/contracts/performance.md](../docs/contracts/performance.md) |
+| `DB_POOL_SIZE`, `DB_POOL_MIN_IDLE` | `64`, `16` | Connection pool: must satisfy `threads x 2 + 16 <= DB_POOL_SIZE` (`ConnectionPoolSizingTests` enforces it) |
+| `app.pagination.max-size` | `100` | Largest page a list endpoint will serve; a bigger `size` is clamped |
+| `OTEL_TRACES_EXPORT_ENABLED`, `OTEL_LOGS_EXPORT_ENABLED` | `false`, `false` | Send spans (Tempo) and logs (Loki) over OTLP; `OTEL_TRACES_ENDPOINT` and `OTEL_LOGS_ENDPOINT` set the targets, `TRACING_SAMPLING_PROBABILITY` (`1.0`) the sample rate. See [docs/contracts/observability.md](../docs/contracts/observability.md) |
 | `AI_RATE_LIMIT_MAX_REQUESTS` | `20` | Advisor requests per window per user |
 | `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_HOST`, `SMTP_PORT`, `SMTP_FROM_ADDRESS` | none, none, `smtp.gmail.com`, `587`, the user | Reset email over SMTP; with no user or password nothing is sent |
 | `METRICS_SCRAPE_TOKEN` | none | Token Prometheus uses for `/actuator/prometheus`; with none set the endpoint is closed to everyone. See [infra/docker/README.md](../infra/docker/README.md#observability) |

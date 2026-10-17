@@ -55,9 +55,9 @@ public class AcademicServiceApplication {
             "app.readmodel.consumer.enabled", "true",
             "app.readmodel.consumer.group-id", "setu-academic",
             "app.readmodel.consumer.aggregates", "user_roles,persons",
-            "spring.application.name", "academic-service",
+            "APPLICATION_NAME", "academic-service",
             "spring.flyway.enabled", "false",
-            "server.port", "8082"));
+            "SERVER_PORT", "8082"));
         // no live connections here: leave the shared WebSocket/STOMP support to the services that serve them
         defaults.put("app.realtime.enabled", "false");
         application.setDefaultProperties(defaults);

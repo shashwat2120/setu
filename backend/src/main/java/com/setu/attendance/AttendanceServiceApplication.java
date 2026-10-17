@@ -57,9 +57,9 @@ public class AttendanceServiceApplication {
             "app.readmodel.consumer.group-id", "setu-attendance",
             "app.readmodel.consumer.aggregates", FOLLOWED_AGGREGATES,
             "app.discovery.service", "attendance",
-            "spring.application.name", "attendance-service",
+            "APPLICATION_NAME", "attendance-service",
             "spring.flyway.enabled", "false",
-            "server.port", "8086"));
+            "SERVER_PORT", "8086"));
         // the live board is served here, so the shared WebSocket/STOMP support stays on (app.realtime.enabled defaults to true)
         application.setDefaultProperties(defaults);
         application.run(args);

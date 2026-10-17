@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.setu.shared.aifacts.AiFacts;
 import com.setu.shared.resilience.GuardedCall;
+import com.setu.shared.observability.Outbound;
 import com.setu.shared.web.CorrelationIdFilter;
 import io.micrometer.core.instrument.MeterRegistry;
 import org.apache.hc.client5.http.config.ConnectionConfig;
@@ -63,6 +64,7 @@ public class RemoteAiFacts implements AiFacts, DisposableBean {
     private final URI base;
     private final ObjectMapper objectMapper;
     private final GuardedCall guard;
+    private final Outbound outbound;
     private final CloseableHttpClient client;
 
     public RemoteAiFacts(@Value("${setu.ai-facts.url}") String url,
@@ -70,9 +72,10 @@ public class RemoteAiFacts implements AiFacts, DisposableBean {
                          @Value("${setu.ai-facts.response-timeout-ms:8000}") long responseMs,
                          @Value("${setu.ai-facts.max-concurrent:20}") int maxConcurrent,
                          @Value("${setu.ai-facts.breaker.minimum-calls:10}") int breakerMinimumCalls,
-                         ObjectMapper objectMapper, MeterRegistry meters) {
+                         ObjectMapper objectMapper, MeterRegistry meters, Outbound outbound) {
         this.base = URI.create(url.replaceAll("/+$", ""));
         this.objectMapper = objectMapper;
+        this.outbound = outbound;
         this.guard = new GuardedCall("ai-facts", new GuardedCall.Settings(50, breakerMinimumCalls, Math.max(20, breakerMinimumCalls), Duration.ofSeconds(10), maxConcurrent, Duration.ZERO),
             e -> !(e instanceof Rejected), meters);
         this.client = HttpClients.custom()
@@ -108,9 +111,12 @@ public class RemoteAiFacts implements AiFacts, DisposableBean {
         if (correlationId != null) {
             request.addHeader(CorrelationIdFilter.HEADER_NAME, correlationId);
         }
-        var built = request.build();
         try {
-            return guard.call(() -> client.execute(built, response -> {
+            return guard.call(() -> outbound.call("data-service", "ai-facts", traceParent -> {
+                if (traceParent != null) {
+                    request.setHeader("traceparent", traceParent);
+                }
+                return client.execute(request.build(), response -> {
                 int status = response.getCode();
                 if (status == HttpStatus.SC_NO_CONTENT) {
                     return objectMapper.nullNode();
@@ -130,6 +136,7 @@ public class RemoteAiFacts implements AiFacts, DisposableBean {
                 } catch (JsonProcessingException | org.apache.hc.core5.http.ParseException e) {
                     throw new IOException("the answer is not JSON", e);
                 }
+                });
             }));
         } catch (GuardedCall.Unavailable e) {
             throw new AiFacts.Unavailable("the data service did not answer (" + e.reason() + ")", e);
