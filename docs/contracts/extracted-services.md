@@ -64,9 +64,13 @@ its own (6B.2), it becomes the snapshot export of `infra/db/split/split-service.
 
 ## 4. What stays in the core, honestly
 
-- **Record** is still in the monolith. It reads grades and Academic's curriculum data in process. It belongs with Assessment (audit section 6) but
-  needs its own copy of catalog and curriculum data first, so until then the core still contains the assessment code and reads the same tables:
-  a transitional state, not the target. Likewise **risk**, **AI**, **notification**, **career** and **finance** still call these modules
+- **Record** is still in the monolith, but no longer reads Academic directly. Everything it needs from Academic (a student's enrollments with
+  their course, the student's curriculum, the credits that curriculum requires) comes through one shared port, `RecordDirectory`, answered in the
+  monolith by `enrollment.application.RecordDirectoryAdapter`, and who owns a student profile through `AcademicDirectory`; it imports none of
+  Academic's classes (three module edges and four class-level dependencies left `module-contracts.txt`; `RecordDirectoryTests`). What is still
+  missing before it can run inside the Assessment service: a read-model copy of those facts and the Academic events that keep it current (courses,
+  curricula and their requirements, student programs, enrollment completion, none of which is emitted yet), and a `/record` route to Assessment.
+  Until then the core contains the record and reads grades in process: a transitional state, not the target. Likewise **risk**, **AI**, **notification**, **career** and **finance** still call these modules
   in process from the core.
 - **Live attendance WebSocket.** The STOMP support (`shared.websocket`) moved out of the notification module so the Attendance service can serve
   its live board itself, with the token check behind a `StompTokenAuthenticator` port (Identity's in the monolith, published keys plus revocation

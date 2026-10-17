@@ -3,19 +3,10 @@ package com.setu.record.application;
 import com.setu.assessment.application.AssessmentComponentService;
 import com.setu.assessment.application.GradeService;
 import com.setu.assessment.domain.Grade;
-import com.setu.catalog.application.CourseService;
-import com.setu.catalog.application.CurriculumRequirementService;
-import com.setu.catalog.domain.Course;
-import com.setu.directory.application.StudentProfileService;
-import com.setu.enrollment.application.CourseSectionService;
-import com.setu.enrollment.application.EnrollmentService;
-import com.setu.enrollment.application.StudentProgramService;
-import com.setu.enrollment.domain.CourseSection;
-import com.setu.enrollment.domain.Enrollment;
-import com.setu.enrollment.domain.EnrollmentStatus;
+import com.setu.shared.academic.AcademicDirectory;
+import com.setu.shared.academic.RecordDirectory;
 import com.setu.shared.authorization.AuthorizationContext;
 import com.setu.shared.authorization.ResourceRef;
-import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -40,6 +31,11 @@ import java.util.UUID;
  *       zero, so this is a GPA "to date", not a final one.</li>
  * </ol>
  * Degree progress is a single completed-credits/required-credits ratio, not a per-requirement-group breakdown.
+ * <p>
+ * Everything this class needs from Academic (a student's enrollments and their courses, the student's curriculum and its required credits, who
+ * owns a student profile) comes through two narrow shared ports, {@link RecordDirectory} and {@link AcademicDirectory}, and from Assessment's
+ * own grades and components. It imports none of Academic's services or classes, which is what lets it move into the Assessment service (the
+ * coupling audit folds Record into Assessment) with those ports answered from a local copy of Academic's data.
  */
 @org.springframework.modulith.NamedInterface // the AI advisor's transcript/GPA tool reads this; both methods authorize the caller themselves
 @Service
@@ -48,31 +44,21 @@ public class AcademicRecordService {
     private static final String ADMIN_VIEW_PERMISSION = "VIEW_TENANT_DATA";
     private static final String DELEGATED_PERMISSION = "VIEW_ACADEMIC_STATUS";
 
-    private final EnrollmentService enrollmentService;
-    private final CourseSectionService courseSectionService;
-    private final CourseService courseService;
+    private static final String COMPLETED = "COMPLETED";
+
+    private final RecordDirectory recordDirectory;
+    private final AcademicDirectory academicDirectory;
     private final GradeService gradeService;
-    private final StudentProfileService studentProfileService;
-    private final StudentProgramService studentProgramService;
-    private final CurriculumRequirementService curriculumRequirementService;
     private final AuthorizationContext authorizationContext;
     private final AssessmentComponentService assessmentComponentService;
 
-    public AcademicRecordService(EnrollmentService enrollmentService, CourseSectionService courseSectionService,
-                                  CourseService courseService, GradeService gradeService,
-                                  StudentProfileService studentProfileService, StudentProgramService studentProgramService,
-                                  CurriculumRequirementService curriculumRequirementService,
-                                  AuthorizationContext authorizationContext,
-                                  AssessmentComponentService assessmentComponentService) {
-        this.assessmentComponentService = assessmentComponentService;
-        this.enrollmentService = enrollmentService;
-        this.courseSectionService = courseSectionService;
-        this.courseService = courseService;
+    public AcademicRecordService(RecordDirectory recordDirectory, AcademicDirectory academicDirectory, GradeService gradeService,
+                                  AuthorizationContext authorizationContext, AssessmentComponentService assessmentComponentService) {
+        this.recordDirectory = recordDirectory;
+        this.academicDirectory = academicDirectory;
         this.gradeService = gradeService;
-        this.studentProfileService = studentProfileService;
-        this.studentProgramService = studentProgramService;
-        this.curriculumRequirementService = curriculumRequirementService;
         this.authorizationContext = authorizationContext;
+        this.assessmentComponentService = assessmentComponentService;
     }
 
     public record GradeLine(UUID componentId, BigDecimal rawMarks, String gradeCode, BigDecimal gradePoint) {
@@ -90,19 +76,14 @@ public class AcademicRecordService {
     @Transactional(readOnly = true)
     public Transcript transcript(UUID studentId, UUID tenantId) {
         assertRead(studentId, tenantId);
-        var enrollments = enrollmentService.listForStudent(studentId, PageRequest.of(0, 200)).getContent();
-
         List<TranscriptLine> lines = new java.util.ArrayList<>();
-        for (Enrollment e : enrollments) {
-            Optional<CourseSection> section = courseSectionService.get(e.sectionId());
-            Optional<Course> course = section.flatMap(s -> courseService.get(s.courseId()));
-            List<Grade> grades = gradeService.findCurrentForEnrollment(e.id());
+        for (RecordDirectory.CourseEnrollment e : recordDirectory.enrollmentsOf(studentId)) {
+            List<Grade> grades = gradeService.findCurrentForEnrollment(e.enrollmentId());
             List<GradeLine> gradeLines = grades.stream()
                 .map(g -> new GradeLine(g.componentId(), g.rawMarks(), g.gradeCode(), g.gradePoint())).toList();
             var weights = assessmentComponentService.weightsUnchecked(gradeLines.stream().map(GradeLine::componentId).toList());
-            lines.add(new TranscriptLine(e.id(), course.map(Course::code).orElse(null), course.map(Course::title).orElse(null),
-                course.map(Course::credits).orElse(null), section.map(CourseSection::sectionCode).orElse(null),
-                e.status().name(), gradeLines, courseGradePoint(gradeLines, weights)));
+            lines.add(new TranscriptLine(e.enrollmentId(), e.courseCode(), e.courseTitle(), e.credits(), e.sectionCode(),
+                e.status(), gradeLines, courseGradePoint(gradeLines, weights)));
         }
         return new Transcript(lines, creditWeightedGpa(lines));
     }
@@ -146,24 +127,18 @@ public class AcademicRecordService {
     @Transactional(readOnly = true)
     public DegreeProgress degreeProgress(UUID studentId, UUID tenantId) {
         assertRead(studentId, tenantId);
-        // assertRead above already authorized this caller; StudentProgramService#history would additionally demand the
-        // registrar-only MANAGE_STUDENT_PROGRAMS and so lock the student out of their own degree progress.
-        Optional<UUID> activeCurriculumId = studentProgramService.activeCurriculumIdUnchecked(studentId);
+        // assertRead above already authorized this caller; the directory's lookups carry no authorization of their own, so the
+        // registrar-only permission that managing a student's programs demands does not lock the student out of their own degree progress.
+        Optional<UUID> activeCurriculumId = recordDirectory.activeCurriculumOf(studentId);
         if (activeCurriculumId.isEmpty()) {
             return new DegreeProgress(BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, false);
         }
-        BigDecimal required = curriculumRequirementService.totalMinCreditsUnchecked(activeCurriculumId.get());
+        BigDecimal required = recordDirectory.requiredCredits(activeCurriculumId.get());
 
-        var enrollments = enrollmentService.listForStudent(studentId, PageRequest.of(0, 200)).getContent();
         BigDecimal completed = BigDecimal.ZERO;
-        for (Enrollment e : enrollments) {
-            if (e.status() != EnrollmentStatus.COMPLETED) {
-                continue;
-            }
-            Optional<CourseSection> section = courseSectionService.get(e.sectionId());
-            Optional<Course> course = section.flatMap(s -> courseService.get(s.courseId()));
-            if (course.isPresent() && course.get().credits() != null) {
-                completed = completed.add(course.get().credits());
+        for (RecordDirectory.CourseEnrollment e : recordDirectory.enrollmentsOf(studentId)) {
+            if (COMPLETED.equals(e.status()) && e.credits() != null) {
+                completed = completed.add(e.credits());
             }
         }
         BigDecimal percentage = required.signum() > 0
@@ -174,7 +149,7 @@ public class AcademicRecordService {
 
     private void assertRead(UUID studentId, UUID tenantId) {
         UUID currentUserId = authorizationContext.currentUserId();
-        Optional<StudentProfileService.StudentTenantOwner> owner = studentProfileService.findTenantAndOwnerUserId(studentId);
+        Optional<AcademicDirectory.TenantOwner> owner = academicDirectory.studentOwner(studentId);
         boolean isSelf = owner.isPresent() && currentUserId.equals(owner.get().ownerUserId());
         if (isSelf) {
             return;
@@ -182,7 +157,7 @@ public class AcademicRecordService {
         if (authorizationContext.can(ADMIN_VIEW_PERMISSION, ResourceRef.of("academic_record", studentId, tenantId)).isAllowed()) {
             return;
         }
-        UUID ownerUserId = owner.map(StudentProfileService.StudentTenantOwner::ownerUserId).orElse(null);
+        UUID ownerUserId = owner.map(AcademicDirectory.TenantOwner::ownerUserId).orElse(null);
         ResourceRef delegated = ResourceRef.of("academic_record", studentId, tenantId)
             .ownedBy(ownerUserId).delegatableForStudent(studentId);
         authorizationContext.assertCan(DELEGATED_PERMISSION, delegated);

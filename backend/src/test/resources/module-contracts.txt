@@ -20,9 +20,6 @@ edge   finance -> directory
 edge   finance -> institution
 edge   guardianaccess -> directory
 edge   record -> assessment
-edge   record -> catalog
-edge   record -> directory
-edge   record -> enrollment
 edge   risk -> assessment
 edge   risk -> attendance
 edge   risk -> directory
@@ -58,10 +55,6 @@ domain aifacts -> risk :: RiskScore
 domain enrollment -> catalog :: AcademicPeriod
 domain enrollment -> catalog :: PrerequisiteRuleType
 domain record -> assessment :: Grade
-domain record -> catalog :: Course
-domain record -> enrollment :: CourseSection
-domain record -> enrollment :: Enrollment
-domain record -> enrollment :: EnrollmentStatus
 domain risk -> assessment :: Grade
 domain risk -> learning :: AssignmentSubmission
 domain risk -> learning :: AssignmentSubmissionStatus

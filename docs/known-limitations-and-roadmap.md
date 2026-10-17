@@ -33,8 +33,14 @@ and the validation report ([validation-report.md](validation-report.md)) carry t
 ## Not finished
 
 7. **Gap. Four modules are still in the core process:** record, risk, career, finance (and onboarding). The route table sends them to the core.
-   Record belongs with Assessment per the coupling audit but needs its own copy of catalog and curriculum facts first. 17 foreign keys on their
+   Record belongs with Assessment per the coupling audit. It now reads Academic only through the `RecordDirectory` port (first step done); it still
+   needs a read-model copy of courses, curricula, student programs and enrollment status, fed by Academic events that are not emitted yet. 17 foreign keys on their
    tables remain and are frozen in `cross-service-foreign-keys.txt` ([extracted-services §4](contracts/extracted-services.md)).
+7a. **Gap. Nothing completes an enrollment.** `Enrollment.markCompleted` exists and the state machine allows ENROLLED to COMPLETED, but no service
+   calls it and no `EnrollmentCompleted` or `PeriodClosed` event exists. So in a real run degree progress (which counts only COMPLETED enrollments)
+   stays at 0 credits, and a transcript never shows a finished course. The record's code for the completed case is correct and tested (the tests set
+   the state directly). Decide what completes a course: closing an academic period, a registrar action per section, or publishing a final grade; and
+   what final status it records.
 8. **Gap. The gateway cannot proxy WebSocket upgrades** (it answers 501); STOMP clients connect to the owning service directly. A frame-level
    proxy is the open item and could not be verified on the development machine.
 9. **Gap. Analytics service** (read-model projections) has no code or tables; the coupling audit dropped it as a candidate for now.
@@ -65,8 +71,10 @@ In the order that removes the most risk first.
 1. **Add the other risk triggers** if wanted (attendance session closed, assignment graded, `AssessmentCompleted`), each with its own test.
 2. **Run the services as real processes**: container images per service and a compose profile, on a machine without the NIO defect; then verify
    Kafka lag, the DLQ against a live broker, and the Grafana panels against a live scrape (items 2, 5).
-3. **Extract Record into Assessment, then Finance and Career**, each behind its own read-model copy, with the frozen foreign keys replaced by
-   write-time checks and a reconciliation count, the same recipe as 6A.5 (item 7).
+3. **Finish moving Record into Assessment** (the port is in place): Academic events for courses, curricula, student programs and enrollment
+   completion, a read-model implementation of `RecordDirectory`, the `/record` route; **then Finance and Career**, each behind its own read-model
+   copy, with the frozen foreign keys replaced by write-time checks and a reconciliation count, the same recipe as 6A.5 (item 7). Decide item 7a first:
+   the completion event is one of the facts the record's copy depends on.
 4. **Proxy WebSocket at the gateway** or standardize clients on the owning service's address (item 8).
 5. **Settle the faculty role-versus-assignment rule** across Learning, Attendance and Assessment and add the test that asserts it (item 10).
 6. **Add a hosted second AI fallback** (for example an NVIDIA-hosted Llama through its OpenAI-compatible endpoint) ahead of the CPU model if

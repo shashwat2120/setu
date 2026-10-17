@@ -139,6 +139,20 @@ public class CourseService {
         return course;
     }
 
+    /** What the academic record shows about a course. */
+    public record CourseSummary(String code, String title, java.math.BigDecimal credits) {
+    }
+
+    /**
+     * A course's code, title and credits, with no authorization of its own. For the shared {@code RecordDirectory} port only: the academic record has
+     * already decided whether the caller may see this student's record, and a transcript line must not fail because the reader (a guardian with a
+     * delegated grant, say) holds no role in the college, which the checked {@link #get} would demand.
+     */
+    @Transactional(readOnly = true)
+    public Optional<CourseSummary> summaryUnchecked(UUID courseId) {
+        return courseRepository.findById(courseId).map(c -> new CourseSummary(c.code(), c.title(), c.credits()));
+    }
+
     @Transactional(readOnly = true)
     public Page<Course> listForTenant(UUID tenantId, Pageable pageable) {
         authorizationContext.assertCan(VIEW_PERMISSION, ResourceRef.of("course", UUID.randomUUID(), tenantId));

@@ -97,6 +97,14 @@ Each is fixed and has a test that fails without the fix.
   while Assessment also requires the permission. This is a design property, not a leak (assignment is still required everywhere), so it is
   recorded, not changed here. See open item 9.
 
+## Defect found while moving Record behind a port
+
+- **A student's own transcript and degree progress failed with 403 once a course was completed.** The record read each enrollment's section
+  through the checked section read, which lets a student see a section only while ENROLLED in it; a guardian holding a delegated grant has no role
+  in the college that the checked course read demands. Nothing in the application completes an enrollment (open item below), so no test or demo ever
+  reached it. The record now reads Academic through `RecordDirectory`, which carries no authorization of its own; `assertRead` is the single gate.
+  `RecordDirectoryTests.aStudentCanStillReadTheirOwnTranscriptOnceACourseIsCompleted`. **The guardian path has no test yet.**
+
 ## Open items (no automated test, or a known gap)
 
 1. ~~Event envelope is narrower than canonical spec §8.~~ **Closed in 6B.1**: events carry the envelope headers and schema/event
