@@ -90,6 +90,9 @@ Each is fixed and has a test that fails without the fix.
   `ConnectionPoolSizingTests`.
 - **Silent timeouts** on the model call and on the embedder; both now bounded and reported as unavailable, not as an empty answer
   (`AiChatSecondaryGeminiTests`, `SpringAiTextEmbedderTests`).
+- **A log file nobody configured.** The 6C.1 logging configuration included Spring Boot's `base.xml`, which always attaches a rolling `spring.log`
+  in the system temp directory; its clean-up job timing out failed application contexts at random on a slow disk. Console and OpenTelemetry
+  only now, a file is opt-in (`file-logs` profile); `LoggingSystemTests`. Found by the full regression after the grade-event consumer was added.
 - **Role versus assignment is inconsistent between services.** Learning and Attendance admit a faculty member by section assignment alone,
   while Assessment also requires the permission. This is a design property, not a leak (assignment is still required everywhere), so it is
   recorded, not changed here. See open item 9.

@@ -1,12 +1,19 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
-  Logging, as Spring Boot's own defaults (console, with the pattern from application.yml's logging.pattern.console, which carries the
-  correlation id and the trace id) plus one more destination: the OpenTelemetry appender. It does nothing on its own. Spring Boot hands it the
-  OpenTelemetry SDK, and the SDK sends log records (with the trace id and span id of the thread that logged them) over OTLP to Loki only when
-  OTEL_LOGS_EXPORT_ENABLED=true; otherwise the records are dropped by an SDK that has no exporter. See docs/contracts/observability.md.
+  Logging: the console, with the pattern from application.yml's logging.pattern.console (it carries the correlation id and the trace id), plus the
+  OpenTelemetry appender. The appender does nothing on its own. Spring Boot hands it the OpenTelemetry SDK, and the SDK sends log records (with the
+  trace id and span id of the thread that logged them) over OTLP to Loki only when OTEL_LOGS_EXPORT_ENABLED=true; otherwise the records are dropped
+  by an SDK that has no exporter. See docs/contracts/observability.md.
+
+  Deliberately NOT Spring Boot's base.xml. That file always attaches a rolling file appender writing spring.log into the system temp directory, even
+  when no log file was asked for; Spring Boot's own default configuration only does so when logging.file.* is set. A service that logs to stdout (the
+  container norm) should not also fill a temp directory, and the rolling policy's clean-up job timing out at start-up on a slow disk failed
+  application contexts at random (LoggingSystemTests pins this). A log file is opt-in: run with the "file-logs" profile (logging.file.name or
+  logging.file.path says where; the default is setu.log in the system temp directory).
 -->
 <configuration>
-    <include resource="org/springframework/boot/logging/logback/base.xml"/>
+    <include resource="org/springframework/boot/logging/logback/defaults.xml"/>
+    <include resource="org/springframework/boot/logging/logback/console-appender.xml"/>
 
     <appender name="OTEL" class="io.opentelemetry.instrumentation.logback.appender.v1_0.OpenTelemetryAppender">
         <!-- the business flow id travels with every exported line, next to the trace id -->
@@ -14,6 +21,15 @@
     </appender>
 
     <root level="INFO">
+        <appender-ref ref="CONSOLE"/>
         <appender-ref ref="OTEL"/>
     </root>
+
+    <springProfile name="file-logs">
+        <property name="LOG_FILE" value="${LOG_FILE:-${LOG_PATH:-${LOG_TEMP:-${java.io.tmpdir:-/tmp}}}/setu.log}"/>
+        <include resource="org/springframework/boot/logging/logback/file-appender.xml"/>
+        <root level="INFO">
+            <appender-ref ref="FILE"/>
+        </root>
+    </springProfile>
 </configuration>

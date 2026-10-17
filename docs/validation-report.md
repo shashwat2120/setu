@@ -35,8 +35,15 @@ unsized default stalled 20 scans for 30 s each). A larger classroom, a slower di
 
 ## Regression
 
-Full suite run in 20 chunks (the risk row below was rerun after the grade-event consumer was added; the other 19 are from the earlier full run, and the suites that could be affected, audit, modularity and notification, were rerun with it) against one database, one chunk at a time, on the tree that contains the 6C.1 and 6C.2 changes: **all 20 chunks
-passed, no failures.**
+The full suite was run in 21 chunks against one database, one chunk at a time, twice: once on the tree of 6C.1/6C.2 (before the grade-event
+consumer) and once on the tree that includes it. **All chunks passed in both runs, with one exception that the second run found and that was fixed:**
+the shared-kernel chunk had one test error, a Logback rolling-file clean-up timeout while an application context started. The cause was a defect
+from 6C.1: the logging configuration included Spring Boot's `base.xml`, which always attaches a rolling `spring.log` in the system temp directory.
+Logs now go to the console and OpenTelemetry only, a file is opt-in (`file-logs` profile), and `LoggingSystemTests` pins it. The shared-kernel,
+`ModularityTests` and config suites were rerun after the fix and passed. The other 20 chunks of the second run had passed before the fix; the fix
+touches only the logging configuration and was not followed by a third full run.
+
+The counts below are from the second run.
 
 | Chunk | Tests |
 |---|---|
@@ -77,6 +84,7 @@ above, separately), and `NotificationKafkaConsumerTests`, which cannot open an N
 | Tenant isolation across the extracted services' read models | cross-tenant cases in `ExtractedServiceWiringSupport` |
 | Entry-point defaults are not silently shadowed | `EntryPointDefaultsTests`, `EntryPointDefaultsPrecedenceTests` |
 | Risk recalculates on a grade event; idempotent, tenant-checked, one at a time per student, refusals leave nothing | `RiskEventProcessorTests`, `RiskEventListenerTests`, `RiskErrorHandlerTests`, `RiskConsumerWiringTests` (without a broker) |
+| Logs go to console and OpenTelemetry, no file unless asked for | `LoggingSystemTests` |
 | Trace context survives the outbox | `OutboxTraceParentTests`, `shared.observability` tests |
 | Model call and embedder time out visibly; second Gemini model before Ollama | `AiChatSecondaryGeminiTests`, `SpringAiTextEmbedderTests` |
 

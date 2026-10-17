@@ -74,6 +74,7 @@ Loki, filesystem storage, 24-hour retention, no authentication.
 | `TRACING_SAMPLING_PROBABILITY` | 1.0 | share of requests traced (tracing is cheap when nothing is exported; lower it for a busy environment) |
 | `OTEL_TRACES_EXPORT_ENABLED` / `OTEL_TRACES_ENDPOINT` | false / `http://localhost:4318/v1/traces` | push spans to Tempo |
 | `OTEL_LOGS_EXPORT_ENABLED` / `OTEL_LOGS_ENDPOINT` | false / `http://localhost:3100/otlp/v1/logs` | push logs to Loki |
+| profile `file-logs` | off | also write a rolling log file (`logging.file.name` / `logging.file.path`, default `setu.log` in the system temp directory); by default logs go to stdout and OpenTelemetry only (`LoggingSystemTests`) |
 
 ## 5. What was verified, and how
 
