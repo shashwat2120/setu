@@ -11,6 +11,7 @@ import com.setu.directory.application.StudentProfileService;
 import com.setu.enrollment.domain.CourseSection;
 import com.setu.enrollment.domain.Enrollment;
 import com.setu.enrollment.domain.EnrollmentAction;
+import com.setu.enrollment.domain.EnrollmentCompletedEvent;
 import com.setu.enrollment.domain.EnrollmentDroppedEvent;
 import com.setu.enrollment.domain.StudentEnrolledEvent;
 import com.setu.enrollment.domain.StudentWaitlistedEvent;
@@ -322,23 +323,15 @@ public class EnrollmentService {
             boolean satisfied = enrollmentRepository.findByStudentIdAndStatusIn(studentId, Set.of(EnrollmentStatus.COMPLETED)).stream()
                 .filter(e -> courseSectionRepository.findById(e.sectionId()).map(CourseSection::courseId)
                     .map(cid -> cid.equals(requirement.prerequisiteCourseId())).orElse(false))
-                .anyMatch(e -> requirement.minimumGrade() == null || gradeAtLeast(e.finalStatus(), requirement.minimumGrade()));
+                .anyMatch(e -> requirement.minimumGrade() == null
+                    // no minimum: any pass will do. A completed row with no recorded grade (from before final grades were recorded) still counts.
+                    ? e.finalStatus() == null || FinalGrade.isPass(e.finalStatus())
+                    : FinalGrade.atLeast(e.finalStatus(), requirement.minimumGrade()));
             if (!satisfied) {
                 return false;
             }
         }
         return true;
-    }
-
-    /** Grade ordering for the disclosed {A,B,C,D,F} vocabulary (Day 7 CoursePrerequisite.SUPPORTED_MINIMUM_GRADES) — A is highest. */
-    private boolean gradeAtLeast(String actual, String minimum) {
-        List<String> order = List.of("F", "D", "C", "B", "A");
-        if (actual == null) {
-            return false;
-        }
-        int actualIdx = order.indexOf(actual);
-        int minIdx = order.indexOf(minimum);
-        return actualIdx >= 0 && minIdx >= 0 && actualIdx >= minIdx;
     }
 
     private boolean hasScheduleConflict(UUID studentId, CourseSection candidate) {
@@ -618,6 +611,78 @@ public class EnrollmentService {
         return enrollmentRepository.findByStudentId(studentId, org.springframework.data.domain.Pageable.unpaged())
             .stream().filter(e -> e.status() == EnrollmentStatus.ENROLLED)
             .map(e -> new ActiveEnrollmentRef(e.id(), e.sectionId())).toList();
+    }
+
+    /** What publishing a final grade did to an enrollment. */
+    enum CompletionResult {
+        /** ENROLLED became COMPLETED with this final grade. */
+        COMPLETED,
+        /** The enrollment was already COMPLETED and its final grade changed. */
+        CORRECTED,
+        /** The enrollment was already COMPLETED with this very grade: nothing to do. */
+        UNCHANGED,
+        /** The enrollment is not one a final grade applies to (dropped, waitlisted, rejected ...): nothing to do. */
+        NOT_ENROLLED
+    }
+
+    /**
+     * Publishing a final grade completes the enrollment: ENROLLED becomes COMPLETED and the grade becomes its {@code final_status}. A later
+     * correction of that grade changes the final status and leaves the enrollment COMPLETED. Driven by the {@code FinalGradePublished} event from
+     * the Assessment service, so there is no signed-in user: the person on record is the faculty member who published the grade, and the checks
+     * that make a system action safe are made here (the enrollment must exist and belong to the tenant the event names).
+     * <p>
+     * Writes an {@code enrollment_actions} row (append-only) and an {@code EnrollmentCompleted} event in the same transaction. Package-private on
+     * purpose: the only caller is {@link FinalGradeEventProcessor}, which has already made the event idempotent and serialised it per enrollment.
+     *
+     * @param gradeCode the final grade as published
+     * @param publishedBy the faculty member who published it
+     * @throws EnrollmentNotKnownException if there is no such enrollment (yet)
+     * @throws PoisonEventException if the enrollment belongs to a different tenant, or the grade code is unusable
+     */
+    @Transactional
+    CompletionResult completeWithFinalGrade(UUID enrollmentId, UUID eventTenantId, String gradeCode, UUID publishedBy) {
+        Enrollment enrollment = enrollmentRepository.findById(enrollmentId)
+            .orElseThrow(() -> new EnrollmentNotKnownException("enrollment " + enrollmentId + " is not known"));
+        if (!enrollment.tenantId().equals(eventTenantId)) {
+            throw new PoisonEventException("event tenant does not match the tenant of enrollment " + enrollmentId);
+        }
+        String finalGrade;
+        try {
+            finalGrade = FinalGrade.normalize(gradeCode);
+        } catch (IllegalArgumentException e) {
+            throw new PoisonEventException(e.getMessage(), e);
+        }
+
+        boolean corrected;
+        String action;
+        switch (enrollment.status()) {
+            case ENROLLED -> {
+                enrollment.markCompleted(finalGrade);
+                corrected = false;
+                action = "ENROLLMENT_COMPLETED";
+            }
+            case COMPLETED -> {
+                if (finalGrade.equals(enrollment.finalStatus())) {
+                    return CompletionResult.UNCHANGED;
+                }
+                enrollment.correctFinalStatus(finalGrade);
+                corrected = true;
+                action = "ENROLLMENT_FINAL_GRADE_CORRECTED";
+            }
+            default -> {
+                return CompletionResult.NOT_ENROLLED;
+            }
+        }
+        enrollmentRepository.save(enrollment);
+        recordActionWithMetadata(enrollment.id(), action, publishedBy, null, Map.of("finalGrade", finalGrade), enrollment.tenantId());
+
+        CourseSection section = courseSectionRepository.findById(enrollment.sectionId()).orElseThrow();
+        UUID correlationId = UUID.randomUUID();
+        var event = new EnrollmentCompletedEvent(UUID.randomUUID(), Instant.now(), enrollment.tenantId(), enrollment.id(), correlationId, null,
+            enrollment.id(), enrollment.sectionId(), enrollment.studentId(), section.periodId(), finalGrade, FinalGrade.isPass(finalGrade), corrected);
+        outboxEventWriter.write("enrollments", enrollment.id(), event.eventType(), event.eventVersion(), event, enrollment.tenantId(),
+            correlationId, null);
+        return corrected ? CompletionResult.CORRECTED : CompletionResult.COMPLETED;
     }
 
     private void recordAction(UUID enrollmentId, String action, UUID actor, String reason, UUID tenantId) {

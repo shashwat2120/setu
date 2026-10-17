@@ -66,6 +66,7 @@ enrollment.enrollment_actions  Academic
 enrollment.enrollment_overrides  Academic
 enrollment.enrollments  Academic
 enrollment.faculty_assignments  Academic
+enrollment.processed_events  Academic
 enrollment.student_programs  Academic
 enrollment.waitlist_entries  Academic
 finance.fee_components  Finance

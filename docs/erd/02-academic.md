@@ -191,7 +191,9 @@ reaction to this module's `academic_periods`.
 - **`enrollments`**: `id, tenant_id, section_id → course_sections NOT NULL,
   student_id → student_profiles NOT NULL, status TEXT NOT NULL DEFAULT
   'REQUESTED', requested_at TIMESTAMPTZ NOT NULL DEFAULT now(), enrolled_at
-  TIMESTAMPTZ NULL, dropped_at TIMESTAMPTZ NULL, final_status TEXT NULL`.
+  TIMESTAMPTZ NULL, dropped_at TIMESTAMPTZ NULL, final_status TEXT NULL`. `final_status` is the **final grade code** (`A B C D F`, optionally signed, stored as published in upper case), set when the
+  enrollment is COMPLETED by the publication of the section's final grade and changed only by a correction of that grade; null for every
+  other status. A prerequisite's `minimum_grade` is compared against its letter.
   - **Composite unique**: `(section_id, student_id)` — one enrollment row per
     student per section, ever (state machine transitions happen on this one
     row rather than inserting a new row per attempt, so re-enrollment after a

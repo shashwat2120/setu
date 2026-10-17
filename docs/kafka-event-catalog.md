@@ -56,7 +56,7 @@ shown implicitly by its aggregate. `event_version` is `1` for every row.
 
 ## Implementation status
 
-**48 events are emitted today:** `GradePublished`; `AttendanceRecorded`, **`AttendanceSessionOpened`, `AttendanceSessionClosed`** and the 8 staff-attendance events; `PlacementRecorded`;
+**49 events are emitted today:** `EnrollmentCompleted` (6C.3 follow-up: publishing a final grade completes the enrollment); `GradePublished`; `AttendanceRecorded`, **`AttendanceSessionOpened`, `AttendanceSessionClosed`** and the 8 staff-attendance events; `PlacementRecorded`;
 `StudentAdmitted`; **`StudentEnrolled`, `StudentWaitlisted`, `WaitlistConverted`, `EnrollmentDropped`, `CourseSectionOpened`, `CourseSectionCancelled`** (added by the Sprint 6 coupling
 audit: the Academic service had published nothing, and Learning, Attendance, Student Success, Record and Notification need them);
 `PaymentSuccessful`, `PaymentFailed`, `PaymentRefunded`; `PasskeyRevoked`, `SessionRevoked`, `UserSuspended`, `UserDeactivated`,
@@ -130,7 +130,7 @@ the section id (aggregate `waitlist_entries`) so promotion order is kept per sec
 | `WaitlistConverted` | Institution/Academic | Notification, Attendance | `waitlist_entries` | `section_id` (promotion order matters per-section) | `waitlist_entry_id, enrollment_id, section_id, student_id` |
 | `WaitlistExpired` 🆕 | Institution/Academic | Notification | `waitlist_entries` | `section_id` | `waitlist_entry_id, section_id, student_id` |
 | `EnrollmentDropped` | Institution/Academic | Attendance, Learning, Notification, Analytics | `enrollments` | `enrollment_id` | `enrollment_id, section_id, student_id, dropped_at` |
-| `EnrollmentCompleted` 🆕 | Institution/Academic | Record, Analytics | `enrollments` | `enrollment_id` | `enrollment_id, section_id, student_id, period_id` |
+| `EnrollmentCompleted` | Institution/Academic | Record, Analytics | `enrollments` | `enrollment_id` | `enrollment_id, section_id, student_id, period_id, final_grade, passed, corrected` — the enrollment's state after the change, so a consumer overwrites its copy; emitted when the final grade completes the enrollment (`corrected = false`) and again when a correction changes it (`corrected = true`). Same key as the enrollment's other events, so they arrive in order |
 | `EnrollmentOverrideGranted` 🆕 | Institution/Academic | Notification, Analytics | `enrollment_overrides` | `student_id` | `enrollment_override_id, student_id, section_id, type, approved_by` |
 | `EnrollmentOverrideConsumed` 🆕 | Institution/Academic | Analytics | `enrollment_overrides` | `student_id` | `enrollment_override_id, enrollment_id` |
 | `CourseSectionOpened` | Institution/Academic | Notification, Analytics | `course_sections` | `section_id` | `section_id, course_id, period_id` |

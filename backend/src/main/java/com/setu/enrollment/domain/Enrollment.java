@@ -170,6 +170,14 @@ public class Enrollment {
         this.finalStatus = finalStatus;
     }
 
+    /** A correction to the final grade of an enrollment that is already COMPLETED: the status stays, the recorded grade changes. */
+    public void correctFinalStatus(String finalStatus) {
+        if (status != EnrollmentStatus.COMPLETED) {
+            throw new IllegalStateException("Only a COMPLETED enrollment has a final status to correct, not " + status);
+        }
+        this.finalStatus = finalStatus;
+    }
+
     /** Reopens a DROPPED/REJECTED row for a new enrollment attempt — see this class's javadoc for why this is a disclosed necessity, not invented elaboration. */
     public void reopen(Instant requestedAt) {
         if (!canTransitionTo(EnrollmentStatus.REQUESTED)) {

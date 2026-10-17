@@ -190,8 +190,20 @@ terminal states → correction rules → audit → emitted event.
   - `WAITLISTED → ENROLLED` — system, triggered by a capacity-freeing drop
     elsewhere, promotes by `waitlist_entries.position`
   - `ENROLLED → DROPPED` — student (within drop deadline) or `COLLEGE_ADMIN`
-  - `ENROLLED → COMPLETED` — system, at period close, if attendance/assessment
-    requirements were met (not a blanket auto-pass)
+  - `ENROLLED → COMPLETED` — system, when the section's **final grade is
+    published** (a decision of the college: publishing a final grade completes
+    the enrollment). The grade code becomes `final_status`, the vocabulary a
+    prerequisite's minimum grade is written in (`A B C D F`, a sign such as `B+`
+    is kept but only its letter counts). An `F` completes the enrollment too: the
+    course is over, the student did not pass it, and it earns no credit and
+    satisfies no prerequisite. Not a blanket auto-pass: the faculty member's
+    published grade is the result. Driven by the `FinalGradePublished` event
+    from Assessment, so it follows the publication by moments, not in the same
+    transaction.
+  - `COMPLETED → COMPLETED` (final grade corrected) — system, when a correction
+    of the final grade is published: the enrollment stays `COMPLETED` and
+    `final_status` changes; audited and announced (`EnrollmentCompleted` with
+    `corrected = true`). Not a transition out of `COMPLETED`, which stays terminal.
 - **Validation**: every inbound transition to `ENROLLED` re-validates capacity
   under `SELECT ... FOR UPDATE` (transaction-concurrency-matrix.md) — a
   promotion from waitlist is not exempt from this even though it "should" have
@@ -204,6 +216,10 @@ terminal states → correction rules → audit → emitted event.
   (type `REINSTATEMENT`) — never a silent status flip
 - **Audit**: every transition writes `enrollment_actions` (append-only)
 - **Emitted event**: `StudentEnrolled`, `StudentWaitlisted`, `EnrollmentDropped`, `EnrollmentCompleted`
+  (the enrollment's state after the change: final grade, whether it passed, whether this is a correction)
+- **Grading after completion**: grades of a completed enrollment can still be
+  published and corrected (late components, corrections of the final grade); only
+  a dropped or never-enrolled student cannot be graded.
 
 ## 12. Waitlist Entry
 

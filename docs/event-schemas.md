@@ -4,7 +4,7 @@ Generated from the event classes by `EventSchemaFreezeTests` (`-Dfreeze.update=t
 envelope in its Kafka headers (see [contracts/kafka-contracts.md](contracts/kafka-contracts.md)); this lists what varies per event.
 `Topic` is `setu.<aggregate>`, and the record key is the aggregate id, so one aggregate's events stay in order.
 
-**48 events from 11 producers.**
+**49 events from 11 producers.**
 
 ## assessment
 
@@ -57,6 +57,7 @@ envelope in its Kafka headers (see [contracts/kafka-contracts.md](contracts/kafk
 | `CourseSectionCancelled` | 1 | `setu.course_sections` | `sectionId` UUID, `affectedEnrollmentIds` List<UUID> |
 | `CourseSectionCreated` | 1 | `setu.course_sections` | `sectionId` UUID, `courseId` UUID, `periodId` UUID |
 | `CourseSectionOpened` | 1 | `setu.course_sections` | `sectionId` UUID, `courseId` UUID, `periodId` UUID |
+| `EnrollmentCompleted` | 1 | `setu.enrollments` | `enrollmentId` UUID, `sectionId` UUID, `studentId` UUID, `periodId` UUID, `finalGrade` String, `passed` boolean, `corrected` boolean |
 | `EnrollmentDropped` | 1 | `setu.enrollments` | `enrollmentId` UUID, `sectionId` UUID, `studentId` UUID, `droppedAt` Instant, `wasEnrolled` boolean |
 | `FacultyAssigned` | 1 | `setu.faculty_assignments` | `assignmentId` UUID, `sectionId` UUID, `facultyId` UUID, `endsAt` LocalDate |
 | `FacultyAssignmentEnded` | 1 | `setu.faculty_assignments` | `assignmentId` UUID, `sectionId` UUID, `facultyId` UUID, `endsAt` LocalDate |
