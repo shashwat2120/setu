@@ -404,7 +404,13 @@ terminal states → correction rules → audit → emitted event.
 - **Audit**: every publish and every supersede
 - **Emitted event**: `GradePublished` (on every `→ PUBLISHED`, including
   corrections — consumers distinguish an original publish from a correction
-  via `supersedes_id` being null or not)
+  via `supersedes_id` being null or not). A grade for the section's **final-grade
+  component** (`assessment_components.is_final`, at most one per section) is also
+  announced as `FinalGradePublished`, keyed by the enrollment: it completes the
+  student's enrollment (#11) and a correction of it changes the enrollment's final
+  status.
+- **Who can be graded**: a student whose enrollment is in force or completed; not
+  one who dropped, was waitlisted or was rejected.
 
 ## 20. Payment
 

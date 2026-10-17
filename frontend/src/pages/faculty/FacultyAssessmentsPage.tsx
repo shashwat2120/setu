@@ -114,6 +114,7 @@ function AssessmentComponents({ assessmentId, isDraft }: { assessmentId: string;
   const [code, setCode] = useState('');
   const [maxMarks, setMaxMarks] = useState('');
   const [weight, setWeight] = useState('');
+  const [finalGrade, setFinalGrade] = useState(false);
   const [message, setMessage] = useState('');
   const [busy, setBusy] = useState(false);
   const [expandedComponent, setExpandedComponent] = useState<string | null>(null);
@@ -123,9 +124,9 @@ function AssessmentComponents({ assessmentId, isDraft }: { assessmentId: string;
     try {
       await apiFetch('/assessment/components', {
         method: 'POST',
-        body: { assessmentId, code, maxMarks: Number(maxMarks), weight: Number(weight), orderNo: (components.data?.length ?? 0) + 1 },
+        body: { assessmentId, code, maxMarks: Number(maxMarks), weight: Number(weight), orderNo: (components.data?.length ?? 0) + 1, finalGrade },
       });
-      setCode(''); setMaxMarks(''); setWeight('');
+      setCode(''); setMaxMarks(''); setWeight(''); setFinalGrade(false);
       components.refetch();
     } catch (e) { setMessage(e instanceof Error ? e.message : 'Could not create component.'); }
     finally { setBusy(false); }
@@ -135,6 +136,7 @@ function AssessmentComponents({ assessmentId, isDraft }: { assessmentId: string;
     { key: 'code', header: 'Component', render: (c) => <span className="mono">{c.code}</span> },
     { key: 'maxMarks', header: 'Max marks', render: (c) => c.maxMarks },
     { key: 'weight', header: 'Weight', render: (c) => `${c.weight}%` },
+    { key: 'final', header: 'Final grade', render: (c) => (c.finalGrade ? <StatusBadge value="FINAL" /> : '—') },
     {
       key: 'questions', header: 'Questions', render: (c) => (
         <button type="button" className="btn btn-ghost" style={{ padding: '4px 10px', fontSize: 12 }}
@@ -162,6 +164,13 @@ function AssessmentComponents({ assessmentId, isDraft }: { assessmentId: string;
           <div className="form-field" style={{ marginBottom: 0, width: 100 }}>
             <label htmlFor={`c-weight-${assessmentId}`} style={{ fontSize: 12 }}>Weight %</label>
             <input id={`c-weight-${assessmentId}`} type="number" min="0" max="100" step="0.5" value={weight} onChange={(e) => setWeight(e.target.value)} required style={{ fontSize: 13, padding: '6px 8px' }} />
+          </div>
+          <div className="form-field" style={{ marginBottom: 0, maxWidth: 260 }}>
+            <label htmlFor={`c-final-${assessmentId}`} style={{ fontSize: 12, display: 'flex', gap: 6, alignItems: 'center' }}>
+              <input id={`c-final-${assessmentId}`} type="checkbox" checked={finalGrade} onChange={(e) => setFinalGrade(e.target.checked)} />
+              This is the course's final grade
+            </label>
+            <span style={{ fontSize: 11, color: 'var(--ink-soft)' }}>Publishing it completes the student's enrollment. One per section.</span>
           </div>
           <button type="submit" className="btn btn-primary" style={{ padding: '7px 14px', fontSize: 13 }} disabled={busy || !code}>
             {busy ? 'Adding…' : 'Add component'}

@@ -28,20 +28,22 @@ public class AssessmentComponentController {
         this.assessmentComponentService = assessmentComponentService;
     }
 
-    public record CreateRequest(UUID assessmentId, String code, BigDecimal maxMarks, BigDecimal weight, Integer orderNo) {
+    /** {@code finalGrade}: this component's published grade is the course's final grade, and publishing it completes the enrollment (default false). */
+    public record CreateRequest(UUID assessmentId, String code, BigDecimal maxMarks, BigDecimal weight, Integer orderNo, Boolean finalGrade) {
     }
 
-    public record ComponentResponse(UUID id, UUID assessmentId, String code, BigDecimal maxMarks, BigDecimal weight, Integer orderNo) {
+    public record ComponentResponse(UUID id, UUID assessmentId, String code, BigDecimal maxMarks, BigDecimal weight, Integer orderNo,
+                                    boolean finalGrade) {
     }
 
     private static ComponentResponse toResponse(AssessmentComponent c) {
-        return new ComponentResponse(c.id(), c.assessmentId(), c.code(), c.maxMarks(), c.weight(), c.orderNo());
+        return new ComponentResponse(c.id(), c.assessmentId(), c.code(), c.maxMarks(), c.weight(), c.orderNo(), c.finalGrade());
     }
 
     @PostMapping
     public ResponseEntity<?> create(@RequestBody CreateRequest request) {
         var result = assessmentComponentService.create(request.assessmentId(), request.code(), request.maxMarks(),
-            request.weight(), request.orderNo());
+            request.weight(), request.orderNo(), Boolean.TRUE.equals(request.finalGrade()));
         return switch (result) {
             case AssessmentComponentService.CreateResult.Success r -> ResponseEntity.status(HttpStatus.CREATED)
                 .body(toResponse(assessmentComponentService.get(r.componentId()).orElseThrow()));
@@ -53,6 +55,8 @@ public class AssessmentComponentController {
                 ResponseEntity.status(HttpStatus.BAD_REQUEST).body(new ErrorResponse(invalid.message()));
             case AssessmentComponentService.CreateResult.CodeAlreadyInUse ignored ->
                 ResponseEntity.status(HttpStatus.CONFLICT).body(new ErrorResponse("a component already uses this code in this assessment"));
+            case AssessmentComponentService.CreateResult.FinalGradeComponentExists ignored ->
+                ResponseEntity.status(HttpStatus.CONFLICT).body(new ErrorResponse("this section already has a component that is its final grade"));
         };
     }
 

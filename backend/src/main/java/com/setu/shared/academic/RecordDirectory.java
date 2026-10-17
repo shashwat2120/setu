@@ -23,8 +23,13 @@ public interface RecordDirectory {
     /**
      * One enrollment with the course it is for. The course fields are null when the section or course is not known; {@code status} is the
      * enrollment's status name (for example {@code ENROLLED}, {@code COMPLETED}, {@code DROPPED}).
+     * <p>
+     * {@code finalGrade} is the grade code the course ended with (null until its final grade is published). {@code passed} is Academic's verdict,
+     * so that no consumer has to know the grade scale: the enrollment is COMPLETED and its final grade is not an F. Only a passed course earns its
+     * credits.
      */
-    record CourseEnrollment(UUID enrollmentId, String status, String sectionCode, String courseCode, String courseTitle, BigDecimal credits) {
+    record CourseEnrollment(UUID enrollmentId, String status, String sectionCode, String courseCode, String courseTitle, BigDecimal credits,
+                            String finalGrade, boolean passed) {
     }
 
     /** Every enrollment of this student, whatever its status, up to {@link #MAX_ENROLLMENTS}. */

@@ -81,6 +81,12 @@ public class ReadModelAcademicDirectory implements AcademicDirectory {
     }
 
     @Override
+    public Optional<UUID> gradableEnrollmentId(UUID sectionId, UUID studentId) {
+        return jdbc.sql("SELECT enrollment_id FROM " + enrollments + " WHERE section_id = :section AND student_id = :student AND (active OR completed) LIMIT 1")
+            .param("section", sectionId).param("student", studentId).query(UUID.class).optional();
+    }
+
+    @Override
     public Optional<EnrollmentRef> enrollment(UUID enrollmentId) {
         return jdbc.sql("SELECT tenant_id, section_id, student_id FROM " + enrollments + " WHERE enrollment_id = :id")
             .param("id", enrollmentId)

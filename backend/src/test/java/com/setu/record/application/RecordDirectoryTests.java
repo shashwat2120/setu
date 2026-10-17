@@ -54,6 +54,8 @@ class RecordDirectoryTests {
         assertThat(e.courseTitle()).isEqualTo("RD1C Title");
         assertThat(e.credits()).isEqualByComparingTo("4.0");
         assertThat(e.sectionCode()).isNotBlank();
+        assertThat(e.finalGrade()).as("no final grade until one is published").isNull();
+        assertThat(e.passed()).isFalse();
     }
 
     @Test
@@ -101,11 +103,50 @@ class RecordDirectoryTests {
         assertThat(before.hasActiveProgram()).isTrue();
         assertThat(before.creditsCompleted()).as("an enrollment in progress is not credit earned").isEqualByComparingTo(BigDecimal.ZERO);
 
-        // Nothing in the application completes an enrollment yet (docs/known-limitations-and-roadmap.md), so the state is set directly.
-        jdbc.sql("UPDATE enrollment.enrollments SET status = 'COMPLETED' WHERE id = :id").param("id", s.enrollmentId()).update();
+        complete(s, "B");
         var after = records.degreeProgress(s.student().studentId(), s.tenant().tenantId());
 
         assertThat(after.creditsCompleted()).isEqualByComparingTo("4.0");
+    }
+
+    /** What publishing a final grade does to the enrollment (FinalGradeFlowTests drives the real path); here the state is set directly. */
+    private void complete(Day13TestFixtures.Scenario s, String finalGrade) {
+        jdbc.sql("UPDATE enrollment.enrollments SET status = 'COMPLETED', final_status = :g WHERE id = :id")
+            .param("g", finalGrade).param("id", s.enrollmentId()).update();
+    }
+
+    @Test
+    void aFailedCourseEarnsNoCredits() {
+        var s = fixtures.provisionEnrolledScenario("RD7");
+        complete(s, "F");
+        TestAuthentication.authenticateAs(s.student().userId());
+
+        var progress = records.degreeProgress(s.student().studentId(), s.tenant().tenantId());
+        var line = records.transcript(s.student().studentId(), s.tenant().tenantId()).lines().get(0);
+
+        assertThat(progress.creditsCompleted()).as("the course is over and not passed").isEqualByComparingTo(BigDecimal.ZERO);
+        assertThat(line.enrollmentStatus()).isEqualTo("COMPLETED");
+        assertThat(line.finalGrade()).isEqualTo("F");
+        assertThat(directory.enrollmentsOf(s.student().studentId()).get(0).passed()).isFalse();
+    }
+
+    @Test
+    void aSignedPassingGradeEarnsTheCredits() {
+        var s = fixtures.provisionEnrolledScenario("RD8");
+        complete(s, "B+");
+        TestAuthentication.authenticateAs(s.student().userId());
+
+        assertThat(records.degreeProgress(s.student().studentId(), s.tenant().tenantId()).creditsCompleted()).isEqualByComparingTo("4.0");
+        assertThat(directory.enrollmentsOf(s.student().studentId()).get(0).passed()).isTrue();
+    }
+
+    @Test
+    void aCompletedRowFromBeforeFinalGradesWereRecordedStillEarnsItsCredits() {
+        var s = fixtures.provisionEnrolledScenario("RD9");
+        jdbc.sql("UPDATE enrollment.enrollments SET status = 'COMPLETED' WHERE id = :id").param("id", s.enrollmentId()).update();
+        TestAuthentication.authenticateAs(s.student().userId());
+
+        assertThat(records.degreeProgress(s.student().studentId(), s.tenant().tenantId()).creditsCompleted()).isEqualByComparingTo("4.0");
     }
 
     /**
@@ -117,13 +158,14 @@ class RecordDirectoryTests {
     void aStudentCanStillReadTheirOwnTranscriptOnceACourseIsCompleted() {
         var s = fixtures.provisionEnrolledScenario("RD6");
         fixtures.recordGrade(s, "A", new BigDecimal("4.0"));
-        jdbc.sql("UPDATE enrollment.enrollments SET status = 'COMPLETED' WHERE id = :id").param("id", s.enrollmentId()).update();
+        complete(s, "A");
         TestAuthentication.authenticateAs(s.student().userId());
 
         var transcript = records.transcript(s.student().studentId(), s.tenant().tenantId());
 
         assertThat(transcript.lines()).hasSize(1);
         assertThat(transcript.lines().get(0).enrollmentStatus()).isEqualTo("COMPLETED");
+        assertThat(transcript.lines().get(0).finalGrade()).isEqualTo("A");
         assertThat(transcript.lines().get(0).courseCode()).isEqualTo("RD6C");
         assertThat(transcript.gpa()).isEqualByComparingTo("4.00");
     }

@@ -22,7 +22,7 @@ class CreditWeightedGpaTests {
 
     private static AcademicRecordService.TranscriptLine line(String credits, String courseGradePoint) {
         return new AcademicRecordService.TranscriptLine(UUID.randomUUID(), "C", "Course", credits == null ? null : bd(credits),
-            "S1", "ENROLLED", List.of(), courseGradePoint == null ? null : bd(courseGradePoint));
+            "S1", "ENROLLED", List.of(), courseGradePoint == null ? null : bd(courseGradePoint), null);
     }
 
     @Test

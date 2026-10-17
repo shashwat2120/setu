@@ -25,7 +25,7 @@ public class AcademicEventProjector extends BaseProjector {
 
     /** Every event type this projector builds the copy from; the consumer-contract test checks each against what Academic really emits. */
     public static final Set<String> EVENT_TYPES = Set.of("StudentAdmitted", "FacultyProfileCreated", "FacultyStatusChanged", "FacultyAssigned",
-        "FacultyAssignmentEnded", "StudentEnrolled", "EnrollmentDropped", "CollegeCreated", "CollegeUpdated", "MeetingPatternScheduled",
+        "FacultyAssignmentEnded", "StudentEnrolled", "EnrollmentDropped", "EnrollmentCompleted", "CollegeCreated", "CollegeUpdated", "MeetingPatternScheduled",
         "MeetingPatternRemoved", "GuardianAccessGranted", "GuardianAccessRevoked", "CourseSectionCreated", "CourseSectionOpened", "CourseSectionCancelled");
 
     public AcademicEventProjector(JdbcClient jdbc, ObjectMapper mapper, String schema) {
@@ -45,8 +45,9 @@ public class AcademicEventProjector extends BaseProjector {
             case "FacultyProfileCreated" -> facultyCreated(p, at);
             case "FacultyStatusChanged" -> facultyStatus(p, at);
             case "FacultyAssigned", "FacultyAssignmentEnded" -> assignment(p, at);
-            case "StudentEnrolled" -> enrollment(p, at, true);
-            case "EnrollmentDropped" -> enrollment(p, at, false);
+            case "StudentEnrolled" -> enrollment(p, at, true, false);
+            case "EnrollmentDropped" -> enrollment(p, at, false, false);
+            case "EnrollmentCompleted" -> enrollment(p, at, false, true);
             case "CollegeCreated", "CollegeUpdated" -> college(p, at);
             case "MeetingPatternScheduled" -> meeting(p, at, false);
             case "MeetingPatternRemoved" -> meeting(p, at, true);
@@ -91,13 +92,14 @@ public class AcademicEventProjector extends BaseProjector {
             .param("faculty", p.uuid("facultyId")).param("ends", endsAt == null ? null : Date.valueOf(endsAt)).param("at", at).update();
     }
 
-    private void enrollment(EventPayload p, Timestamp at, boolean active) {
-        jdbc.sql("INSERT INTO " + table("rm_enrollments") + " AS t (enrollment_id, tenant_id, section_id, student_id, active, updated_at) "
-                + "VALUES (:id, :tenant, :section, :student, :active, :at) "
-                + "ON CONFLICT (enrollment_id) DO UPDATE SET active = EXCLUDED.active, updated_at = EXCLUDED.updated_at "
+    /** {@code active}: in force now. {@code completed}: its final grade was published; not active, but still gradable (a dropped enrollment is neither). */
+    private void enrollment(EventPayload p, Timestamp at, boolean active, boolean completed) {
+        jdbc.sql("INSERT INTO " + table("rm_enrollments") + " AS t (enrollment_id, tenant_id, section_id, student_id, active, completed, updated_at) "
+                + "VALUES (:id, :tenant, :section, :student, :active, :completed, :at) "
+                + "ON CONFLICT (enrollment_id) DO UPDATE SET active = EXCLUDED.active, completed = EXCLUDED.completed, updated_at = EXCLUDED.updated_at "
                 + "WHERE t.updated_at <= EXCLUDED.updated_at")
             .param("id", p.uuid("enrollmentId")).param("tenant", p.uuid("tenantId")).param("section", p.uuid("sectionId"))
-            .param("student", p.uuid("studentId")).param("active", active).param("at", at).update();
+            .param("student", p.uuid("studentId")).param("active", active).param("completed", completed).param("at", at).update();
     }
 
     /** A section is known from the moment it is created; opening or cancelling it does not change which college it belongs to. */

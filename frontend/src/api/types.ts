@@ -37,6 +37,8 @@ export interface TranscriptLine {
   grades: TranscriptGradeLine[];
   /** Weighted rollup of this course's published component grade points; null until something is published. */
   courseGradePoint: number | null;
+  /** The grade the course ended with, once its final grade is published (which completes the enrollment); null until then. */
+  finalGrade: string | null;
 }
 
 export interface TranscriptResponse {
@@ -326,6 +328,8 @@ export interface AssessmentComponentResponse {
   maxMarks: number;
   weight: number;
   orderNo: number;
+  /** This component's published grade is the course's final grade: publishing it completes the student's enrollment. */
+  finalGrade: boolean;
 }
 
 export interface GradeResponse {

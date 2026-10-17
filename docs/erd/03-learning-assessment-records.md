@@ -169,7 +169,9 @@ owned by, `assessment`).
   evaluated against the exact assessment definition it was taken under.
 - **`assessment_components`**: `id, assessment_id → assessments NOT NULL, code
   TEXT NOT NULL, max_marks NUMERIC(6,2) NOT NULL, weight NUMERIC(5,2) NOT
-  NULL, order_no INT`. `(assessment_id, code)` unique. **Sum/weight validated
+  NULL, order_no INT, is_final BOOLEAN NOT NULL DEFAULT false`. `(assessment_id, code)` unique. `is_final`: this
+  component's published grade is the course's final grade, and publishing it completes the student's enrollment; at most one per section (spans
+  assessments, so checked by the service under a per-section lock, not by an index). **Sum/weight validated
   at publish time** — application check, not a DB constraint (weights across
   components must sum to 100, or to the assessment's declared total — enforced
   in the publish-transition handler, part of the assessment state machine).

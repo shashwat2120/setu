@@ -4,12 +4,13 @@ Generated from the event classes by `EventSchemaFreezeTests` (`-Dfreeze.update=t
 envelope in its Kafka headers (see [contracts/kafka-contracts.md](contracts/kafka-contracts.md)); this lists what varies per event.
 `Topic` is `setu.<aggregate>`, and the record key is the aggregate id, so one aggregate's events stay in order.
 
-**49 events from 11 producers.**
+**50 events from 11 producers.**
 
 ## assessment
 
 | Event | Version | Topic | Payload fields |
 |---|---|---|---|
+| `FinalGradePublished` | 1 | `setu.grades` | `gradeId` UUID, `enrollmentId` UUID, `componentId` UUID, `version` int, `supersedesId` UUID, `gradeCode` String, `gradePoint` BigDecimal, `publishedBy` UUID |
 | `GradePublished` | 1 | `setu.grades` | `gradeId` UUID, `enrollmentId` UUID, `componentId` UUID, `version` int, `supersedesId` UUID |
 
 ## attendance

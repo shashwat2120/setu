@@ -76,4 +76,9 @@ class AssessmentAccessSupport {
     Optional<UUID> activeEnrollmentId(UUID sectionId, UUID studentId) {
         return academic.activeEnrollmentId(sectionId, studentId);
     }
+
+    /** The enrollment that can be graded: in force, or completed. See {@link AcademicDirectory#gradableEnrollmentId}. */
+    Optional<UUID> gradableEnrollmentId(UUID sectionId, UUID studentId) {
+        return academic.gradableEnrollmentId(sectionId, studentId);
+    }
 }

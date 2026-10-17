@@ -35,7 +35,7 @@ Per service, in its own schema (`learning`, `assessment`, `attendance`; migratio
 | `rm_role_grants`, `rm_role_permissions` | Identity: `UserRoleAssigned`, `UserRoleRevoked` (matrix copied by migration, parity-tested) | the shared authorization engine |
 | `rm_students`, `rm_faculty` | Academic: `StudentAdmitted` (now carries `ownerUserId`), `FacultyProfileCreated`, `FacultyStatusChanged` | who a user is as a student or faculty member |
 | `rm_faculty_assignments` | `FacultyAssigned`, `FacultyAssignmentEnded` | who teaches which section now (in force while `ends_at` is null) |
-| `rm_enrollments` | `StudentEnrolled`, `EnrollmentDropped` | who is in which section now |
+| `rm_enrollments` | `StudentEnrolled`, `EnrollmentDropped`, `EnrollmentCompleted` | who is in which section now (`active`), and which enrollments are completed (`completed`: not active, but still gradable: late components and corrections of the final grade) |
 | `rm_sections` | `CourseSectionCreated`, `CourseSectionOpened`, `CourseSectionCancelled` | which college a section belongs to, from the moment it is created |
 | `rm_colleges` | `CollegeCreated`, `CollegeUpdated` | time zone |
 | `rm_meetings` | `MeetingPatternScheduled`, `MeetingPatternRemoved` | meeting to section |
@@ -58,6 +58,7 @@ its own (6B.2), it becomes the snapshot export of `infra/db/split/split-service.
   circuit breaker and bulkhead, refused rather than guessed when Academic cannot answer; see [data-ownership.md](data-ownership.md) section 3), so
   for grants the rule is absolute wherever `setu.guardian-verify.url` is set. A role change keeps the event-lag bound; logouts and suspensions
   do not, because they travel on the revocation list.
+- **A completed enrollment is no longer active.** When its final grade is published the student leaves the course for every service that asks "is this student actively enrolled" (course content in Learning, attendance sessions): they keep their grades and transcript, not the course page. Grading is the exception, through `gradableEnrollmentId`.
 - **An enrollment is known once it has been ENROLLED.** Requests that were refused or are still waiting never appear in the copy; nothing asks
   about those.
 - **Events carry no history.** Rows that existed before the events did come from `V81`; after that, only events change them.
@@ -68,8 +69,9 @@ its own (6B.2), it becomes the snapshot export of `infra/db/split/split-service.
   their course, the student's curriculum, the credits that curriculum requires) comes through one shared port, `RecordDirectory`, answered in the
   monolith by `enrollment.application.RecordDirectoryAdapter`, and who owns a student profile through `AcademicDirectory`; it imports none of
   Academic's classes (three module edges and four class-level dependencies left `module-contracts.txt`; `RecordDirectoryTests`). What is still
-  missing before it can run inside the Assessment service: a read-model copy of those facts and the Academic events that keep it current (courses,
-  curricula and their requirements, student programs, enrollment completion, none of which is emitted yet), and a `/record` route to Assessment.
+  missing before it can run inside the Assessment service: a read-model copy of those facts and the Academic events that keep it current
+  (enrollment completion, with the final grade, is now emitted as `EnrollmentCompleted`; courses, curricula and their requirements, and student
+  programs are not yet), and a `/record` route to Assessment.
   Until then the core contains the record and reads grades in process: a transitional state, not the target. Likewise **risk**, **AI**, **notification**, **career** and **finance** still call these modules
   in process from the core.
 - **Live attendance WebSocket.** The STOMP support (`shared.websocket`) moved out of the notification module so the Attendance service can serve

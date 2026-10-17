@@ -3,6 +3,7 @@ package com.setu.assessment.application;
 import com.setu.assessment.domain.Assessment;
 import com.setu.assessment.domain.AssessmentComponent;
 import com.setu.assessment.domain.Grade;
+import com.setu.assessment.domain.FinalGradePublishedEvent;
 import com.setu.assessment.domain.GradePublishedEvent;
 import com.setu.assessment.infrastructure.GradeRepository;
 import com.setu.shared.academic.AcademicDirectory;
@@ -140,7 +141,9 @@ public class GradeService {
             return new PublishResult.ComponentNotInAssessment();
         }
 
-        Optional<UUID> enrollmentId = accessSupport.activeEnrollmentId(assessment.sectionId(), studentId);
+        // In force or completed: publishing the final grade completes the enrollment, and late components and corrections of the final grade
+        // must still be possible afterwards. A dropped, waitlisted or rejected student cannot be graded.
+        Optional<UUID> enrollmentId = accessSupport.gradableEnrollmentId(assessment.sectionId(), studentId);
         if (enrollmentId.isEmpty()) {
             return new PublishResult.NotEnrolled();
         }
@@ -165,6 +168,7 @@ public class GradeService {
             next.publish(actor, now);
             gradeRepository.save(next);
             writeOutboxAndAudit(assessment.tenantId(), next, "GRADE_CORRECTED");
+            announceIfFinal(component, next, actor);
             return new PublishResult.Success(next.id(), next.version(), true);
         }
 
@@ -180,7 +184,23 @@ public class GradeService {
         auditLogWriter.write(assessment.tenantId(), actor, "GRADE_CREATED", "assessment.grades", first.id(),
             Map.of("enrollmentId", enrollmentId.get(), "componentId", componentId));
         writeOutboxAndAudit(assessment.tenantId(), first, "GRADE_PUBLISHED");
+        announceIfFinal(component, first, actor);
         return new PublishResult.Success(first.id(), 1, false);
+    }
+
+    /**
+     * A grade for the section's final-grade component is also announced as {@code FinalGradePublished}, which is what completes the student's
+     * enrollment (or, for a correction, changes its final status). Keyed by the enrollment so a correction cannot overtake the original.
+     */
+    private void announceIfFinal(AssessmentComponent component, Grade grade, UUID publishedBy) {
+        if (!component.finalGrade()) {
+            return;
+        }
+        UUID correlationId = UUID.randomUUID();
+        var event = new FinalGradePublishedEvent(UUID.randomUUID(), Instant.now(), grade.tenantId(), grade.enrollmentId(), correlationId, null,
+            grade.id(), grade.enrollmentId(), grade.componentId(), grade.version(), grade.supersedesId(), grade.gradeCode(), grade.gradePoint(),
+            publishedBy);
+        outboxEventWriter.write("grades", grade.enrollmentId(), event.eventType(), event.eventVersion(), event, grade.tenantId(), correlationId, null);
     }
 
     private void writeOutboxAndAudit(UUID tenantId, Grade grade, String auditAction) {

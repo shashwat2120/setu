@@ -39,7 +39,7 @@ function TranscriptAndProgress({ studentId, tenantId }: { studentId: string; ten
       </div>
       {transcript.data && transcript.data.lines.length > 0 && (
         <table className="data-table">
-          <thead><tr><th scope="col">Course</th><th scope="col">Credits</th><th scope="col">Status</th><th scope="col">Grades</th><th scope="col">Course grade point</th></tr></thead>
+          <thead><tr><th scope="col">Course</th><th scope="col">Credits</th><th scope="col">Status</th><th scope="col">Grades</th><th scope="col">Course grade point</th><th scope="col">Final grade</th></tr></thead>
           <tbody>
             {transcript.data.lines.map((l) => (
               <tr key={l.enrollmentId}>
@@ -52,6 +52,7 @@ function TranscriptAndProgress({ studentId, tenantId }: { studentId: string; ten
                     : <span style={{ color: 'var(--ink-soft)' }}>No grades yet</span>}
                 </td>
                 <td data-label="Course grade point" className="mono">{l.courseGradePoint ?? '—'}</td>
+                <td data-label="Final grade" className="mono">{l.finalGrade ?? '—'}</td>
               </tr>
             ))}
           </tbody>

@@ -56,7 +56,7 @@ shown implicitly by its aggregate. `event_version` is `1` for every row.
 
 ## Implementation status
 
-**49 events are emitted today:** `EnrollmentCompleted` (6C.3 follow-up: publishing a final grade completes the enrollment); `GradePublished`; `AttendanceRecorded`, **`AttendanceSessionOpened`, `AttendanceSessionClosed`** and the 8 staff-attendance events; `PlacementRecorded`;
+**50 events are emitted today:** `EnrollmentCompleted` and `FinalGradePublished` (6C.3 follow-up: publishing a final grade completes the enrollment); `GradePublished`; `AttendanceRecorded`, **`AttendanceSessionOpened`, `AttendanceSessionClosed`** and the 8 staff-attendance events; `PlacementRecorded`;
 `StudentAdmitted`; **`StudentEnrolled`, `StudentWaitlisted`, `WaitlistConverted`, `EnrollmentDropped`, `CourseSectionOpened`, `CourseSectionCancelled`** (added by the Sprint 6 coupling
 audit: the Academic service had published nothing, and Learning, Attendance, Student Success, Record and Notification need them);
 `PaymentSuccessful`, `PaymentFailed`, `PaymentRefunded`; `PasskeyRevoked`, `SessionRevoked`, `UserSuspended`, `UserDeactivated`,
@@ -169,6 +169,12 @@ the section id (aggregate `waitlist_entries`) so promotion order is kept per sec
 | `AIJobCompleted` | AI | Notification, Realtime/WebSocket relay | `ai_jobs` (in-memory/Redis job tracking, not a persisted table — see TRD/ERD: AI has no tables) | `job_id` | `job_id, requested_by, status ('COMPLETED'\|'FAILED')` |
 
 ## Notes on specific ordering/idempotency risks
+
+- **`FinalGradePublished`** (Assessment → Academic, implemented): written in addition to `GradePublished` when the published grade is for the
+  section's final-grade component (`assessment_components.is_final`, at most one per section). Payload: `grade_id, enrollment_id, component_id,
+  version, supersedes_id | null, grade_code, grade_point, published_by`. Keyed by the **enrollment id** (not the grade id), so the original and
+  every correction of one student's final grade arrive in order. Academic consumes it (group `setu-enrollment`) and completes the enrollment:
+  ENROLLED becomes COMPLETED with the grade code as `final_status`; a correction changes `final_status`. It answers with `EnrollmentCompleted`.
 
 - **Student Success consumes `GradePublished`** (implemented, 6C.3 follow-up): every original publish and every correction recalculates the
   student's risk (`RiskEventProcessor`, group `setu-risk`, from the earliest offset). The event is only the reason to look again: the

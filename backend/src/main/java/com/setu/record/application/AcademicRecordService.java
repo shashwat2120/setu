@@ -30,7 +30,9 @@ import java.util.UUID;
  *       published grade and known credits. Courses with no published grade yet are left out rather than counted as
  *       zero, so this is a GPA "to date", not a final one.</li>
  * </ol>
- * Degree progress is a single completed-credits/required-credits ratio, not a per-requirement-group breakdown.
+ * Degree progress is a single completed-credits/required-credits ratio, not a per-requirement-group breakdown. Credits count when a course is
+ * <b>passed</b>: its enrollment is completed (its final grade was published) and that grade is not an F. A failed course is on the transcript, in
+ * the GPA at its grade points, and earns nothing toward the degree.
  * <p>
  * Everything this class needs from Academic (a student's enrollments and their courses, the student's curriculum and its required credits, who
  * owns a student profile) comes through two narrow shared ports, {@link RecordDirectory} and {@link AcademicDirectory}, and from Assessment's
@@ -43,8 +45,6 @@ public class AcademicRecordService {
 
     private static final String ADMIN_VIEW_PERMISSION = "VIEW_TENANT_DATA";
     private static final String DELEGATED_PERMISSION = "VIEW_ACADEMIC_STATUS";
-
-    private static final String COMPLETED = "COMPLETED";
 
     private final RecordDirectory recordDirectory;
     private final AcademicDirectory academicDirectory;
@@ -67,7 +67,7 @@ public class AcademicRecordService {
     /** {@code courseGradePoint} is the weighted rollup of {@code grades} (null when nothing is published yet) - see the class javadoc. */
     public record TranscriptLine(UUID enrollmentId, String courseCode, String courseTitle, BigDecimal credits,
                                   String sectionCode, String enrollmentStatus, List<GradeLine> grades,
-                                  BigDecimal courseGradePoint) {
+                                  BigDecimal courseGradePoint, String finalGrade) {
     }
 
     public record Transcript(List<TranscriptLine> lines, BigDecimal gpa) {
@@ -83,7 +83,7 @@ public class AcademicRecordService {
                 .map(g -> new GradeLine(g.componentId(), g.rawMarks(), g.gradeCode(), g.gradePoint())).toList();
             var weights = assessmentComponentService.weightsUnchecked(gradeLines.stream().map(GradeLine::componentId).toList());
             lines.add(new TranscriptLine(e.enrollmentId(), e.courseCode(), e.courseTitle(), e.credits(), e.sectionCode(),
-                e.status(), gradeLines, courseGradePoint(gradeLines, weights)));
+                e.status(), gradeLines, courseGradePoint(gradeLines, weights), e.finalGrade()));
         }
         return new Transcript(lines, creditWeightedGpa(lines));
     }
@@ -137,7 +137,7 @@ public class AcademicRecordService {
 
         BigDecimal completed = BigDecimal.ZERO;
         for (RecordDirectory.CourseEnrollment e : recordDirectory.enrollmentsOf(studentId)) {
-            if (COMPLETED.equals(e.status()) && e.credits() != null) {
+            if (e.passed() && e.credits() != null) {
                 completed = completed.add(e.credits());
             }
         }

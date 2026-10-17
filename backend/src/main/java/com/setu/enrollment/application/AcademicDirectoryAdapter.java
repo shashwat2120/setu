@@ -73,6 +73,11 @@ class AcademicDirectoryAdapter implements AcademicDirectory {
     }
 
     @Override
+    public Optional<UUID> gradableEnrollmentId(UUID sectionId, UUID studentId) {
+        return enrollments.findGradableEnrollmentId(sectionId, studentId);
+    }
+
+    @Override
     public Optional<EnrollmentRef> enrollment(UUID enrollmentId) {
         return enrollments.findEnrollmentSummary(enrollmentId).map(s -> new EnrollmentRef(s.tenantId(), s.sectionId(), s.studentId()));
     }

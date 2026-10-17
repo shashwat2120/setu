@@ -36,10 +36,19 @@ public class AssessmentComponent {
     @Column(name = "order_no")
     private Integer orderNo;
 
+    /** This component's published grade is the course's final grade: publishing it completes the student's enrollment. At most one per section. */
+    @Column(name = "is_final", nullable = false)
+    private boolean finalGrade;
+
     protected AssessmentComponent() {
     }
 
     public AssessmentComponent(UUID id, UUID assessmentId, String code, BigDecimal maxMarks, BigDecimal weight, Integer orderNo) {
+        this(id, assessmentId, code, maxMarks, weight, orderNo, false);
+    }
+
+    public AssessmentComponent(UUID id, UUID assessmentId, String code, BigDecimal maxMarks, BigDecimal weight, Integer orderNo,
+                               boolean finalGrade) {
         if (code == null || code.isBlank()) {
             throw new IllegalArgumentException("code must not be blank");
         }
@@ -55,6 +64,7 @@ public class AssessmentComponent {
         this.maxMarks = maxMarks;
         this.weight = weight;
         this.orderNo = orderNo;
+        this.finalGrade = finalGrade;
     }
 
     public UUID id() {
@@ -79,5 +89,9 @@ public class AssessmentComponent {
 
     public Integer orderNo() {
         return orderNo;
+    }
+
+    public boolean finalGrade() {
+        return finalGrade;
     }
 }

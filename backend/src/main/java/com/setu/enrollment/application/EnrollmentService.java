@@ -559,6 +559,14 @@ public class EnrollmentService {
             .map(Enrollment::id);
     }
 
+    /** The enrollment that can be graded: ENROLLED, or COMPLETED (its final grade was published and late grades or corrections may still follow). */
+    @Transactional(readOnly = true)
+    public Optional<UUID> findGradableEnrollmentId(UUID sectionId, UUID studentId) {
+        return enrollmentRepository.findBySectionIdAndStudentId(sectionId, studentId)
+            .filter(e -> e.status() == EnrollmentStatus.ENROLLED || e.status() == EnrollmentStatus.COMPLETED)
+            .map(Enrollment::id);
+    }
+
     /** Day 11 §Grades cross-module port: {@code assessment.application.GradeService} needs to resolve an enrollment's owning student/section/tenant from a bare {@code enrollmentId} (grades reference {@code enrollment_id} directly, per the ERD) without importing the {@code Enrollment} entity across the module boundary. */
     public record EnrollmentSummary(UUID tenantId, UUID sectionId, UUID studentId) {
     }

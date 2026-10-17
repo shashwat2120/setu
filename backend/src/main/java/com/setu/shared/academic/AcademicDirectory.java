@@ -52,6 +52,12 @@ public interface AcademicDirectory {
     /** The enrollment that puts this student in this section right now, if any. */
     Optional<UUID> activeEnrollmentId(UUID sectionId, UUID studentId);
 
+    /**
+     * The enrollment that can be graded in this section: one in force, or one that is completed (its final grade was published, and late
+     * components and corrections of that grade must still be possible). A dropped, waitlisted or rejected enrollment cannot be graded.
+     */
+    Optional<UUID> gradableEnrollmentId(UUID sectionId, UUID studentId);
+
     /** An enrollment's student, section and college, whatever its status. */
     Optional<EnrollmentRef> enrollment(UUID enrollmentId);
 

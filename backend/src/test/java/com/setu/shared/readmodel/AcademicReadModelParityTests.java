@@ -54,6 +54,8 @@ class AcademicReadModelParityTests {
     @Autowired
     JdbcClient jdbc;
     @Autowired
+    com.setu.enrollment.application.FinalGradeEventProcessor processor;
+    @Autowired
     ObjectMapper objectMapper;
     @Autowired
     Day7TestFixtures day7;
@@ -164,6 +166,7 @@ class AcademicReadModelParityTests {
         assertThat(directory.isActivelyAssigned(c.section, c.faculty.facultyId())).isEqualTo(monolithDirectory.isActivelyAssigned(c.section, c.faculty.facultyId()));
         assertThat(directory.isActivelyAssigned(c.section, UUID.randomUUID())).isFalse();
         assertThat(directory.activeEnrollmentId(c.section, c.student.studentId())).isEqualTo(monolithDirectory.activeEnrollmentId(c.section, c.student.studentId()));
+        assertThat(directory.gradableEnrollmentId(c.section, c.student.studentId())).isEqualTo(monolithDirectory.gradableEnrollmentId(c.section, c.student.studentId()));
         assertThat(directory.enrollment(c.enrollment)).isEqualTo(monolithDirectory.enrollment(c.enrollment));
         assertThat(directory.activeEnrollmentIds(c.section)).containsExactlyInAnyOrderElementsOf(monolithDirectory.activeEnrollmentIds(c.section));
         assertThat(directory.meeting(c.meeting)).isEqualTo(monolithDirectory.meeting(c.meeting));
@@ -224,6 +227,7 @@ class AcademicReadModelParityTests {
             assertParity(schema, c);
             var directory = new ReadModelAcademicDirectory(jdbc, schema);
             assertThat(directory.activeEnrollmentId(c.section, c.student.studentId())).isEmpty();
+            assertThat(directory.gradableEnrollmentId(c.section, c.student.studentId())).as("a dropped enrollment cannot be graded").isEmpty();
             assertThat(new ReadModelRoleGrantSource(jdbc, schema).activeGrants(c.assignedUser, Instant.now())).isEmpty();
             assertThat(directory.isActivelyAssigned(c.section, c.faculty.facultyId())).isFalse();
             assertThat(directory.facultyStatus(c.faculty.facultyId())).contains("ON_LEAVE");
@@ -231,6 +235,44 @@ class AcademicReadModelParityTests {
             assertThat(directory.meeting(c.meeting)).isEmpty();
             assertThat(new ReadModelGuardianDelegationChecker(jdbc, schema)
                 .hasActiveDelegatedAccess(c.guardian.guardianUserId(), c.student.studentId(), c.tenant.tenantId(), "VIEW_ATTENDANCE", Instant.now())).isFalse();
+        }
+    }
+
+    /**
+     * Publishing a final grade completes the enrollment. A completed enrollment is no longer active (the student is not in the course any more) but
+     * can still be graded (late components, corrections of the final grade), and the copy must say so exactly as Academic does, whichever order
+     * the events arrive in.
+     */
+    @Test
+    void aCompletedEnrollmentIsGradableButNotActiveInTheCopyAsInAcademic() {
+        College c = buildCollege("RP4");
+        UUID eventId = UUID.randomUUID();
+        processor.process("FinalGradePublished", eventId.toString(), c.tenant.tenantId().toString(),
+            "{\"eventId\":\"" + eventId + "\",\"tenantId\":\"" + c.tenant.tenantId() + "\",\"enrollmentId\":\"" + c.enrollment
+                + "\",\"gradeCode\":\"B\",\"publishedBy\":\"" + c.faculty.userId() + "\"}");
+        assertThat(monolithDirectory.activeEnrollmentId(c.section, c.student.studentId())).isEmpty();
+        assertThat(monolithDirectory.gradableEnrollmentId(c.section, c.student.studentId())).contains(c.enrollment);   // the scenario is not vacuous
+
+        List<Outbox> inOrder = history(c);
+        assertThat(inOrder).extracting(Outbox::type).contains("EnrollmentCompleted");
+        for (String schema : SCHEMAS) {
+            deliver(schema, inOrder);
+            assertParity(schema, c);
+            assertThat(new ReadModelAcademicDirectory(jdbc, schema).activeEnrollmentId(c.section, c.student.studentId())).isEmpty();
+            assertThat(new ReadModelAcademicDirectory(jdbc, schema).gradableEnrollmentId(c.section, c.student.studentId())).contains(c.enrollment);
+        }
+        // the same history the other way round, into a fresh copy, ends in the same state: the later event wins
+        College again = buildCollege("RP5");
+        UUID againEventId = UUID.randomUUID();
+        processor.process("FinalGradePublished", againEventId.toString(), again.tenant.tenantId().toString(),
+            "{\"eventId\":\"" + againEventId + "\",\"tenantId\":\"" + again.tenant.tenantId() + "\",\"enrollmentId\":\"" + again.enrollment
+                + "\",\"gradeCode\":\"F\",\"publishedBy\":\"" + again.faculty.userId() + "\"}");
+        List<Outbox> backwards = new java.util.ArrayList<>(history(again));
+        java.util.Collections.reverse(backwards);
+        for (String schema : SCHEMAS) {
+            deliver(schema, backwards);
+            assertParity(schema, again);
+            assertThat(new ReadModelAcademicDirectory(jdbc, schema).gradableEnrollmentId(again.section, again.student.studentId())).contains(again.enrollment);
         }
     }
 

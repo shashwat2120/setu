@@ -3,6 +3,7 @@ package com.setu.enrollment.application;
 import com.setu.catalog.application.CourseService;
 import com.setu.catalog.application.CurriculumRequirementService;
 import com.setu.enrollment.domain.CourseSection;
+import com.setu.enrollment.domain.EnrollmentStatus;
 import com.setu.enrollment.infrastructure.CourseSectionRepository;
 import com.setu.enrollment.infrastructure.EnrollmentRepository;
 import com.setu.shared.academic.RecordDirectory;
@@ -49,9 +50,11 @@ class RecordDirectoryAdapter implements RecordDirectory {
         return enrollments.findByStudentId(studentId, PageRequest.of(0, MAX_ENROLLMENTS)).getContent().stream().map(e -> {
             Optional<CourseSection> section = sections.findById(e.sectionId());
             Optional<CourseService.CourseSummary> course = section.flatMap(s -> courses.summaryUnchecked(s.courseId()));
+            // A completed row with no recorded grade (from before final grades were recorded) still counts as passed, as it does for a prerequisite.
+            boolean passed = e.status() == EnrollmentStatus.COMPLETED && (e.finalStatus() == null || FinalGrade.isPass(e.finalStatus()));
             return new CourseEnrollment(e.id(), e.status().name(), section.map(CourseSection::sectionCode).orElse(null),
                 course.map(CourseService.CourseSummary::code).orElse(null), course.map(CourseService.CourseSummary::title).orElse(null),
-                course.map(CourseService.CourseSummary::credits).orElse(null));
+                course.map(CourseService.CourseSummary::credits).orElse(null), e.finalStatus(), passed);
         }).toList();
     }
 

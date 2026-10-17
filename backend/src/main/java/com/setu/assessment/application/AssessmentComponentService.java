@@ -32,10 +32,13 @@ public class AssessmentComponentService {
     private final AssessmentService assessmentService;
     private final AuthorizationContext authorizationContext;
     private final AuditLogWriter auditLogWriter;
+    private final org.springframework.jdbc.core.simple.JdbcClient jdbc;
 
     public AssessmentComponentService(AssessmentComponentRepository assessmentComponentRepository,
                                        AssessmentComponentInsertGuard assessmentComponentInsertGuard, AssessmentService assessmentService,
-                                       AuthorizationContext authorizationContext, AuditLogWriter auditLogWriter) {
+                                       AuthorizationContext authorizationContext, AuditLogWriter auditLogWriter,
+                                       org.springframework.jdbc.core.simple.JdbcClient jdbc) {
+        this.jdbc = jdbc;
         this.assessmentComponentRepository = assessmentComponentRepository;
         this.assessmentComponentInsertGuard = assessmentComponentInsertGuard;
         this.assessmentService = assessmentService;
@@ -58,10 +61,24 @@ public class AssessmentComponentService {
 
         record CodeAlreadyInUse() implements CreateResult {
         }
+
+        /** The section already has a component that is its final grade; a course has one final grade. */
+        record FinalGradeComponentExists() implements CreateResult {
+        }
     }
 
     @Transactional
     public CreateResult create(UUID assessmentId, String code, BigDecimal maxMarks, BigDecimal weight, Integer orderNo) {
+        return create(assessmentId, code, maxMarks, weight, orderNo, false);
+    }
+
+    /**
+     * @param finalGrade whether this component's published grade is the course's final grade, whose publication completes the student's
+     *                   enrollment. A section has at most one such component; the check is made under a per-section lock so two components
+     *                   created at once cannot both claim it.
+     */
+    @Transactional
+    public CreateResult create(UUID assessmentId, String code, BigDecimal maxMarks, BigDecimal weight, Integer orderNo, boolean finalGrade) {
         Optional<Assessment> maybeAssessment = assessmentService.findById(assessmentId);
         if (maybeAssessment.isEmpty()) {
             return new CreateResult.AssessmentNotFound();
@@ -74,9 +91,15 @@ public class AssessmentComponentService {
 
         AssessmentComponent component;
         try {
-            component = new AssessmentComponent(UUID.randomUUID(), assessmentId, code, maxMarks, weight, orderNo);
+            component = new AssessmentComponent(UUID.randomUUID(), assessmentId, code, maxMarks, weight, orderNo, finalGrade);
         } catch (IllegalArgumentException e) {
             return new CreateResult.InvalidComponentData(e.getMessage());
+        }
+        if (finalGrade) {
+            jdbc.sql("SELECT pg_advisory_xact_lock(hashtext(:key))").param("key", "final-grade-component:" + assessment.sectionId()).query().singleRow();
+            if (assessmentComponentRepository.countFinalInSection(assessment.sectionId()) > 0) {
+                return new CreateResult.FinalGradeComponentExists();
+            }
         }
         try {
             assessmentComponentInsertGuard.insert(component);
@@ -84,7 +107,7 @@ public class AssessmentComponentService {
             return new CreateResult.CodeAlreadyInUse();
         }
         auditLogWriter.write(assessment.tenantId(), authorizationContext.currentUserId(), "ASSESSMENT_UPDATED",
-            "assessment.assessment_components", component.id(), Map.of("assessmentId", assessmentId, "code", code));
+            "assessment.assessment_components", component.id(), Map.of("assessmentId", assessmentId, "code", code, "finalGrade", finalGrade));
         return new CreateResult.Success(component.id());
     }
 

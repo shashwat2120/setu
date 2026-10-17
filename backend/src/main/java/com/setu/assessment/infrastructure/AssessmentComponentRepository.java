@@ -15,6 +15,10 @@ public interface AssessmentComponentRepository extends JpaRepository<AssessmentC
 
     List<AssessmentComponent> findByAssessmentId(UUID assessmentId);
 
+    /** How many components across all of a section's assessments are marked as the final grade. */
+    @Query("select count(c) from AssessmentComponent c, Assessment a where c.assessmentId = a.id and a.sectionId = :sectionId and c.finalGrade = true")
+    long countFinalInSection(@Param("sectionId") UUID sectionId);
+
     /**
      * Serialization anchor for {@code GradeService#publishOrCorrect} — see
      * that method's javadoc for why a lock scoped to the mutable {@code
