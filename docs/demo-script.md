@@ -25,8 +25,8 @@ The backend loads ignored `backend/.env.local` automatically. Set
 `GEMINI_API_KEY` there and the demo defaults to `google-genai` with
 `GEMINI_MODEL` to a model that answers for your key (the code default, `gemini-3.8-flash`, accepted requests but never
 answered on the key used while building this, so every advisor call waited out its timeout; `gemini-3.5-flash-lite` answers in
-about 2-3 seconds, see [backend/README.md](../backend/README.md#ai-advisor)). Tests use Ollama by default; the live bridge
-explicitly uses the configured Gemini provider.
+about 2-3 seconds, see [backend/README.md](../backend/README.md#ai-advisor)). Gemini is the primary provider everywhere (tests included); with no key the run starts on the local Ollama model and logs a
+warning, and if Gemini fails mid-demo a second Gemini model and then Ollama answer instead.
 
 ## 1. Password login → role-scoped dashboard
 
@@ -141,13 +141,13 @@ As faculty or admin, Student Success → a MEDIUM/HIGH student → a proposed
 
 Log in as a student, e.g. `student.strong@demo.setu.local`. AI Advisor tab
 → ask "how am I doing this term?" The answer comes from a real Spring AI +
-Ollama (`llama3.2:3b`) round trip through the application-owned tool set
+Gemini round trip (local Ollama `llama3.2:3b` only as the last-resort fallback) through the application-owned tool set
 (`getStudentAttendance`, `getAcademicProgress`, `getAssessmentResults`,
 etc.), each tool scoped to self via `AiAccessSupport`, with the exact input
 payload logged. It is not a canned response — a different question gets a
 different, model-generated answer grounded in that student's real data.
 
-**Known gap:** the local 3B model is genuinely small and occasionally
+**Known gap (fallback only):** the local 3B model is genuinely small and occasionally
 mis-parses a tool call (e.g. claiming a required parameter is missing when
 the tool description says it can be omitted for self). That is a real,
 disclosed model-quality limitation — the frontend sends only `{message}`
@@ -197,9 +197,11 @@ Then do step 2 (scan attendance) or step 3 (publish a grade) and watch the event
 headers (`event_id`, `event_type`, `event_version`, `correlation_id`, `tenant_id`). `.\infra\scripts\kafka-demo.ps1 tail grades`
 prints the last events on one topic.
 
-**Consumers, stated plainly:** one consumer exists, the notification module's (grade published, payments, placement, recommendation,
-intervention, admission become rows in `notification.notifications`; see `docs/kafka-event-catalog.md`). The bell in the app header lists them for the person they belong to
-(`GET /notifications`). The Analytics consumer and the others in the catalog are Sprint 6B.
+**Consumers, stated plainly:** two kinds exist. The notification consumer turns grade published, payments, placement, recommendation,
+intervention and admission events into rows in `notification.notifications` (see `docs/kafka-event-catalog.md`); the bell in the app header lists
+them for the person they belong to (`GET /notifications`). Every extracted service also runs a read-model consumer that keeps its copy of identity
+and academic facts current ([extracted-services](contracts/extracted-services.md)). Both retry three times, then dead-letter to `{topic}.DLQ`.
+An Analytics consumer does not exist.
 
 **Startup delay on this dev machine:** a Windows JDK NIO defect ("Unable to establish loopback connection") stops any
 Java Kafka client from starting for a while after the bridge launches (reproducible with a 5-line
@@ -210,20 +212,19 @@ nothing is lost; `kafka-demo.ps1 status` shows `NEW` rows draining to `PUBLISHED
 early as possible and run `status` before presenting; if rows are still `NEW`, demo with the broker contents already
 published (`tail`) and say so.
 
-## What this demo does **not** attempt (honest gaps, not oversights)
+## What this demo does not show (honest gaps, not oversights)
 
-- **Grafana / Prometheus dashboards** — not built. Only `health`, `info`,
-  and `modulith` actuator endpoints are exposed
-  (`application.yml`'s `management.endpoints.web.exposure.include`); no
-  Micrometer Prometheus registry is wired. This is 5F.2 scope that was not
-  reached.
-- **Sprint 6 distributed architecture walkthrough** — Sprint 6 extraction
-  (Identity/Academic/Learning/Assessment/Attendance services, the gateway,
-  Kafka contract versioning across services) has not started. Everything
-  demoed above runs inside the single Sprint 5 Modulith backend.
-- **Passkey login** — see step 1.
-- **Live WebSocket demo** — see step 2; real code, unverifiable live only
-  in this specific dev environment.
+The full list, with reasons and the roadmap, is [known-limitations-and-roadmap.md](known-limitations-and-roadmap.md); the stage-by-stage view of
+the canonical §16 flow is [final-demo.md](final-demo.md). In short:
+
+- **The distributed layout is not run live.** This script drives the single process on the development bridge. The extracted services
+  (Identity, Academic, Learning, Assessment, Attendance, Notification, AI, behind the gateway) are verified through wiring, contract and failure
+  tests; see [architecture-walkthrough.md](architecture-walkthrough.md). A multi-process run is not possible on this Windows machine.
+- **Grafana, Tempo and Loki exist** (`docker compose up`, http://localhost:3001) and the dashboards are checked against the code, but were not
+  watched against a live multi-service scrape.
+- **Passkey login** needs a real authenticator; see step 1.
+- **Live WebSocket updates** cannot be watched through the bridge; see step 2.
+- **Risk recalculation is started by a person** (step 3/4), not by the grade event.
 
 ## Anticipated reviewer questions
 
@@ -240,10 +241,9 @@ have no registered passkey, so they cannot complete it. A real user with a
 registered passkey would succeed.
 
 **"Is the AI actually calling a model, or is that canned?"**
-Genuinely local Ollama inference — ask it something unusual and the
-phrasing changes every time, unlike a canned response. The tool-calling
-occasionally fails on the small local model; that failure is shown
-verbatim, never smoothed over.
+A real model call: Gemini first, a second Gemini model next, local Ollama as the last resort. Ask it something unusual and the
+phrasing changes every time, unlike a canned response. If a provider fails the next one answers, or the advisor says it is unavailable; it never
+invents an answer, and a small local model's occasional tool-call mistake is shown verbatim, never smoothed over.
 
 **"How do I know the risk score isn't just a random number?"**
 Every `RiskScore` row stores its rule version, a feature-snapshot hash, and

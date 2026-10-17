@@ -27,7 +27,9 @@ token.
 | learning | Learning | `/learning/**` | nothing |
 | assessment | Assessment | `/assessment/**` | nothing |
 | attendance | Attendance | `/attendance/**`, `/staff-attendance/**` | nothing |
-| core | everything not yet extracted (record, risk, career, finance, notification, AI, onboarding) | `/**` | API docs and Swagger UI |
+| notification | Notification | `/notifications/**` (live delivery `/ws` is not proxied) | nothing |
+| ai | AI | `/ai/**` (its facts, `/ai-facts/**`, are served by the service that holds the data and fall to core) | nothing |
+| core | everything not yet extracted (record, risk, career, finance, onboarding) | `/**` | API docs and Swagger UI |
 
 `GatewayRouteCoverageTests` reads every endpoint from the running application and fails if any would reach the wrong service, if a route
 pattern has no endpoint behind it, or if anything other than sign-in and key publication is open at the gateway. Moving a module into its

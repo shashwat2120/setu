@@ -106,6 +106,10 @@ if you change `infra/docker/.env`.
 A second college (`admin.mrd@`, `faculty.mrd@`, `student.mrd@`) exists to show tenant isolation. The full list is printed in the
 backend log at startup, and the click-through is in [docs/demo-script.md](docs/demo-script.md).
 
+The canonical end-to-end flow, stage by stage with its evidence, is [docs/final-demo.md](docs/final-demo.md); how it is distributed across the
+services is [docs/architecture-walkthrough.md](docs/architecture-walkthrough.md); what was measured is [docs/validation-report.md](docs/validation-report.md);
+and what is not done is [docs/known-limitations-and-roadmap.md](docs/known-limitations-and-roadmap.md).
+
 ## What is built
 
 - **Identity:** passkey and Argon2id password sign-in, rotating refresh tokens, rate-limited login and password reset, and a
