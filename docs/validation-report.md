@@ -43,21 +43,31 @@ Logs now go to the console and OpenTelemetry only, a file is opt-in (`file-logs`
 `ModularityTests` and config suites were rerun after the fix and passed. The other 20 chunks of the second run had passed before the fix; the fix
 touches only the logging configuration and was not followed by a third full run.
 
-The counts below are from the second run.
+A third full run (21 chunks) was made on the tree that includes "publishing a final grade completes the enrollment" (commit `1ad3fca`). Nineteen
+chunks passed the first time. Two did not, neither because of the code:
+
+- **`risk`**: one error, `RiskHttpTests`, "Time elapsed: 80849 s". The machine was suspended in the middle of the run (about 22 hours), its
+  database connections were closed and the pool timed out waiting. Rerun on its own: all 60 tests pass.
+- **`AiChat*`**: one error, `AiChatIntegrationTests.ignoresAnInstructionEmbeddedInsideARetrievedPolicyDocument`, "timed out (primary budget 60s,
+  overall 60s)". That test makes the live Gemini model call a tool and answer within 60 seconds, and the model was slower than that on two runs in a
+  row after answering in time earlier. With the budget raised to 180 s it passes, the model taking 69 s. It is a test that depends on live-model
+  latency, not on anything the platform does; the other 24 tests of the chunk passed.
+
+The counts below are from the third run (the two reruns above for `risk` and that one test).
 
 | Chunk | Tests |
 |---|---|
 | academic | 19 |
 | aiexplain + aifacts (excluding AiChat*) | 73 |
 | aiexplain AiChat* | 25 |
-| assessment | 63 |
+| assessment | 72 |
 | attendance | 124 |
 | audit | 39 |
 | career | 25 |
 | catalog | 63 |
-| config | 36 |
+| config | 37 |
 | directory | 34 |
-| enrollment | 73 |
+| enrollment | 106 |
 | finance | 24 |
 | gateway | 56 |
 | guardianaccess | 7 |
@@ -65,9 +75,9 @@ The counts below are from the second run.
 | institution | 35 |
 | learning | 91 |
 | notification (excluding the broker-backed Kafka test) | 37 |
-| record | 8 |
+| record | 20 |
 | risk (includes the grade-event consumer: 21 tests) | 60 |
-| shared kernel + `ModularityTests` | 124 |
+| shared kernel + `ModularityTests` | 125 |
 
 Excluded by design: tag `live-ollama` (needs a local model), tag `live-gemini` (needs a key and spends embedding quota), tag `performance` (run
 above, separately), and `NotificationKafkaConsumerTests`, which cannot open an NIO selector on this machine (its retry/DLQ policy is covered by
@@ -85,6 +95,7 @@ above, separately), and `NotificationKafkaConsumerTests`, which cannot open an N
 | Entry-point defaults are not silently shadowed | `EntryPointDefaultsTests`, `EntryPointDefaultsPrecedenceTests` |
 | Risk recalculates on a grade event; idempotent, tenant-checked, one at a time per student, refusals leave nothing | `RiskEventProcessorTests`, `RiskEventListenerTests`, `RiskErrorHandlerTests`, `RiskConsumerWiringTests` (without a broker) |
 | Logs go to console and OpenTelemetry, no file unless asked for | `LoggingSystemTests` |
+| A final grade completes the enrollment; a failing grade earns no credit; grading carries on after completion | `FinalGradeEventProcessorTests`, `FinalGradeFlowTests`, `FinalGradeComponentTests`, `FinalGradePrerequisiteTests`, `RecordDirectoryTests` |
 | Trace context survives the outbox | `OutboxTraceParentTests`, `shared.observability` tests |
 | Model call and embedder time out visibly; second Gemini model before Ollama | `AiChatSecondaryGeminiTests`, `SpringAiTextEmbedderTests` |
 
