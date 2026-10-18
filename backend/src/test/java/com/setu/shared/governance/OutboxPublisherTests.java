@@ -56,6 +56,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 @SpringBootTest
 class OutboxPublisherTests {
 
+    @org.springframework.beans.factory.annotation.Value("${app.outbox.topic-prefix}")
+    String topicPrefix;
+
     @TestConfiguration
     static class StubKafkaConfig {
         @Bean
@@ -150,7 +153,7 @@ class OutboxPublisherTests {
 
         ProducerRecord<String, String> record = recording().sent.stream()
             .filter(r -> r.key().equals(aggregateId.toString())).findFirst().orElseThrow();
-        assertThat(record.topic()).isEqualTo("setu." + aggregateType);
+        assertThat(record.topic()).isEqualTo(topicPrefix + aggregateType);
         // Whitespace only: JSONB round-trips through Postgres with reformatted spacing (same finding as Day 13's
         // feature_snapshot) — the value is read back from the row after saveAndFlush, not the original literal.
         assertThat(record.value()).contains("\"test\"").contains("true");

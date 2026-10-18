@@ -31,6 +31,8 @@ import java.util.Map;
 @Configuration(proxyBeanMethods = false)
 @EnableAutoConfiguration(exclude = UserDetailsServiceAutoConfiguration.class, excludeName = {
     "org.springframework.modulith.runtime.autoconfigure.SpringModulithRuntimeAutoConfiguration",
+    // its endpoint needs the runtime bean excluded above: left in, the service dies at start-up (found by running the services in containers)
+    "org.springframework.modulith.actuator.autoconfigure.ApplicationModulesEndpointConfiguration",
     "org.springframework.modulith.observability.autoconfigure.ModuleObservabilityAutoConfiguration",
     "org.springframework.boot.jdbc.autoconfigure.DataSourceAutoConfiguration",
     "org.springframework.boot.jdbc.autoconfigure.DataSourceTransactionManagerAutoConfiguration",

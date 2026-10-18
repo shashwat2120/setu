@@ -58,6 +58,8 @@ public class ConfigServerApplication {
         SpringApplication application = new SpringApplication(ConfigServerApplication.class);
         application.setDefaultProperties(Map.of(
             "setu.service", "config",
+            // not the advisor: no model client to create
+            "AI_PROVIDER", "none",
             "APPLICATION_NAME", "config-server",
             "spring.flyway.enabled", "false",
             "SERVER_PORT", "8888"));

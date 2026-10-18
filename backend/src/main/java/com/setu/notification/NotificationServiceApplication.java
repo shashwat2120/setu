@@ -34,6 +34,8 @@ import java.util.Map;
 @Configuration(proxyBeanMethods = false)
 @EnableAutoConfiguration(exclude = UserDetailsServiceAutoConfiguration.class, excludeName = {
     "org.springframework.modulith.runtime.autoconfigure.SpringModulithRuntimeAutoConfiguration",
+    // its endpoint needs the runtime bean excluded above: left in, the service dies at start-up (found by running the services in containers)
+    "org.springframework.modulith.actuator.autoconfigure.ApplicationModulesEndpointConfiguration",
     "org.springframework.modulith.observability.autoconfigure.ModuleObservabilityAutoConfiguration"
 })
 @AutoConfigurationPackage(basePackages = {"com.setu.notification", "com.setu.shared"})
@@ -64,6 +66,8 @@ public class NotificationServiceApplication {
             "spring.flyway.enabled", "false",
             "SERVER_PORT", "8087"));
         // live notifications are pushed from here, so the shared WebSocket/STOMP support stays on (app.realtime.enabled defaults to true)
+        // not the advisor: no model client to create, and no warning about a key it will never use
+        defaults.put("AI_PROVIDER", "none");
         application.setDefaultProperties(defaults);
         application.run(args);
     }

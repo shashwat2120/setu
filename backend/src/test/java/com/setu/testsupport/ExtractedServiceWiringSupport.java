@@ -199,6 +199,23 @@ public abstract class ExtractedServiceWiringSupport {
         assertThat(read(token(facultyUser, null, IDENTITY_KEY, "unknown-key"))).as("unknown key id").isEqualTo(401);
     }
 
+    /**
+     * A WebSocket handshake is a plain HTTP request with no Authorization header a browser can set, so the HTTP chain cannot ask it for a token; the
+     * authentication boundary of a live connection is the STOMP CONNECT frame. A service that serves live connections must let the handshake
+     * through to it, and one that serves none must not: its /ws stays closed. Left out of the services' chain, every extracted service's WebSocket was
+     * refused with a 401 before STOMP began, which no in-process STOMP test can see.
+     */
+    @Test
+    void theWebSocketHandshakeReachesStompOnlyInAServiceThatServesLiveConnections() throws Exception {
+        boolean realtime = Boolean.parseBoolean(context.getEnvironment().getProperty("app.realtime.enabled", "true"));
+        int status = mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/ws")).andReturn().getResponse().getStatus();
+        if (realtime) {
+            assertThat(status).as("the handshake is not stopped by the HTTP filter chain").isNotEqualTo(401);
+        } else {
+            assertThat(status).as("a service with no live connections keeps /ws closed to the unauthenticated").isEqualTo(401);
+        }
+    }
+
     @Test
     void theAssignedFacultyMemberIsDecidedFromTheReadModelAndAnEndedAssignmentStopsWorkingAtOnce() throws Exception {
         String bearer = token(facultyUser, null, IDENTITY_KEY, "test-key");

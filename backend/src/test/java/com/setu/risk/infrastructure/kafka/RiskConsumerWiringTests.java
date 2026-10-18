@@ -21,6 +21,8 @@ class RiskConsumerWiringTests {
     @MockitoBean
     RiskConsumerStarter starter;
 
+    @org.springframework.beans.factory.annotation.Value("${app.outbox.topic-prefix}")
+    String topicPrefix;
     @Autowired
     KafkaListenerEndpointRegistry registry;
     @Autowired
@@ -32,7 +34,7 @@ class RiskConsumerWiringTests {
 
         assertThat(container).as("registered under its id").isNotNull();
         assertThat(container.isRunning()).as("not started with the context; the starter does that, with retries").isFalse();
-        assertThat(container.getContainerProperties().getTopics()).containsExactly("setu.grades");
+        assertThat(container.getContainerProperties().getTopics()).containsExactly(topicPrefix + "grades");
         assertThat(container.getGroupId()).isEqualTo("setu-risk");
         assertThat(container.getContainerProperties().getKafkaConsumerProperties().getProperty("auto.offset.reset")).isEqualTo("earliest");
     }

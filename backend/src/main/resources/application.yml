@@ -190,6 +190,12 @@ management:
       percentiles-histogram:
         "[http.server.requests]": true
         "[setu.outbound]": true
+  # Metrics are scraped by Prometheus and never pushed. Micrometer's OTLP registry is on the classpath (it comes with the OpenTelemetry
+  # starter) and, left on, tries to push to localhost:4318 every minute and logs a warning each time when nothing listens there.
+  otlp:
+    metrics:
+      export:
+        enabled: false
   # 6C.1 (docs/contracts/observability.md). Every request, Kafka listener and observed outbound call is a span with a trace id that appears in the
   # log lines. Spans are only SENT anywhere when OTEL_TRACES_EXPORT_ENABLED=true (the compose stack's Tempo); logs likewise with
   # OTEL_LOGS_EXPORT_ENABLED=true (Loki's OTLP endpoint). Metrics are scraped by Prometheus, never pushed.

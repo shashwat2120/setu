@@ -254,7 +254,10 @@ public class DemoDataSeeder implements ApplicationRunner {
                            com.setu.catalog.application.CurriculumRequirementService curriculumRequirementService,
                            com.setu.attendance.application.FacultyAttendanceService facultyAttendanceService,
                            com.setu.attendance.application.FacultyRegularisationService facultyRegularisationService,
-                           com.setu.learning.application.LessonResourceService lessonResourceService) {
+                           com.setu.learning.application.LessonResourceService lessonResourceService,
+                           com.setu.shared.governance.AuditLogWriter auditLogWriter, org.springframework.jdbc.core.simple.JdbcClient jdbc) {
+        this.auditLogWriter = auditLogWriter;
+        this.jdbc = jdbc;
         this.facultyRegularisationService = facultyRegularisationService;
         this.lessonResourceService = lessonResourceService;
         this.curriculumRequirementService = curriculumRequirementService;
@@ -312,6 +315,12 @@ public class DemoDataSeeder implements ApplicationRunner {
         this.placementRecordService = placementRecordService;
     }
 
+    private final com.setu.shared.governance.AuditLogWriter auditLogWriter;
+    private final org.springframework.jdbc.core.simple.JdbcClient jdbc;
+
+    /** The audit entry written when seeding has finished: what a restart looks for to know there is nothing to do. */
+    static final String SEEDED_MARKER = "DEMO_DATA_SEEDED";
+
     private record Account(UUID userId, String email) {
     }
 
@@ -327,6 +336,12 @@ public class DemoDataSeeder implements ApplicationRunner {
         if (!enabled) {
             return;
         }
+        String superAdminEmail = demoEmail("super.admin");
+        if (seedingFinishedFor(superAdminEmail)) {
+            // A restart of a service whose database outlives it (a container, a persistent volume) must not die on its own data.
+            log.info("=== Setu demo data seeding: skipped, it has already been done for {} ===", superAdminEmail);
+            return;
+        }
         log.info("=== Setu demo data seeding: starting ===");
         try {
             List<String> credentials = new ArrayList<>();
@@ -334,12 +349,23 @@ public class DemoDataSeeder implements ApplicationRunner {
             seedTenantA(superAdmin, credentials);
             seedTenantB(credentials);
 
+            auditLogWriter.write(null, null, SEEDED_MARKER, "demo-data", null, java.util.Map.of("superAdmin", superAdminEmail));
             log.info("=== Setu demo data seeding: complete ===");
             log.info("--- Demo credentials (dev-only, never real accounts) ---");
             credentials.forEach(log::info);
         } finally {
             userDirectoryService.clearSeedAuthentication();
         }
+    }
+
+    /**
+     * Whether an earlier run finished seeding this exact demo (the same super admin address). Seeding is many transactions, not one, so "the
+     * super admin exists" cannot mean "done": a run that died half way would be taken for a finished one. Only the marker written at the very
+     * end counts. Data without a marker (an earlier run that did not finish) is left to fail loudly, as before: start from a clean database.
+     */
+    private boolean seedingFinishedFor(String superAdminEmail) {
+        return jdbc.sql("SELECT EXISTS (SELECT 1 FROM governance.audit_logs WHERE action = :action AND after_json ->> 'superAdmin' = :email)")
+            .param("action", SEEDED_MARKER).param("email", superAdminEmail).query(Boolean.class).single();
     }
 
     // ---------------------------------------------------------------- platform bootstrap

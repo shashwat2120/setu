@@ -79,6 +79,54 @@ class EntryPointDefaultsTests {
         assertThat(unread).as("placeholder defaults that application.yml never reads").isEmpty();
     }
 
+    /**
+     * Spring Modulith's actuator endpoint needs the runtime bean that every service entry point deliberately excludes. Left in, the service
+     * fails to start with "required a bean of type ApplicationModulesRuntime that could not be found". No in-process test builds that endpoint, so
+     * this was found only by running the services as real processes, and every one of them was affected.
+     */
+    @Test
+    void anEntryPointThatExcludesTheModulithRuntimeAlsoExcludesTheEndpointThatNeedsIt() throws IOException {
+        int checked = 0;
+        try (Stream<Path> files = Files.walk(MAIN)) {
+            for (Path file : files.filter(p -> p.getFileName().toString().endsWith("Application.java")).toList()) {
+                String text = Files.readString(file, StandardCharsets.UTF_8);
+                if (text.contains("SpringModulithRuntimeAutoConfiguration")) {
+                    checked++;
+                    assertThat(text).as(file.getFileName() + " excludes the Modulith runtime, so it must exclude its actuator endpoint too")
+                        .contains("ApplicationModulesEndpointConfiguration");
+                }
+            }
+        }
+        assertThat(checked).as("the scan finds the service entry points").isGreaterThanOrEqualTo(9);
+    }
+
+    /**
+     * Spring AI creates a model client for the chat provider that is configured, on the classpath of every service. A service that has nothing to do
+     * with the advisor has no use for one, and without a key it logs a warning about a credential it will never need. Only the advisor's service
+     * keeps the provider; every other entry point turns it off (AI_PROVIDER is the placeholder the yml reads for it).
+     */
+    @Test
+    void onlyTheAdvisorServiceStartsAModelClient() throws IOException {
+        Pattern service = Pattern.compile("\"setu\\.service\",\\s*\"([a-z]+)\"");
+        int checked = 0;
+        try (Stream<Path> files = Files.walk(MAIN)) {
+            for (Path file : files.filter(p -> p.getFileName().toString().endsWith("Application.java")).toList()) {
+                String text = Files.readString(file, StandardCharsets.UTF_8);
+                Matcher m = service.matcher(text);
+                if (!m.find()) {
+                    continue;
+                }
+                checked++;
+                if (m.group(1).equals("ai")) {
+                    assertThat(text).as("the advisor service keeps its model").doesNotContain("\"AI_PROVIDER\", \"none\"");
+                } else {
+                    assertThat(text).as(file.getFileName() + " is not the advisor, so it starts no model client").contains("\"AI_PROVIDER\", \"none\"");
+                }
+            }
+        }
+        assertThat(checked).isGreaterThanOrEqualTo(9);
+    }
+
     @Test
     void everyServiceHasItsOwnPortAndItsOwnName() throws IOException {
         Pattern service = Pattern.compile("\"setu\\.service\",\\s*\"([a-z]+)\"");

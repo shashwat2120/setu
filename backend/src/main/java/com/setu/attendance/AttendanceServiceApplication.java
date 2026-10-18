@@ -31,6 +31,8 @@ import java.util.Map;
 @Configuration(proxyBeanMethods = false)
 @EnableAutoConfiguration(exclude = UserDetailsServiceAutoConfiguration.class, excludeName = {
     "org.springframework.modulith.runtime.autoconfigure.SpringModulithRuntimeAutoConfiguration",
+    // its endpoint needs the runtime bean excluded above: left in, the service dies at start-up (found by running the services in containers)
+    "org.springframework.modulith.actuator.autoconfigure.ApplicationModulesEndpointConfiguration",
     "org.springframework.modulith.observability.autoconfigure.ModuleObservabilityAutoConfiguration"
 })
 @AutoConfigurationPackage(basePackages = {"com.setu.attendance", "com.setu.shared"})
@@ -61,6 +63,8 @@ public class AttendanceServiceApplication {
             "spring.flyway.enabled", "false",
             "SERVER_PORT", "8086"));
         // the live board is served here, so the shared WebSocket/STOMP support stays on (app.realtime.enabled defaults to true)
+        // not the advisor: no model client to create, and no warning about a key it will never use
+        defaults.put("AI_PROVIDER", "none");
         application.setDefaultProperties(defaults);
         application.run(args);
     }

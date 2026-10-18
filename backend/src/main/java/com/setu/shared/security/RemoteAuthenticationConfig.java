@@ -36,7 +36,8 @@ public class RemoteAuthenticationConfig {
     @Bean
     SecurityFilterChain remoteSecurityFilterChain(HttpSecurity http, RemoteTokenAuthenticator authenticator, ObjectMapper objectMapper,
                                                   @org.springframework.beans.factory.annotation.Value("${setu.internal.token:}") String internalToken,
-                                                  @org.springframework.beans.factory.annotation.Value("${app.metrics.scrape-token:}") String metricsScrapeToken) throws Exception {
+                                                  @org.springframework.beans.factory.annotation.Value("${app.metrics.scrape-token:}") String metricsScrapeToken,
+                                                  @org.springframework.beans.factory.annotation.Value("${app.realtime.enabled:true}") boolean realtime) throws Exception {
         http
             .csrf(AbstractHttpConfigurer::disable)
             .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
@@ -55,6 +56,11 @@ public class RemoteAuthenticationConfig {
                 .requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
                 // service-to-service questions (docs/contracts/data-ownership.md): only the internal token, never a user's
                 .requestMatchers(InternalCallAuthFilter.PREFIX + "**").hasAuthority(InternalCallAuthFilter.AUTHORITY)
+                // A service that serves live connections (the Attendance board, the notification bell, the advisor's job status): the HTTP handshake of a
+                // WebSocket carries no Authorization header a browser can set, so it cannot be authenticated here; the boundary is the STOMP CONNECT frame, which
+                // the channel interceptor checks (StompAuthorizationChannelInterceptor), as in the monolith's chain. A service that serves none keeps /ws closed.
+                // Left out, every WebSocket of the extracted services was refused with a 401 before STOMP began: found only by connecting to a running one.
+                .requestMatchers((org.springframework.security.web.util.matcher.RequestMatcher) request -> realtime && request.getRequestURI().matches("/ws(/.*)?")).permitAll()
                 .anyRequest().authenticated())
             .addFilterBefore(new MetricsScrapeAuthFilter(metricsScrapeToken), UsernamePasswordAuthenticationFilter.class)
             .addFilterBefore(new InternalCallAuthFilter(internalToken), UsernamePasswordAuthenticationFilter.class)

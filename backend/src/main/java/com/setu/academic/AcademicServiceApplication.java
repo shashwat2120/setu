@@ -32,6 +32,8 @@ import java.util.Map;
 @EnableAutoConfiguration(exclude = UserDetailsServiceAutoConfiguration.class, excludeName = {
     // Spring Modulith's runtime/observability describe the monolith's module graph and look for its @SpringBootApplication.
     "org.springframework.modulith.runtime.autoconfigure.SpringModulithRuntimeAutoConfiguration",
+    // its endpoint needs the runtime bean excluded above: left in, the service dies at start-up (found by running the services in containers)
+    "org.springframework.modulith.actuator.autoconfigure.ApplicationModulesEndpointConfiguration",
     "org.springframework.modulith.observability.autoconfigure.ModuleObservabilityAutoConfiguration"
 })
 @AutoConfigurationPackage(basePackages = {"com.setu.academic", "com.setu.institution", "com.setu.catalog", "com.setu.enrollment",
@@ -60,6 +62,8 @@ public class AcademicServiceApplication {
             "SERVER_PORT", "8082"));
         // no live connections here: leave the shared WebSocket/STOMP support to the services that serve them
         defaults.put("app.realtime.enabled", "false");
+        // not the advisor: no model client to create, and no warning about a key it will never use
+        defaults.put("AI_PROVIDER", "none");
         application.setDefaultProperties(defaults);
         application.run(args);
     }

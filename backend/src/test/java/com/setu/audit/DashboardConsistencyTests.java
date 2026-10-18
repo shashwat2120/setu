@@ -128,7 +128,7 @@ class DashboardConsistencyTests {
         listening.keySet().retainAll(Set.of("identity", "academic", "learning", "assessment", "attendance", "notification", "ai", "gateway"));
 
         String config = Files.readString(PROMETHEUS, StandardCharsets.UTF_8);
-        Pattern target = Pattern.compile("targets:\\s*\\['host\\.docker\\.internal:(\\d+)'\\]\\s*labels:\\s*\\{\\s*service:\\s*([a-z-]+)\\s*}");
+        Pattern target = Pattern.compile("targets:\\s*\\['(?:host\\.docker\\.internal|[a-z]+):(\\d+)'\\]\\s*labels:\\s*\\{\\s*service:\\s*([a-z-]+)\\s*}");
         Matcher t = target.matcher(config);
         Map<String, String> scraped = new TreeMap<>();
         while (t.find()) {

@@ -63,6 +63,8 @@ public class GatewayApplication {
         SpringApplication application = new SpringApplication(GatewayApplication.class);
         application.setDefaultProperties(Map.of(
             "setu.service", "gateway",
+            // not the advisor: no model client to create
+            "AI_PROVIDER", "none",
             "setu.auth.mode", "remote",
             "APPLICATION_NAME", "gateway",
             "spring.flyway.enabled", "false",
