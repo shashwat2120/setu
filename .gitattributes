@@ -1,2 +1,6 @@
 # Shell scripts run under bash even on a Windows checkout, where a CRLF would break them.
 *.sh text eol=lf
+
+# A Dockerfile is read by a Linux build: a CRLF would break its line continuations.
+Dockerfile* text eol=lf
+**/Dockerfile* text eol=lf
