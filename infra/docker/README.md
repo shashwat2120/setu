@@ -79,3 +79,20 @@ the engine is not up yet (after a reboot, for example): start Docker Desktop and
 The Kafka outbox publisher can take a while to start publishing on some Windows machines (a JDK networking quirk described in
 [backend/README.md](../../backend/README.md#running-on-windows)). Events wait safely in the outbox table with status `NEW` and
 publish once the producer comes up.
+
+## Containerised services
+
+The Setu services themselves (the gateway, Identity, Academic, Learning, Assessment, Attendance, Notification, the advisor and the core process) can run
+as containers next to the infrastructure above. They are an overlay, `docker-compose.services.yml`; the whole story, what was verified and the numbers
+are in [docs/contracts/containers.md](../../docs/contracts/containers.md).
+
+1. Secrets, once, in the git-ignored `.env` here (see `.env.example`): `JWT_SIGNING_KEY` and `JWT_PUBLIC_KEY`, `SETU_INTERNAL_TOKEN`,
+   `METRICS_SCRAPE_TOKEN` (the same value as `observability/scrape-token.local`), and optionally `GEMINI_API_KEY`.
+2. Build the one image, from the **repository root**: `docker build -f backend/Dockerfile -t setu/backend:dev .`
+3. Start everything: `docker compose -f infra/docker/docker-compose.yml -f infra/docker/docker-compose.services.yml up -d`
+   (about four and a half minutes the first time: the database is created and migrated, the demo college seeded, and the services boot).
+4. Check it: `node infra/scripts/smoke-flow.js` and `node infra/scripts/smoke-websocket.js`.
+5. Start over: `pwsh infra/scripts/reset-demo.ps1`. Dropping only the database is not enough: the broker keeps the old events.
+
+The gateway is `http://localhost:8080`. The stack wants about 8 GB for Docker. The test suite and a running stack share this machine's Redis, so do not
+run `GatewayWiringTests` while the stack is up; the tests publish to Kafka under their own prefix (`setu-test.`), so they cannot disturb it otherwise.

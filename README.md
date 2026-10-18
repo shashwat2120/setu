@@ -110,6 +110,11 @@ The canonical end-to-end flow, stage by stage with its evidence, is [docs/final-
 services is [docs/architecture-walkthrough.md](docs/architecture-walkthrough.md); what was measured is [docs/validation-report.md](docs/validation-report.md);
 and what is not done is [docs/known-limitations-and-roadmap.md](docs/known-limitations-and-roadmap.md).
 
+**The services as real processes.** The extracted services also run as nine containers behind the gateway, next to PostgreSQL, Redis, Kafka and the
+observability stack: [docs/contracts/containers.md](docs/contracts/containers.md) says how to start them (`docker compose -f infra/docker/docker-compose.yml -f
+infra/docker/docker-compose.services.yml up -d`), `node infra/scripts/smoke-flow.js` drives the canonical flow through the gateway, and what that run found is
+listed there.
+
 ## What is built
 
 - **Identity:** passkey and Argon2id password sign-in, rotating refresh tokens, rate-limited login and password reset, and a

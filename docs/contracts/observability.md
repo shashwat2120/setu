@@ -93,6 +93,7 @@ Loki, filesystem storage, 24-hour retention, no authentication.
 * Spans for the *inside* of a service beyond what Spring instruments (database calls are not traced; the repository layer is not wrapped).
 * Alert rules. The dashboards show the signals; paging someone on them is an operations decision about thresholds this project has no
   production traffic to base on. The panels that mean "look at this" (dead letters, orphaned references, circuit-open refusals) are red above zero.
-* A real run of the whole distributed flow with every service started: the Windows development machine cannot run the embedded servers reliably
-  (docs/contracts/extracted-services.md), so cross-service traces were verified hop by hop, not as one running system. 6C.3 is where that is
-  attempted in containers.
+* ~~A real run of the whole distributed flow.~~ Done in containers ([containers.md](containers.md)): a trace follows one grade request from the gateway
+  through Assessment and through Kafka into Notification, Learning, Attendance and the core; Prometheus scrapes all nine services; 19 of the 25
+  dashboard queries return live data (the rest are failure counters that never fired). That run also found that every service tried to push metrics
+  to `localhost:4318` every minute, against the rule that metrics are scraped and never pushed: off now.

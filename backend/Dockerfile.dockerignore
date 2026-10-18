@@ -1,0 +1,19 @@
+# The build context is the repository root. Nothing here belongs in an image: other projects' files, build output, IDE and JVM crash files,
+# and above all local secrets.
+.git
+.github
+.idea
+.vscode
+frontend
+docs
+**/node_modules
+**/target
+**/.env
+**/.env.*
+!**/.env.example
+**/*.log
+**/hs_err_pid*
+**/replay_pid*
+infra/docker
+infra/scripts
+infra/config

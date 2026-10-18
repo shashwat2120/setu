@@ -7,8 +7,8 @@ What was run, what it showed, and what it cannot show. Targets are from canonica
 
 - **In-process.** Requests go through MockMvc into the real application context and the development PostgreSQL. There is no network between
   client and application and no gateway hop. Numbers are therefore a floor for the application and database work, not an end-to-end figure.
-- **One machine, one database, one service process.** Windows development machine; embedded servers and the JDK HTTP client are unreliable on it,
-  so a multi-process run of the extracted services was not possible. Cross-service behavior is covered by stubs and in-process tests (see below).
+- **One machine, one database.** The Windows development machine; embedded servers and the JDK HTTP client are unreliable on it, so these timings
+  and the test suite are in-process. The distributed layout was run for real, as nine containers on Linux, and is reported in the next section.
 - **Local, shared hardware.** Timings were taken with nothing else running (a first attempt while another test run held the database hung and
   was discarded). They will vary between runs; the burst figure in particular varies by about 10 %.
 - **Validation targets, not SLAs** (spec §14).
@@ -53,19 +53,21 @@ chunks passed the first time. Two did not, neither because of the code:
   row after answering in time earlier. With the budget raised to 180 s it passes, the model taking 69 s. It is a test that depends on live-model
   latency, not on anything the platform does; the other 24 tests of the chunk passed.
 
-The counts below are from the third run (the two reruns above for `risk` and that one test).
+A fourth full run (21 chunks) followed the work of running the services as containers (the entry-point fixes, the WebSocket handshake, the seeder
+restart guard, the test suite's own Kafka topic prefix, the Prometheus targets). **All 21 chunks passed the first time, with no error and no rerun.**
+The counts below are from it.
 
 | Chunk | Tests |
 |---|---|
 | academic | 19 |
 | aiexplain + aifacts (excluding AiChat*) | 73 |
 | aiexplain AiChat* | 25 |
-| assessment | 72 |
-| attendance | 124 |
+| assessment | 73 |
+| attendance | 125 |
 | audit | 39 |
 | career | 25 |
 | catalog | 63 |
-| config | 37 |
+| config | 39 |
 | directory | 34 |
 | enrollment | 106 |
 | finance | 24 |
@@ -73,7 +75,7 @@ The counts below are from the third run (the two reruns above for `risk` and tha
 | guardianaccess | 7 |
 | identity | 180 (1 skipped: the manual Argon2 benchmark) |
 | institution | 35 |
-| learning | 91 |
+| learning | 92 |
 | notification (excluding the broker-backed Kafka test) | 37 |
 | record | 20 |
 | risk (includes the grade-event consumer: 21 tests) | 60 |
@@ -101,10 +103,21 @@ above, separately), and `NotificationKafkaConsumerTests`, which cannot open an N
 
 Defects this pass found are listed in [non-negotiables-test-audit.md](non-negotiables-test-audit.md) with their tests.
 
+## The distributed layout, run for real
+
+Nine containers (the gateway, Identity, Academic, Learning, Assessment, Attendance, Notification, the advisor and the core) behind the gateway,
+with PostgreSQL, Redis, Kafka, Prometheus, Tempo, Loki and Grafana, on Linux ([contracts/containers.md](contracts/containers.md)). Reference flow of
+canonical spec section 16, through the gateway, over HTTP, from a clean database: **19 of 19 steps** (the 18 data steps in 7 to 11 seconds across runs, and the advisor's answer about 5 seconds more),
+including the enrollment completing 1.6 s after the grade was published, by an event travelling from one process through Kafka to another; the
+live attendance board updating 141 ms after a scan over a real WebSocket; Prometheus scraping 9 of 9 targets; consumer lag 0 and no dead letters;
+a trace from the gateway through Assessment and through Kafka into five other services; a service stopped (the gateway answers 502 honestly, the
+rest carry on) and Kafka stopped during a grade (nothing lost, everything follows within seconds of the broker's return).
+
+These are single-user timings on one machine, not load figures.
+
 ## Not validated
 
-- A real multi-process run of the extracted services behind the gateway, with Kafka between them, and therefore Kafka consumer lag, the
-  dead-letter path against a live broker, and the Grafana Kafka-lag panel.
+- Kafka consumer lag **under load**, and the dead-letter path with a real poison event on the real stack (the policy itself is tested without a broker).
 - WebSocket traffic through the gateway (it answers 501 for upgrades; clients connect to the owning service).
 - Load over a real network, or beyond the 40-scan burst.
 - The cached dashboard aggregate's latency.

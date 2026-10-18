@@ -98,6 +98,14 @@ Each is fixed and has a test that fails without the fix.
   while Assessment also requires the permission. This is a design property, not a leak (assignment is still required everywhere), so it is
   recorded, not changed here. See open item 9.
 
+## Defects found by running the services as containers
+
+The first time the extracted services ran as separate processes. Nine defects, none visible to a test that runs in one process; the full list, with
+the fix and the check for each, is in [contracts/containers.md](contracts/containers.md). The ones that bear on the non-negotiables: no extracted
+service could start (a Modulith endpoint needing a bean every entry point excludes), and no WebSocket of any service could connect (the remote security
+chain rejected the handshake the monolith's chain opens). Both are now caught by tests that run in one process (`EntryPointDefaultsTests`,
+`ExtractedServiceWiringSupport`), and by `infra/scripts/smoke-flow.js` and `smoke-websocket.js` against the running stack.
+
 ## Defect found while moving Record behind a port
 
 - **A student's own transcript and degree progress failed with 403 once a course was completed.** The record read each enrollment's section

@@ -16,15 +16,14 @@ and the validation report ([validation-report.md](validation-report.md)) carry t
 
 ## Not verified in this environment
 
-2. **Limit. No live multi-process run.** The Windows development machine cannot run embedded servers, Netty or the JDK HTTP client reliably (a JDK
-   NIO defect), so the distributed layout was verified through MockMvc, blocking-socket stubs and in-process STOMP, never as nine processes behind
-   the gateway with Kafka between them. Consequences: Kafka consumer lag and the lag panel in Grafana are unverified, the dead-letter path is
-   tested without a broker (`NotificationErrorHandlerTests`), and the broker-backed consumer test skips itself here. A Linux or macOS machine, or
-   a container build of the services, removes this limit; nothing in the code depends on it.
+2. ~~**Limit. No live multi-process run.**~~ **Closed.** The services now run as nine containers behind the gateway, with Kafka between them
+   ([contracts/containers.md](contracts/containers.md)): the reference flow passes end to end, and running it found nine defects no in-process test
+   could, among them that none of the extracted services could start and none of their WebSockets could connect. What stays true on the Windows
+   development machine: the test suite is still in-process there, and the broker-backed consumer test skips itself.
 3. **Limit. Passkeys were not exercised with a real authenticator.** The ceremony is tested server side (`PasskeyFullFlowTests`); the seeded
    demo accounts have no passkey, so the demo registers one first and needs Windows Hello or a security key.
-4. **Limit. The live attendance WebSocket cannot be watched on the development bridge**, which does not upgrade connections. The code path is
-   tested in-process (`AttendanceStompAuthorizationTests`).
+4. ~~**Limit. The live attendance WebSocket cannot be watched.**~~ **Closed** in containers: the board updates 141 ms after a scan over a real
+   WebSocket (`infra/scripts/smoke-websocket.js`). It cannot be watched on the Windows development bridge, which does not upgrade connections.
 5. **Limit. Performance numbers are in-process** ([validation-report](validation-report.md)): no network, one machine. The burst of 40 simultaneous
    scans passes at p95 942 ms against a 1 s target, a thin margin; the cached dashboard aggregate is not timed.
 6. **Limit. No automated accessibility test** in the frontend (no test runner is set up there); accessibility was checked by hand and with

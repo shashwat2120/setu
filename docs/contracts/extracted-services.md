@@ -86,8 +86,9 @@ its own (6B.2), it becomes the snapshot export of `infra/db/split/split-service.
 
 Each is inert inside the monolith and starts only with `setu.service=<name>` (set by its `main`). The gateway routes `/learning/**`,
 `/assessment/**`, `/attendance/**` and `/staff-attendance/**` to them (`GatewayRouteCoverageTests` fails if any endpoint would reach the wrong
-service). Services announce themselves for discovery with `APP_DISCOVERY_ADVERTISE_URL`. Like the others they have been verified through
-MockMvc, not over a socket, because embedded Tomcat does not start on the Windows development machine.
+service). Services announce themselves for discovery with `APP_DISCOVERY_ADVERTISE_URL`. Like the others they were first verified through
+MockMvc, not over a socket, because embedded Tomcat does not start on the Windows development machine; they now also run as real processes in
+containers ([containers.md](containers.md)), which found defects no in-process test could (among them that none of them could start).
 
 ## 6. Tests that hold this contract
 

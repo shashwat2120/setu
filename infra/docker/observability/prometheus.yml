@@ -1,4 +1,5 @@
-# Prometheus for local development. It scrapes every Setu service's Micrometer metrics every 15 seconds.
+# Prometheus for local development. It scrapes every Setu service's Micrometer metrics every 15 seconds, by the name each container has on the
+# compose network (docker-compose.services.yml); the services must have been given the same token as the file read below (METRICS_SCRAPE_TOKEN).
 # A service only serves /actuator/prometheus to a request that carries the dedicated scrape token (shared.security.MetricsScrapeAuthFilter,
 # the same filter in the monolith, Identity and every extracted service); the token is read from a file so it is never written into this config.
 # Every metric carries an `application` label (the service's spring.application.name) and each target a `service` label, so a dashboard can
@@ -15,8 +16,9 @@ scrape_configs:
       type: Bearer
       credentials_file: /etc/prometheus/scrape-token
     static_configs:
-      # 8089 is the dev bridge used on this Windows machine; a normally run backend listens on 8080.
-      - targets: ['host.docker.internal:8089']
+      # The core process of the containerised stack (docker-compose.services.yml). To scrape a backend run on the host instead (the dev bridge on this
+      # Windows machine listens on 8089), use host.docker.internal:8089 here and for the services below.
+      - targets: ['core:8083']
         labels:
           service: setu-backend
 
@@ -27,19 +29,19 @@ scrape_configs:
       type: Bearer
       credentials_file: /etc/prometheus/scrape-token
     static_configs:
-      - targets: ['host.docker.internal:8080']
+      - targets: ['gateway:8080']
         labels: { service: gateway }
-      - targets: ['host.docker.internal:8081']
+      - targets: ['identity:8081']
         labels: { service: identity }
-      - targets: ['host.docker.internal:8082']
+      - targets: ['academic:8082']
         labels: { service: academic }
-      - targets: ['host.docker.internal:8084']
+      - targets: ['learning:8084']
         labels: { service: learning }
-      - targets: ['host.docker.internal:8085']
+      - targets: ['assessment:8085']
         labels: { service: assessment }
-      - targets: ['host.docker.internal:8086']
+      - targets: ['attendance:8086']
         labels: { service: attendance }
-      - targets: ['host.docker.internal:8087']
+      - targets: ['notification:8087']
         labels: { service: notification }
-      - targets: ['host.docker.internal:8088']
+      - targets: ['ai:8088']
         labels: { service: ai }

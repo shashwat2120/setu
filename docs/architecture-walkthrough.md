@@ -4,6 +4,8 @@ Sprint 5 built one Spring Modulith application with enforced module boundaries. 
 one at a time, without changing what the modules decide. This page follows the §16 flow ([final-demo.md](final-demo.md)) across the result.
 Every statement links to the contract that holds it and the test that checks it.
 
+> Everything on this page was run for real, as nine containers, on Linux: [contracts/containers.md](contracts/containers.md) says how, and what it showed.
+
 ## 1. The shape
 
 ```

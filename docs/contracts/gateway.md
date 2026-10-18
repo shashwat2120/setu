@@ -95,8 +95,10 @@ The gateway's own `/actuator/health` and `/actuator/info` are served locally and
 - **WebSocket/STOMP routing.** The live attendance board is served by the Attendance service itself; clients connect to it directly, and the gateway refuses an upgrade with 501 instead of half-proxying it. TLS termination is assumed at the deployment edge.
 - **Request size limits** and **per-route timeouts** (one global timeout today).
 - **Tracing across the hop** beyond the correlation id (6C.1).
-- **Running as a real server on this machine.** Embedded Tomcat does not start on this Windows setup (see `backend/README.md`), so the gateway
-  is verified as a whole application through MockMvc, with the real HTTP client talking to a real blocking socket stub and the real Redis.
+- **Running as a real server on the Windows development machine.** Embedded Tomcat does not start there (see `backend/README.md`), so the gateway
+  is verified as a whole application through MockMvc, with the real HTTP client talking to a real blocking socket stub and the real Redis. In
+  containers on Linux it runs as a real server in front of the real services: see [containers.md](containers.md) (a sign-in, a sweep of every
+  route, the reference flow, a service taken down and brought back, Kafka taken down and brought back).
 
 ## 7. Tests that hold this contract
 

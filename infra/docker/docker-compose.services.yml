@@ -1,0 +1,236 @@
+# The Setu services as real processes, one container each, behind the gateway. An overlay on docker-compose.yml (which has the databases, the
+# broker and the observability stack); run both:
+#
+#   docker build -f backend/Dockerfile -t setu/backend:dev .
+#   docker compose -f infra/docker/docker-compose.yml -f infra/docker/docker-compose.services.yml up -d
+#
+# Why it exists: on the Windows development machine no embedded server, Netty or JDK HTTP client runs reliably (a JDK NIO defect), so the
+# distributed layout had only ever been verified in-process. On Linux, in containers, it runs as designed. See docs/contracts/containers.md.
+#
+# One image (setu/backend) for all of them; SETU_MAIN says which service a container is. The core process holds the modules not yet extracted and
+# is the only one that migrates the database, so everything else waits for it to be healthy.
+
+x-java: &java
+  JAVA_OPTS: "-XX:MaxRAMPercentage=60 -XX:+ExitOnOutOfMemoryError"
+
+# What every service needs to find the rest of the platform. Names are the compose service names.
+x-common: &common
+  <<: *java
+  DB_HOST: postgres
+  DB_PORT: "5432"
+  DB_NAME: ${SETU_DB_NAME:-setu_demo}
+  DB_USER: ${POSTGRES_USER:-setu}
+  DB_PASSWORD: ${POSTGRES_PASSWORD:-setu_dev_password}
+  # the pool rule of docs/contracts/performance.md: threads x 2 + 16 <= pool; and ten pools must fit the server's 300 connections
+  SERVER_MAX_THREADS: "8"
+  DB_POOL_SIZE: "32"
+  DB_POOL_MIN_IDLE: "4"
+  REDIS_HOST: redis
+  REDIS_PORT: "6379"
+  KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+  # tokens are signed by Identity alone and verified by everyone else against its published keys
+  APP_SECURITY_JWT_JWKS_URI: http://identity:8081/.well-known/jwks.json
+  # calls the gateway never routes: Academic confirms a guardian's grant, the data services answer the advisor's tool calls
+  SETU_INTERNAL_TOKEN: ${SETU_INTERNAL_TOKEN:?run infra/docker/README.md "Containerised services" first}
+  SETU_GUARDIAN_VERIFY_URL: http://academic:8082
+  APP_METRICS_SCRAPE_TOKEN: ${METRICS_SCRAPE_TOKEN:-}
+  APP_FRONTEND_BASE_URL: ${FRONTEND_BASE_URL:-http://localhost:5180}
+  # traces to Tempo and logs to Loki, over OTLP, when they are in the stack (they are in docker-compose.yml)
+  OTEL_TRACES_EXPORT_ENABLED: "true"
+  OTEL_TRACES_ENDPOINT: http://tempo:4318/v1/traces
+  OTEL_LOGS_EXPORT_ENABLED: "true"
+  OTEL_LOGS_ENDPOINT: http://loki:3100/otlp/v1/logs
+
+# Memory: measured under the demo workload, an idle service uses 270-450 MiB and Identity about 500 (password hashing needs memory). The limits are ceilings,
+# not reservations; the whole stack, infrastructure included, is comfortable in 8 GB and wants 12 GB if everything peaks at once.
+x-service: &service
+  image: setu/backend:dev
+  restart: unless-stopped
+  stop_grace_period: 30s
+
+services:
+  # Creates the services' database once. Postgres' own init scripts only run for a brand-new data volume, and this stack's volume is not new.
+  db-init:
+    image: pgvector/pgvector:pg16
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      PGPASSWORD: ${POSTGRES_PASSWORD:-setu_dev_password}
+    entrypoint: ["sh", "-c"]
+    command:
+      - >
+        psql -h postgres -U ${POSTGRES_USER:-setu} -d postgres -tc "SELECT 1 FROM pg_database WHERE datname = '${SETU_DB_NAME:-setu_demo}'" | grep -q 1
+        || psql -h postgres -U ${POSTGRES_USER:-setu} -d postgres -c "CREATE DATABASE ${SETU_DB_NAME:-setu_demo}"
+    restart: "no"
+
+  # The modules not yet extracted (record, risk, career, finance, onboarding) and the owner of the migrations. Verifies tokens like any other
+  # service (remote), and seeds the demo college on an empty database.
+  core:
+    <<: *service
+    depends_on:
+      db-init:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    mem_limit: 1600m
+    ports: ["127.0.0.1:8083:8083"]
+    environment:
+      <<: *common
+      SETU_MAIN: com.setu.BackendApplication
+      SERVER_PORT: "8083"
+      APPLICATION_NAME: core
+      # The core is the monolith: it never loads the remote verifier. It verifies the tokens Identity signs with Identity's PUBLIC key alone (the
+      # "previous public keys" of a rotation), so the private signing key stays with the Identity service and nowhere else.
+      JWT_PREVIOUS_PUBLIC_KEYS: ${JWT_PUBLIC_KEY:?run infra/docker/README.md "Containerised services" first}
+      APP_DISCOVERY_SERVICE: core
+      APP_DISCOVERY_ADVERTISE_URL: http://core:8083
+      DEMO_DATA_ENABLED: ${DEMO_DATA_ENABLED:-true}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-3.5-flash-lite}
+    healthcheck: &health
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/$${SERVER_PORT} && printf 'GET /actuator/health HTTP/1.0\\r\\n\\r\\n' >&3 && grep -q '\"status\":\"UP\"' <&3"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 90s
+
+  identity:
+    <<: *service
+    depends_on:
+      core: {condition: service_healthy}
+    mem_limit: 768m
+    ports: ["127.0.0.1:8081:8081"]
+    environment:
+      <<: *common
+      SETU_MAIN: com.setu.identity.IdentityServiceApplication
+      SERVER_PORT: "8081"
+      APP_DISCOVERY_ADVERTISE_URL: http://identity:8081
+      JWT_SIGNING_KEY: ${JWT_SIGNING_KEY:?run infra/docker/README.md "Containerised services" first}
+      WEBAUTHN_RP_ID: localhost
+    healthcheck: *health
+
+  academic:
+    <<: *service
+    depends_on:
+      core: {condition: service_healthy}
+    mem_limit: 640m
+    ports: ["127.0.0.1:8082:8082"]
+    environment:
+      <<: *common
+      SETU_MAIN: com.setu.academic.AcademicServiceApplication
+      SERVER_PORT: "8082"
+      APP_DISCOVERY_ADVERTISE_URL: http://academic:8082
+    healthcheck: *health
+
+  learning:
+    <<: *service
+    depends_on:
+      core: {condition: service_healthy}
+    mem_limit: 640m
+    ports: ["127.0.0.1:8084:8084"]
+    environment:
+      <<: *common
+      SETU_MAIN: com.setu.learning.LearningServiceApplication
+      SERVER_PORT: "8084"
+      APP_DISCOVERY_ADVERTISE_URL: http://learning:8084
+    healthcheck: *health
+
+  assessment:
+    <<: *service
+    depends_on:
+      core: {condition: service_healthy}
+    mem_limit: 640m
+    ports: ["127.0.0.1:8085:8085"]
+    environment:
+      <<: *common
+      SETU_MAIN: com.setu.assessment.AssessmentServiceApplication
+      SERVER_PORT: "8085"
+      APP_DISCOVERY_ADVERTISE_URL: http://assessment:8085
+    healthcheck: *health
+
+  attendance:
+    <<: *service
+    depends_on:
+      core: {condition: service_healthy}
+    mem_limit: 640m
+    # the live attendance board is served here and clients connect to it directly: the gateway does not proxy WebSocket upgrades
+    ports: ["127.0.0.1:8086:8086"]
+    environment:
+      <<: *common
+      SETU_MAIN: com.setu.attendance.AttendanceServiceApplication
+      SERVER_PORT: "8086"
+      APP_DISCOVERY_ADVERTISE_URL: http://attendance:8086
+    healthcheck: *health
+
+  notification:
+    <<: *service
+    depends_on:
+      core: {condition: service_healthy}
+    mem_limit: 640m
+    ports: ["127.0.0.1:8087:8087"]
+    environment:
+      <<: *common
+      SETU_MAIN: com.setu.notification.NotificationServiceApplication
+      SERVER_PORT: "8087"
+      APP_DISCOVERY_ADVERTISE_URL: http://notification:8087
+    healthcheck: *health
+
+  # No datasource, by design: it reads facts through the gateway with the signed-in user's own token.
+  ai:
+    <<: *service
+    depends_on:
+      core: {condition: service_healthy}
+    mem_limit: 512m
+    ports: ["127.0.0.1:8088:8088"]
+    environment:
+      <<: *java
+      SETU_MAIN: com.setu.aiexplain.AiServiceApplication
+      SERVER_PORT: "8088"
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      APP_SECURITY_JWT_JWKS_URI: http://identity:8081/.well-known/jwks.json
+      SETU_INTERNAL_TOKEN: ${SETU_INTERNAL_TOKEN:?run infra/docker/README.md "Containerised services" first}
+      GATEWAY_URL: http://gateway:8080
+      APP_METRICS_SCRAPE_TOKEN: ${METRICS_SCRAPE_TOKEN:-}
+      APP_DISCOVERY_ADVERTISE_URL: http://ai:8088
+      OTEL_TRACES_EXPORT_ENABLED: "true"
+      OTEL_TRACES_ENDPOINT: http://tempo:4318/v1/traces
+      OTEL_LOGS_EXPORT_ENABLED: "true"
+      OTEL_LOGS_ENDPOINT: http://loki:3100/otlp/v1/logs
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-3.5-flash-lite}
+    healthcheck: *health
+
+  # The one public address of the platform. No database, no business code.
+  gateway:
+    <<: *service
+    depends_on:
+      identity: {condition: service_healthy}
+      academic: {condition: service_healthy}
+    mem_limit: 512m
+    ports: ["8080:8080"]
+    environment:
+      <<: *java
+      SETU_MAIN: com.setu.gateway.GatewayApplication
+      SERVER_PORT: "8080"
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      APP_SECURITY_JWT_JWKS_URI: http://identity:8081/.well-known/jwks.json
+      APP_METRICS_SCRAPE_TOKEN: ${METRICS_SCRAPE_TOKEN:-}
+      GATEWAY_IDENTITY_URL: http://identity:8081
+      GATEWAY_ACADEMIC_URL: http://academic:8082
+      GATEWAY_CORE_URL: http://core:8083
+      GATEWAY_LEARNING_URL: http://learning:8084
+      GATEWAY_ASSESSMENT_URL: http://assessment:8085
+      GATEWAY_ATTENDANCE_URL: http://attendance:8086
+      GATEWAY_NOTIFICATION_URL: http://notification:8087
+      GATEWAY_AI_URL: http://ai:8088
+      OTEL_TRACES_EXPORT_ENABLED: "true"
+      OTEL_TRACES_ENDPOINT: http://tempo:4318/v1/traces
+      OTEL_LOGS_EXPORT_ENABLED: "true"
+      OTEL_LOGS_ENDPOINT: http://loki:3100/otlp/v1/logs
+    healthcheck: *health
