@@ -1,5 +1,7 @@
 package com.setu.aiexplain.application;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.setu.shared.aifacts.AiFacts;
 import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.ai.tool.annotation.ToolParam;
@@ -32,10 +34,20 @@ public class AiToolService {
         this.invocationRecorder = invocationRecorder;
     }
 
+    private static final ObjectMapper PLAIN = new ObjectMapper();
+
+    /**
+     * What the model is shown. A fact fetched from another service arrives as a JSON tree; handed to the model as it is, the tool-result serializer
+     * showed it a record with no fields ("the system returned a record but no percentage"). Plain maps and lists serialize as they look.
+     */
+    static Object forModel(Object fact) {
+        return fact instanceof JsonNode node ? PLAIN.convertValue(node, Object.class) : fact;
+    }
+
     private Object invoke(String toolName, Supplier<Object> fact) {
         invocationRecorder.record(toolName);
         try {
-            return fact.get();
+            return forModel(fact.get());
         } catch (AiFacts.Unavailable e) {
             return new ToolError("this information is not available right now; please try again shortly");
         }
