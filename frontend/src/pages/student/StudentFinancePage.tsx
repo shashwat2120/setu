@@ -39,19 +39,20 @@ function ChargeRow({ charge, studentId, onPaid }: { charge: StudentChargeRespons
       <td data-label="Status"><StatusBadge value={charge.status} /></td>
       <td data-label="Actions">
         {(charge.status === 'PENDING' || charge.status === 'OVERDUE') && !paymentId && (
-          <button type="button" className="btn btn-primary" style={{ padding: '6px 12px', fontSize: 12 }} disabled={paying} onClick={pay}>
+          <button type="button" className="btn btn-primary" style={{ padding: '6px 12px', fontSize: 12 }} disabled={paying} onClick={pay}
+            aria-label={`Pay ${charge.amount} ${charge.currency}, due ${charge.dueDate}`}>
             {paying ? 'Processing…' : 'Pay'}
           </button>
         )}
         {(charge.status === 'PENDING' || charge.status === 'OVERDUE') && paymentId && (
-          <p style={{ fontSize: 11, color: 'var(--ink-soft)' }}>
+          <p role="status" style={{ fontSize: 11, color: 'var(--ink-soft)' }}>
             Payment initiated — awaiting the provider&apos;s confirmation webhook.
           </p>
         )}
         {charge.status === 'PAID' && paymentId && (
           receipt.data ? <span style={{ fontSize: 12, color: 'var(--ink-soft)' }}>Receipt {receipt.data.receiptNo}</span> : null
         )}
-        {error && <div style={{ fontSize: 12, color: 'var(--flag)' }}>{error}</div>}
+        {error && <div role="alert" style={{ fontSize: 12, color: 'var(--flag)' }}>{error}</div>}
       </td>
     </tr>
   );
@@ -80,7 +81,7 @@ export default function StudentFinancePage() {
 
       <h2 style={{ fontSize: 18, marginBottom: 12 }}>Charges</h2>
       {charges.loading && <Skeleton height={80} />}
-      {charges.error && <div className="card"><p style={{ color: 'var(--flag)' }}>Could not load your charges.</p></div>}
+      {charges.error && <div className="card"><p role="alert" style={{ color: 'var(--flag)' }}>Could not load your charges.</p></div>}
       {charges.data && charges.data.length === 0 && <div className="card"><p style={{ color: 'var(--ink-soft)' }}>You have no fee charges on record.</p></div>}
       {charges.data && charges.data.length > 0 && studentId && (
         <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
