@@ -55,15 +55,28 @@ chunks passed the first time. Two did not, neither because of the code:
 
 A fourth full run (21 chunks) followed the work of running the services as containers (the entry-point fixes, the WebSocket handshake, the seeder
 restart guard, the test suite's own Kafka topic prefix, the Prometheus targets). **All 21 chunks passed the first time, with no error and no rerun.**
-The counts below are from it.
+
+A fifth full run (21 chunks) followed the gateway's WebSocket relay, the check-in location, the advisor's tool-result fix and the seed's Final Exam.
+**20 chunks passed; the 21st (`AiChat*`) had one error**: `AiChatIntegrationTests.ignoresAnInstructionEmbeddedInsideARetrievedPolicyDocument` got
+`ProviderUnavailable` after 60.65 s, the live Gemini call outlasting that test's 60 s budget, which is the known latency flake (it passes with a longer
+budget, and the other 24 tests of the chunk passed). The counts below are from this run. Tests added after it, each run and
+passing on its own: the risk trigger on a closed attendance session (5 in `RiskEventProcessorTests`), read access to a finished course
+(`CompletedStudentAccessTests`, 7), the gateway's per-route timeout and event-stream flushing (3 in `GatewayFilterTests`, 2 in `ApacheUpstreamTests`), and
+`MigrationIntegrationTests`, whose table count (147) had been stale since Sprint 6. The seeder classes (`DemoDataSeeder*`, 15 tests) are excluded from the
+chunks because they need an empty database; they passed on one, with the new Final Exam test.
+
+**Frontend (`npm test` in `frontend/`): 91 tests in 7 files, all passing**: the axe-core engine against WCAG 2.2 AA on every page of the app for its role in
+the state it shows when its data cannot load, and the sign-in, check-in, advisor, finance and finished-course pages with data (see
+[non-negotiables-test-audit.md](non-negotiables-test-audit.md) item 4). Colour contrast, which needs a real browser, was checked with axe-core in one:
+the sign-in page and the public landing page have no violations (eight text-over-photograph spots are flagged by the engine for a human to look at).
 
 | Chunk | Tests |
 |---|---|
 | academic | 19 |
-| aiexplain + aifacts (excluding AiChat*) | 73 |
-| aiexplain AiChat* | 25 |
+| aiexplain + aifacts (excluding AiChat*) | 76 |
+| aiexplain AiChat* | 25 (1 error: see below) |
 | assessment | 73 |
-| attendance | 125 |
+| attendance | 142 |
 | audit | 39 |
 | career | 25 |
 | catalog | 63 |
@@ -71,7 +84,7 @@ The counts below are from it.
 | directory | 34 |
 | enrollment | 106 |
 | finance | 24 |
-| gateway | 56 |
+| gateway | 77 |
 | guardianaccess | 7 |
 | identity | 180 (1 skipped: the manual Argon2 benchmark) |
 | institution | 35 |
@@ -79,7 +92,7 @@ The counts below are from it.
 | notification (excluding the broker-backed Kafka test) | 37 |
 | record | 20 |
 | risk (includes the grade-event consumer: 21 tests) | 60 |
-| shared kernel + `ModularityTests` | 125 |
+| shared kernel + `ModularityTests` | 124 |
 
 Excluded by design: tag `live-ollama` (needs a local model), tag `live-gemini` (needs a key and spends embedding quota), tag `performance` (run
 above, separately), and `NotificationKafkaConsumerTests`, which cannot open an NIO selector on this machine (its retry/DLQ policy is covered by
