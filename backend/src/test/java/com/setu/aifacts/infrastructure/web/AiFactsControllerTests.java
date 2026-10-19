@@ -139,4 +139,44 @@ class AiFactsControllerTests {
         }
         return sb.toString();
     }
+
+    @Test
+    void aGradeIsNamedByItsAssessmentAndComponentNotJustByAnId() throws Exception {
+        var s = day13Fixtures.provisionEnrolledScenario("AIF30");
+        day13Fixtures.recordGrade(s, "B", new java.math.BigDecimal("3.0"));
+
+        mockMvc.perform(get("/ai-facts/assessment-results").header("Authorization", bearerFor(s.student().userId())))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$[0].gradeCode").value("B"))
+            .andExpect(jsonPath("$[0].assessmentTitle").value(org.hamcrest.Matchers.startsWith("Quiz-")))
+            .andExpect(jsonPath("$[0].componentCode").isNotEmpty());
+    }
+
+    @Test
+    void theGradesOfACourseTheStudentHasFinishedStayInWhatTheAdvisorCanSee() throws Exception {
+        var s = day13Fixtures.provisionEnrolledScenario("AIF31");
+        day13Fixtures.recordGrade(s, "B", new java.math.BigDecimal("3.0"));
+        // the state a final grade leaves the enrollment in (docs/state-machines.md #11)
+        jdbc.sql("UPDATE enrollment.enrollments SET status = 'COMPLETED', final_status = 'B' WHERE id = :id").param("id", s.enrollmentId()).update();
+        String me = bearerFor(s.student().userId());
+
+        mockMvc.perform(get("/ai-facts/assessment-results").header("Authorization", me))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$[0].gradeCode").value("B"))
+            .andExpect(jsonPath("$[0].assessmentTitle").value(org.hamcrest.Matchers.startsWith("Quiz-")));
+        mockMvc.perform(get("/ai-facts/academic-progress").header("Authorization", me))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.grades[0].gradeCode").value("B"));
+    }
+
+    @Test
+    void aCourseTheStudentDroppedContributesNoGrades() throws Exception {
+        var s = day13Fixtures.provisionEnrolledScenario("AIF32");
+        day13Fixtures.recordGrade(s, "B", new java.math.BigDecimal("3.0"));
+        jdbc.sql("UPDATE enrollment.enrollments SET status = 'DROPPED' WHERE id = :id").param("id", s.enrollmentId()).update();
+
+        mockMvc.perform(get("/ai-facts/assessment-results").header("Authorization", bearerFor(s.student().userId())))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$").isEmpty());
+    }
 }

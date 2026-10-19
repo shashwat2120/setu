@@ -1,5 +1,6 @@
 package com.setu.aifacts.application;
 
+import com.setu.assessment.application.AssessmentComponentService;
 import com.setu.assessment.application.GradeService;
 import com.setu.assessment.application.AssessmentService;
 import com.setu.assessment.domain.Assessment;
@@ -67,6 +68,7 @@ public class AiFactsService {
     private final PolicyDocumentService policyDocumentService;
     private final AcademicRecordService academicRecordService;
     private final StudentChargeService studentChargeService;
+    private final AssessmentComponentService assessmentComponentService;
 
     public AiFactsService(AiAccessSupport accessSupport, EnrollmentService enrollmentService,
                           AttendanceRecordService attendanceRecordService, GradeService gradeService,
@@ -75,7 +77,8 @@ public class AiFactsService {
                           CourseModuleService courseModuleService, LessonService lessonService,
                           LearningProgressService learningProgressService, PolicyDocumentService policyDocumentService,
                           AcademicRecordService academicRecordService,
-                          StudentChargeService studentChargeService) {
+                          StudentChargeService studentChargeService, AssessmentComponentService assessmentComponentService) {
+        this.assessmentComponentService = assessmentComponentService;
         this.academicRecordService = academicRecordService;
         this.studentChargeService = studentChargeService;
         this.accessSupport = accessSupport;
@@ -125,7 +128,11 @@ public class AiFactsService {
 
     // ---- 2. getAcademicProgress -------------------------------------------------------------
 
-    public record ComponentGrade(UUID componentId, String gradeCode, BigDecimal gradePoint) {
+    /**
+     * One published grade. The title of the assessment and the component's code are what a person recognises ("Midterm Quiz", "MAIN"); the id alone
+     * made the advisor say "Component ID 428bfae7...". Both are null if the caller may not read them, never guessed.
+     */
+    public record ComponentGrade(UUID componentId, String assessmentTitle, String componentCode, String gradeCode, BigDecimal gradePoint) {
     }
 
     public record RiskSummary(String band, String ruleVersion, Instant calculatedAt, List<String> topFactorCodes) {
@@ -152,11 +159,10 @@ public class AiFactsService {
         try {
             accessSupport.assertView(t.tenantId(), t.studentId(), t.ownerUserId(), "VIEW_ACADEMIC_STATUS");
             List<Grade> grades = new ArrayList<>();
-            for (var ref : enrollmentService.listActiveEnrollmentRefsForStudent(t.studentId())) {
+            for (var ref : enrollmentService.listEnrolledOrCompletedRefsForStudent(t.studentId())) {
                 grades.addAll(gradeService.findCurrentForEnrollment(ref.enrollmentId()));
             }
-            componentGrades = grades.stream()
-                .map(g -> new ComponentGrade(g.componentId(), g.gradeCode(), g.gradePoint())).toList();
+            componentGrades = grades.stream().map(this::named).toList();
             List<BigDecimal> points = grades.stream().map(Grade::gradePoint).filter(Objects::nonNull).toList();
             average = points.isEmpty() ? null
                 : points.stream().reduce(BigDecimal.ZERO, BigDecimal::add).divide(BigDecimal.valueOf(points.size()), 2, RoundingMode.HALF_UP);
@@ -200,12 +206,28 @@ public class AiFactsService {
             return new ToolError("not authorized to view this student's grades");
         }
         List<ComponentGrade> results = new ArrayList<>();
-        for (var ref : enrollmentService.listActiveEnrollmentRefsForStudent(t.studentId())) {
+        for (var ref : enrollmentService.listEnrolledOrCompletedRefsForStudent(t.studentId())) {
             for (Grade g : gradeService.findCurrentForEnrollment(ref.enrollmentId())) {
-                results.add(new ComponentGrade(g.componentId(), g.gradeCode(), g.gradePoint()));
+                results.add(named(g));
             }
         }
         return results;
+    }
+
+    /** A grade with the name of what it is a grade for, as far as the caller is allowed to read it. */
+    private ComponentGrade named(Grade g) {
+        String title = null;
+        String code = null;
+        try {
+            var label = assessmentComponentService.labelOf(g.componentId());
+            if (label.isPresent()) {
+                code = label.get().componentCode();
+                title = label.get().assessmentTitle();
+            }
+        } catch (AccessDeniedException e) {
+            // not allowed to read the assessment itself: the grade is shown without its name
+        }
+        return new ComponentGrade(g.componentId(), title, code, g.gradeCode(), g.gradePoint());
     }
 
     // ---- 4. getUpcomingDeadlines ------------------------------------------------------------

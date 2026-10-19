@@ -48,7 +48,7 @@ and the validation report ([validation-report.md](validation-report.md)) carry t
    with the grade as `final_status`, and a correction of that grade changes it ([state-machines.md #11](state-machines.md)). Degree progress counts
    passed courses only. Open consequences of the decision: **there is still no period close**, so a course whose section never gets a final-grade
    component never completes; **a completed student is no longer actively enrolled**, so they can no longer take attendance in it, submit work or record progress, but they keep
-   reading the course (lessons, resources, assignments) with a notice that it is complete, as well as their grades and transcript; a course can be completed only through Kafka, so on the development machine (slow Kafka client) it can take minutes.
+   reading the course (lessons, resources, assignments, assessments and results) with a notice that it is complete, as well as their grades and transcript; a course can be completed only through Kafka, so on the development machine (slow Kafka client) it can take minutes.
 8. **Gap. Only the live attendance board goes through the gateway.** The gateway relays WebSocket upgrades on one route (`/ws`, to Attendance) and
    answers an upgrade anywhere else with 501; Notification's live delivery and the AI service's job status have no route yet, so those clients connect
    to the service directly. The relay is verified over real sockets in containers (not on the development machine) and has no per-frame limits of

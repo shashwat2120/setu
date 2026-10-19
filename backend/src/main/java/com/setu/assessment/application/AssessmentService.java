@@ -308,7 +308,7 @@ public class AssessmentService {
             || authorizationContext.can(VIEW_PERMISSION, ResourceRef.of("assessment", UUID.randomUUID(), tenantId)).isAllowed()) {
             return true;
         }
-        if (accessSupport.currentEnrolledStudentId(tenantId, sectionId).isPresent()) {
+        if (accessSupport.currentViewingStudentId(tenantId, sectionId).isPresent()) {
             return false;
         }
         if (guardianForStudentId != null) {

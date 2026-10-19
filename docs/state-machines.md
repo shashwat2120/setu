@@ -224,7 +224,9 @@ terminal states → correction rules → audit → emitted event.
   course's modules, lessons and assignments in Learning (`LearningAccessSupport.currentViewingStudentId`:
   enrolled or completed). Everything that adds something (attendance scan, assignment
   submission, learning progress) still requires an active enrollment, and a dropped
-  or never-enrolled student has neither. Tests: `CompletedStudentAccessTests`.
+  or never-enrolled student has neither. Tests: `CompletedStudentAccessTests`. The same holds in Assessment: a completed student reads the course's
+  assessments and results (`AssessmentAccessSupport.currentViewingStudentId`) but cannot start an attempt (`CompletedStudentAssessmentAccessTests`), and the
+  advisor's grade facts include the grades of completed courses, each named by its assessment title and component code (`AiFactsControllerTests`).
 
 ## 12. Waitlist Entry
 

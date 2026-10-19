@@ -621,6 +621,18 @@ public class EnrollmentService {
             .map(e -> new ActiveEnrollmentRef(e.id(), e.sectionId())).toList();
     }
 
+    /**
+     * As {@link #listActiveEnrollmentRefsForStudent}, plus the courses the student has finished: every enrollment a student holds grades in (ENROLLED or
+     * COMPLETED). For what a student's results are read from, where a finished course's final grade must not disappear when the course ends. No
+     * authorization of its own, the same precedent as the method above.
+     */
+    @Transactional(readOnly = true)
+    public List<ActiveEnrollmentRef> listEnrolledOrCompletedRefsForStudent(UUID studentId) {
+        return enrollmentRepository.findByStudentId(studentId, org.springframework.data.domain.Pageable.unpaged())
+            .stream().filter(e -> e.status() == EnrollmentStatus.ENROLLED || e.status() == EnrollmentStatus.COMPLETED)
+            .map(e -> new ActiveEnrollmentRef(e.id(), e.sectionId())).toList();
+    }
+
     /** What publishing a final grade did to an enrollment. */
     enum CompletionResult {
         /** ENROLLED became COMPLETED with this final grade. */

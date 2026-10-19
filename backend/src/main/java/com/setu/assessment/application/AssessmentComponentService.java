@@ -191,6 +191,19 @@ public class AssessmentComponentService {
         return visible.isEmpty() ? Optional.empty() : component;
     }
 
+    /** What a component is called: the title of its assessment and its own code. Plain strings, so a caller in another module needs no domain type to show a grade. */
+    public record Label(String assessmentTitle, String componentCode) {
+    }
+
+    /**
+     * The name of a component, under the same visibility rule as {@link #get}: empty when the caller may not read it. The title is null only if the assessment
+     * itself cannot be read.
+     */
+    @Transactional(readOnly = true)
+    public Optional<Label> labelOf(UUID componentId) {
+        return get(componentId).map(c -> new Label(assessmentService.get(c.assessmentId()).map(Assessment::title).orElse(null), c.code()));
+    }
+
     /** Day 15 §demo-data: plain-UUID unwrap of {@link #create}. */
     @Transactional
     public UUID createForSeed(UUID assessmentId, String code, java.math.BigDecimal maxMarks, java.math.BigDecimal weight, Integer orderNo) {
