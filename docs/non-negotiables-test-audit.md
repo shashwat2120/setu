@@ -122,8 +122,10 @@ chain rejected the handshake the monolith's chain opens). Both are now caught by
    cover many of them, but the generic sweep covers GET endpoints only; write endpoints still rely on those per-service tests.
 3. **Access-token liveness costs two indexed queries per request** and fails closed on a database error. Acceptable at this scale; a
    short per-instance cache or the Redis denylist the spec mentions would be the optimisation, not a correctness change.
-4. **Accessibility** (spec §13): fixed and checked by hand and with the browser's own tooling earlier, but there is no automated
-   accessibility test in the frontend (no test runner is set up there).
+4. **Accessibility** (spec §13): ~~no automated accessibility test~~ **now automated for what an engine can check**: `npm test` in `frontend/` runs axe-core
+   against WCAG 2.2 AA on every page for its role in its error and empty state, and drives the sign-in and check-in forms, the shared table and the
+   confirm prompt by keyboard, with live-region and reduced-motion checks; a canary test proves the check fails on a bad page. Open: colour contrast
+   (needs a real browser), data states beyond the pages listed, and a real screen reader.
 5. ~~Performance: no N+1 detection test.~~ **Closed in 6C.2** for the paths measured: `QueryCountTests` (same statement count for 3 and
    20 rows), `DemoTargetsPerformanceTests` (spec §14 targets, tag `performance`), `ConnectionPoolSizingTests`. Still open: no load test
    over a real network and no Kafka-lag measurement (no consumer can run on this machine); see `docs/contracts/performance.md`.

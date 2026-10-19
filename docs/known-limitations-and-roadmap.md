@@ -26,8 +26,11 @@ and the validation report ([validation-report.md](validation-report.md)) carry t
    WebSocket (`infra/scripts/smoke-websocket.js`). It cannot be watched on the Windows development bridge, which does not upgrade connections.
 5. **Limit. Performance numbers are in-process** ([validation-report](validation-report.md)): no network, one machine. The burst of 40 simultaneous
    scans passes at p95 942 ms against a 1 s target, a thin margin; the cached dashboard aggregate is not timed.
-6. **Limit. No automated accessibility test** in the frontend (no test runner is set up there); accessibility was checked by hand and with
-   browser tooling.
+6. ~~**Limit. No automated accessibility test** in the frontend.~~ **Closed for what an engine can check** (`npm test` in `frontend/`): the axe-core
+   engine runs against WCAG 2.2 AA on every page of the app, for its role, in the state it shows when its data cannot be loaded, plus the sign-in page,
+   the check-in pages with data, the shared table and prompt, keyboard order and activation, live-region announcements and the reduced-motion preference
+   (`src/test/accessibility.*.test.tsx`). **Still not covered, and stated so:** colour contrast (it needs real layout and paint, so it is checked in a
+   browser, not in jsdom), pages with data loaded beyond those above, and use with a real screen reader.
 
 ## Not finished
 
@@ -91,7 +94,8 @@ In the order that removes the most risk first.
 5. **Settle the faculty role-versus-assignment rule** across Learning, Attendance and Assessment and add the test that asserts it (item 10).
 6. **Add a hosted second AI fallback** (for example an NVIDIA-hosted Llama through its OpenAI-compatible endpoint) ahead of the CPU model if
    the local fallback is expected to carry real traffic; this needs the provider and model to be named.
-7. **Frontend test runner with automated accessibility checks** (item 6).
+7. **Done** (item 6): the frontend test runner and its accessibility checks. **Next there:** data states for the remaining pages, and a browser-based
+   contrast check.
 8. **Analytics read models** when a consumer for them exists (item 9).
 
 ## Explicitly not planned (canonical spec §15)

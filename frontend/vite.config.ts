@@ -1,5 +1,6 @@
 import react from '@vitejs/plugin-react'
-import { defineConfig, loadEnv } from 'vite'
+import { loadEnv } from 'vite'
+import { defineConfig } from 'vitest/config'
 
 // Backend module path prefixes, proxied to the real Spring Boot backend during dev so the browser never
 // needs CORS and every request looks same-origin. See docs/frontend-dev-bridge.md for why this points at
@@ -19,11 +20,18 @@ const BACKEND_PREFIXES = [
 // https://vite.dev/config/
 export default defineConfig(({ mode }) => {
   // the addresses of the containerised stack (not secrets: ports on this machine); a real environment variable beats them
-  const stack = mode === 'stack' ? { BACKEND_URL: 'http://127.0.0.1:8080', PORT: '5180' } : {}
+  const stack: Record<string, string> = mode === 'stack' ? { BACKEND_URL: 'http://127.0.0.1:8080', PORT: '5180' } : {}
   const env = { ...stack, ...loadEnv(mode, process.cwd(), ''), ...process.env }
   const backend = env.BACKEND_URL ?? 'http://127.0.0.1:8089'
   return {
     plugins: [react()],
+    // `npm test`: component and accessibility tests in jsdom (src/test). The API client and the signed-in user are replaced per test; nothing here talks to a backend.
+    test: {
+      environment: 'jsdom',
+      setupFiles: ['src/test/setup.ts'],
+      include: ['src/**/*.test.{ts,tsx}'],
+      css: false,
+    },
     server: {
       port: env.PORT ? Number(env.PORT) : 5180,
       strictPort: false,

@@ -19,6 +19,7 @@ see the root [README](../README.md#quick-start-local).
 | `npm run dev` | Vite dev server with HMR |
 | `npm run build` | `tsc -b` then a production build |
 | `npm run lint` | Oxlint |
+| `npm test` | Vitest in jsdom: component tests and the automated accessibility checks (axe-core, WCAG 2.2 AA) in `src/test`; no backend needed |
 
 Before calling a change done, run `npx tsc -b && npx oxlint && npx vite build`, then open the page in a browser and check the console
 and network tab for errors.
