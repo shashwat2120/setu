@@ -562,6 +562,31 @@ export interface PaymentInitiateResponse {
   replayed: boolean;
 }
 
+/** What the payment provider's checkout needs. `amount` is in the currency's minor unit (paise for INR). No secret is ever in it. */
+export interface PaymentCheckoutResponse {
+  paymentId: string;
+  keyId: string;
+  orderId: string;
+  amount: number;
+  currency: string;
+  description: string;
+}
+
+/** The server's word on a payment: it changes only when the provider confirms it, never because the browser says it paid. */
+export interface PaymentStatusResponse {
+  id: string;
+  chargeId: string | null;
+  amount: number;
+  currency: string;
+  status: 'INITIATED' | 'SUCCEEDED' | 'FAILED' | 'REFUNDED';
+  checkoutStarted: boolean;
+}
+
+export interface PaymentReconcileResponse {
+  status: PaymentStatusResponse['status'];
+  changed: boolean;
+}
+
 export interface PaymentResponse {
   id: string;
   tenantId: string;
