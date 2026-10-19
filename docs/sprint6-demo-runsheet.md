@@ -30,7 +30,7 @@ for Act 4), **Priya Nair = `student.average`**, Rahul Verma = `student.attendanc
 **Say:** Sprint 5 built one modular monolith. Sprint 6 split it along the boundaries the code already enforced, without rewriting it.
 One codebase and one image now run as nine processes behind a gateway, talking through Kafka.
 
-**Show:** [architecture-walkthrough.md](architecture-walkthrough.md) (the picture), then [extraction-audit.md](extraction-audit.md): the coupling audit
+**Show:** the pictures `docs/images/architecture.png` and `docs/images/system-workflow.png` (open them full screen), with [architecture-walkthrough.md](architecture-walkthrough.md) beside them, then [extraction-audit.md](extraction-audit.md): the coupling audit
 that decided the boundaries from measured coupling, not from guesses (6A.1). Then `docker ps`: nine services, PostgreSQL, Redis, Kafka,
 Prometheus, Grafana, Tempo, Loki.
 
@@ -55,6 +55,11 @@ outcome, events published to Kafka by type, outbox backlog (events waiting for K
 that adds coupling fails the build.
 
 ## Act 3: the business flow in the browser (8 minutes)
+
+**Optional, and the best way to show Kafka:** put a terminal next to the browser and run `pwsh infra/scripts/kafka-demo.ps1 follow`. It streams every event
+as it is published (with its headers). When you publish the grade in step 3, a `GradePublished` event scrolls past in that terminal, then the events the
+other services emit in reaction. `pwsh infra/scripts/kafka-demo.ps1 status` shows the outbox (rows written in the same transaction as the business change,
+all `PUBLISHED`) and the message count per topic. Ctrl+C to stop it.
 
 1. **Faculty, live attendance.** Window 1: sign in as `faculty.rao`. **Attendance** → **Open attendance session**. The page says **Live**.
    *Say:* that is a WebSocket through the gateway, relayed to the Attendance service; the service, not the gateway, decides who may subscribe.
