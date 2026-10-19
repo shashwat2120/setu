@@ -90,6 +90,11 @@ services:
       DEMO_DATA_ENABLED: ${DEMO_DATA_ENABLED:-true}
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
       GEMINI_MODEL: ${GEMINI_MODEL:-gemini-3.5-flash-lite}
+      # Online fee payment (Razorpay). Empty means off: checkout answers 503 and the rest of Finance works as before. Set them in the git-ignored
+      # infra/docker/.env, never in this file.
+      RAZORPAY_KEY_ID: ${RAZORPAY_KEY_ID:-}
+      RAZORPAY_KEY_SECRET: ${RAZORPAY_KEY_SECRET:-}
+      RAZORPAY_WEBHOOK_SECRET: ${RAZORPAY_WEBHOOK_SECRET:-}
     healthcheck: &health
       test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/$${SERVER_PORT} && printf 'GET /actuator/health HTTP/1.0\\r\\n\\r\\n' >&3 && grep -q '\"status\":\"UP\"' <&3"]
       interval: 10s

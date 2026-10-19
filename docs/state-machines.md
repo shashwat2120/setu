@@ -433,6 +433,15 @@ terminal states → correction rules → audit → emitted event.
   row is created for a retry attempt
 - **Audit**: every `payment_events` row is itself the audit trail
 - **Emitted event**: `PaymentSuccessful`, `PaymentFailed`, `PaymentRefunded`
+- **Real provider (Razorpay)**: the student's page creates a payment for a fee (`student_charge_id`; the amount is the fee's, never the client's), the
+  server opens a provider ORDER for that amount (`provider_ref` = order id) and the browser pays in the provider's own window, so no card data reaches
+  this system. The status then moves by exactly one of: (1) the provider's **signed webhook** (`POST /finance/provider-webhooks/razorpay`: HMAC-SHA256
+  over the raw body, deduplicated by `X-Razorpay-Event-Id`, amount and currency must equal the payment's or nothing is applied and an audit row
+  records the mismatch); (2) a **server-to-server lookup** of the order (`POST /finance/payments/{id}/reconcile`), authenticated with our secret, for a
+  webhook that has not arrived; (3) the administrator's stand-in endpoint, for payments taken outside the provider. The browser's "paid" callback
+  only prompts (2); it is never believed. A failed *attempt* does not fail the payment (the order stays open and can be retried in the same
+  checkout); it is recorded as a `payment_events` row. A refund of a provider payment goes to the provider first, and only when it has refunded is the
+  status `REFUNDED`; a fee has at most one INITIATED or SUCCEEDED payment (`uq_payments_open_per_charge`), a refund re-opens the fee.
 
 ## 21. Risk Score
 

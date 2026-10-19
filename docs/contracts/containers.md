@@ -28,7 +28,8 @@ student's scan appeared on it without a refresh), with no console or network err
 **First time.** Put the stack's secrets in the git-ignored `infra/docker/.env` (`.env.example` says which and how to make them): `JWT_SIGNING_KEY`
 (Identity's token-signing key), `JWT_PUBLIC_KEY` (its public half), `SETU_INTERNAL_TOKEN` (service-to-service calls the gateway never routes),
 `METRICS_SCRAPE_TOKEN` (must equal the contents of `infra/docker/observability/scrape-token.local`, which Prometheus reads), and optionally
-`GEMINI_API_KEY` (without one the advisor starts on the local Ollama model and says so).
+`GEMINI_API_KEY` (without one the advisor starts on the local Ollama model and says so), and optionally `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET`
+and `RAZORPAY_WEBHOOK_SECRET` (without them online fee payment is off and says so: checkout answers 503, the rest of Finance is unchanged).
 
 ## What runs
 

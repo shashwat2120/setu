@@ -59,11 +59,14 @@ and the validation report ([validation-report.md](validation-report.md)) carry t
    allowing for that accuracy, and it is never refused. The classroom position is whatever the instructor's device reports when the session opens (optional:
    without it a check-in shows no distance). Only the outcome (status, distance, accuracy) is stored, never the student's coordinates; there is no retention
    rule beyond the record itself, and the consent text is on the check-in form.
-   **9a. Gap. No real payment provider is connected** (no Razorpay, Stripe or similar). Finance has the whole lifecycle: fee structures, student
-   accounts and charges, payments that start as `INITIATED` (idempotent by a client key) and become `SUCCEEDED`, `FAILED` or `REFUNDED` only through a
-   provider event deduplicated by its event id, and receipts; no card number or CVV is ever stored. The "webhook" endpoint stands in for the provider and
-   is restricted to a finance administrator, because there is no real provider signature to verify. Connecting a provider means creating its order,
-   a checkout on the frontend, and a public webhook that verifies the provider's signature and then calls the same `recordWebhookEvent`.
+   **9a. Closed, with one limit. Online payment through Razorpay.** A student pays a fee in Razorpay's own checkout window (card, UPI and net banking
+   never touch Setu); the server creates the order for the fee's amount, and the payment becomes `SUCCEEDED` only through the provider's signed
+   webhook or a server-to-server lookup of the order, never on what the browser says ([state-machines.md #20](state-machines.md)). Verified in tests
+   with signed webhooks and a stub provider; what it needs to run against the real provider is the key pair and webhook secret in the git-ignored
+   `.env` files (no keys, no online payment: checkout answers 503). **Limit:** Razorpay can only reach a webhook on a public address, so on a laptop the
+   confirmation comes from the lookup the page triggers after checkout (and a "Check again" button), and the webhook path is exercised by tests;
+   a deployed college registers `/finance/provider-webhooks/razorpay` in Razorpay's dashboard. Only full refunds are applied, only INR-like
+   two-decimal currencies are accepted, and a student sees one payment per fee.
 10. **Open design question. Assigned-faculty access is not tied to the faculty role** in Learning and Attendance, while Assessment requires the
     permission as well ([audit item 9](non-negotiables-test-audit.md)). Assignment is still required everywhere, so this is not a leak, but an
     assignment that outlived a role change would keep access to that section's data.

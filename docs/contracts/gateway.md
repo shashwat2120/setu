@@ -18,7 +18,8 @@ recorded here on purpose.
 
 Routes are configuration (`app.gateway.routes` in `application.yml`): each owns Ant-style path patterns and names a service; the most
 specific matching pattern across all routes wins, whatever order they are written in. `public-paths` are the requests let through without a
-token.
+token. One is a provider's, not a user's: `POST /finance/provider-webhooks/**` on the core route (Razorpay's webhook has no token to send); the endpoint verifies the
+provider's HMAC signature over the raw body itself and answers 401 otherwise, so the gateway's openness there is not the endpoint's.
 
 | Route | Service | Paths | Open at the gateway |
 |---|---|---|---|
