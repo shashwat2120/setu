@@ -124,7 +124,7 @@ class GatewayRouteCoverageTests {
     }
 
     @Test
-    void onlySignInAndKeyPublicationAreOpenAtTheGateway() {
+    void onlySignInKeyPublicationAndTheProvidersSignedWebhookAreOpenAtTheGateway() {
         RouteTable routes = routes();
         Set<String> open = new TreeSet<>();
         for (Map.Entry<RequestMappingInfo, HandlerMethod> entry : handlerMapping.getHandlerMethods().entrySet()) {
@@ -138,8 +138,10 @@ class GatewayRouteCoverageTests {
             }
         }
         assertThat(open).as("endpoints the gateway lets through without a token").allSatisfy(
-            p -> assertThat(p.startsWith("/auth/") || p.equals("/.well-known/jwks.json")).as(p).isTrue());
-        assertThat(open).contains("/auth/login", "/.well-known/jwks.json");
+            p -> assertThat(p.startsWith("/auth/") || p.equals("/.well-known/jwks.json")
+            // the payment provider has no user token; the endpoint itself verifies the provider's HMAC signature (PaymentProviderService)
+            || p.equals("/finance/provider-webhooks/razorpay")).as(p).isTrue());
+        assertThat(open).contains("/auth/login", "/.well-known/jwks.json", "/finance/provider-webhooks/razorpay");
     }
 
     /** The STOMP endpoint every live service registers (shared.websocket.WebSocketConfig). */

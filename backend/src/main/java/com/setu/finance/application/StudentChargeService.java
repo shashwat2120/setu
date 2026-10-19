@@ -116,6 +116,38 @@ public class StudentChargeService {
         return transition(chargeId, StudentChargeStatus.PAID, "STUDENT_CHARGE_PAID");
     }
 
+    Optional<StudentCharge> findById(UUID chargeId) {
+        return studentChargeRepository.findById(chargeId);
+    }
+
+    /**
+     * A confirmed payment settles its fee. A system action, not a user's: its authority is the provider's confirmation that {@link PaymentSettlement}
+     * has already checked, so it asks for no permission of its own and is package-private. A fee an administrator waived in the meantime stays
+     * waived; the payment is still recorded, and the audit row says the fee was not marked paid.
+     */
+    void settleFromPayment(UUID chargeId, UUID paymentId) {
+        StudentCharge charge = studentChargeRepository.findById(chargeId).orElse(null);
+        if (charge == null) {
+            return;
+        }
+        boolean settled = charge.canTransitionTo(StudentChargeStatus.PAID)
+            && studentChargeRepository.transitionIfStatus(chargeId, charge.status(), StudentChargeStatus.PAID) == 1;
+        auditLogWriter.write(charge.tenantId(), null, settled ? "STUDENT_CHARGE_PAID" : "STUDENT_CHARGE_NOT_SETTLED_BY_PAYMENT",
+            "finance.student_charges", chargeId, Map.of("paymentId", paymentId, "statusWas", charge.status().name()));
+    }
+
+    /** A refunded payment puts its fee back to PENDING: the student owes it again (the balance already says so). */
+    void reopenAfterRefund(UUID chargeId, UUID paymentId) {
+        StudentCharge charge = studentChargeRepository.findById(chargeId).orElse(null);
+        if (charge == null || charge.status() != StudentChargeStatus.PAID) {
+            return;
+        }
+        if (studentChargeRepository.transitionIfStatus(chargeId, StudentChargeStatus.PAID, StudentChargeStatus.PENDING) == 1) {
+            auditLogWriter.write(charge.tenantId(), null, "STUDENT_CHARGE_REOPENED_BY_REFUND", "finance.student_charges", chargeId,
+                Map.of("paymentId", paymentId));
+        }
+    }
+
     private TransitionResult transition(UUID chargeId, StudentChargeStatus target, String auditAction) {
         Optional<StudentCharge> maybeCharge = studentChargeRepository.findById(chargeId);
         if (maybeCharge.isEmpty()) {

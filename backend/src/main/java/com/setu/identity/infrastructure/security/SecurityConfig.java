@@ -108,6 +108,9 @@ public class SecurityConfig {
                 // (StompAuthorizationChannelInterceptor). The HTTP layer must let the handshake through; the real
                 // authentication boundary is the CONNECT frame, enforced immediately after by that interceptor.
                 .requestMatchers("/ws/**").permitAll()
+                // The payment provider's webhook has no user token to send. It is safe to leave open because the endpoint verifies the provider's HMAC
+                // signature over the raw body before reading it, and answers 401 otherwise (PaymentProviderService#handleSignedWebhook).
+                .requestMatchers(org.springframework.http.HttpMethod.POST, "/finance/provider-webhooks/**").permitAll()
                 .anyRequest().authenticated())
             .addFilterBefore(new MetricsScrapeAuthFilter(metricsScrapeToken), UsernamePasswordAuthenticationFilter.class)
             .addFilterBefore(new InternalCallAuthFilter(internalToken), UsernamePasswordAuthenticationFilter.class)

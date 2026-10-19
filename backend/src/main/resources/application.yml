@@ -260,6 +260,17 @@ app:
     batch-size: ${OUTBOX_BATCH_SIZE:100}
     topic-prefix: ${OUTBOX_TOPIC_PREFIX:setu.}
     send-timeout-seconds: ${OUTBOX_SEND_TIMEOUT_SECONDS:5}
+  finance:
+    razorpay:
+      # Razorpay (https://razorpay.com). With no key id and secret, online payment is simply off: checkout answers 503 "not enabled" and the rest of
+      # Finance works as before. Never committed: set in the git-ignored backend/.env.local (the dashboard issues rzp_test_ keys that move no
+      # money, and rzp_live_ keys after KYC; this code does not care which it is given).
+      key-id: ${RAZORPAY_KEY_ID:}
+      key-secret: ${RAZORPAY_KEY_SECRET:}
+      # The secret typed into Razorpay's dashboard when the webhook is created. With none, the webhook endpoint refuses everything (503).
+      webhook-secret: ${RAZORPAY_WEBHOOK_SECRET:}
+      base-url: ${RAZORPAY_BASE_URL:https://api.razorpay.com/v1}
+      timeout: ${RAZORPAY_TIMEOUT:10s}
   ai:
     # 60s default: a local small model doing tool-calling round trips genuinely takes 20-40s on typical dev
     # hardware (measured on this machine) — 30s was cutting real, successful calls off as false timeouts.
@@ -340,7 +351,8 @@ app:
       - id: core
         service: core
         paths: ["/**"]
-        public-paths: ["/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html"]
+        # The payment provider's webhook carries no user token; the endpoint verifies the provider's signature itself.
+        public-paths: ["/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html", "/finance/provider-webhooks/**"]
     cors:
       allowed-origins: ${GATEWAY_ALLOWED_ORIGINS:http://localhost:5173,http://localhost:3000,http://localhost:5180}
     upstream:
