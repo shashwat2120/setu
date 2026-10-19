@@ -61,10 +61,14 @@ as it is published (with its headers). When you publish the grade in step 3, a `
 other services emit in reaction. `pwsh infra/scripts/kafka-demo.ps1 status` shows the outbox (rows written in the same transaction as the business change,
 all `PUBLISHED`) and the message count per topic. Ctrl+C to stop it.
 
-1. **Faculty, live attendance.** Window 1: sign in as `faculty.rao`. **Attendance** → **Open attendance session**. The page says **Live**.
+1. **Faculty, live attendance.** Window 1: sign in as `faculty.rao`. **Attendance** → **Open attendance session**. The browser asks to share this device's
+   location: **Allow** (it becomes the classroom position). The page says **Live**, and "Classroom position: taken from this device".
    *Say:* that is a WebSocket through the gateway, relayed to the Attendance service; the service, not the gateway, decides who may subscribe.
 2. **Student scan.** Window 2: sign in as `student.average`. **Attendance** → **Check in to a session**: paste the **Session ID** and the **Check-in token** shown
-   on the faculty page (the token rotates every 30 seconds, so be quick or press **Rotate token** and copy the new one), **Check in**. Window 1: the student's row appears **PRESENT** without a refresh.
+   on the faculty page (the token rotates every 30 seconds, so be quick or press **Rotate token** and copy the new one), **Check in**. The browser asks for the student's location: **Allow**, and the message says "Your location matches the classroom."
+   Window 1: the student's row appears **PRESENT** without a refresh, with **Checked in from: In the room (N m)**.
+   *Say:* location is a signal, not a gate. A student who declines, or checks in from far away, is still marked present, and the instructor sees the flag
+   (**Away from the room (1.2 km)** or **Location not shared**). Only the outcome is stored, never the student's coordinates.
 3. **Grade the final exam.** Window 1: **Grades** → section CS101-A → assessment **Final Exam** (seeded, open) → component **FINAL** → on **Priya Nair**'s row
    enter marks (say 78), a grade (B) and a grade point (3.0) → **Publish**. *Say:* the Assessment service wrote the grade and an outbox row in one
    transaction; Kafka carries it from there. The Final Exam's component is marked as the course's final grade, which is why this one grade ends the course.

@@ -27,7 +27,8 @@ public class AttendanceSessionController {
         this.attendanceSessionService = attendanceSessionService;
     }
 
-    public record OpenRequest(UUID sectionId, UUID meetingId, Instant endsAt) {
+    /** {@code latitude} and {@code longitude} are the classroom position from the instructor's device; optional. */
+    public record OpenRequest(UUID sectionId, UUID meetingId, Instant endsAt, Double latitude, Double longitude) {
     }
 
     public record OpenResponse(UUID sessionId, String qrToken, Instant qrExpiresAt) {
@@ -35,7 +36,8 @@ public class AttendanceSessionController {
 
     @PostMapping
     public ResponseEntity<?> open(@RequestBody OpenRequest request) {
-        var result = attendanceSessionService.open(request.sectionId(), request.meetingId(), request.endsAt());
+        var result = attendanceSessionService.open(request.sectionId(), request.meetingId(), request.endsAt(),
+            request.latitude(), request.longitude());
         return switch (result) {
             case AttendanceSessionService.OpenResult.Success r -> ResponseEntity.status(HttpStatus.CREATED)
                 .body(new OpenResponse(r.sessionId(), r.rawToken(), r.qrExpiresAt()));

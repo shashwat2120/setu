@@ -138,8 +138,18 @@ public class AttendanceSessionService {
         }
     }
 
+    /** Opens a session with no classroom position (the seeder, older clients): check-ins to it record {@code NO_REFERENCE}. */
     @Transactional
     public OpenResult open(UUID sectionId, UUID meetingId, Instant endsAt) {
+        return open(sectionId, meetingId, endsAt, null, null);
+    }
+
+    /**
+     * @param classroomLatitude  where the instructor's device says the classroom is, with the longitude; optional, and ignored unless both are a valid
+     *                           position, so a bad value never stops a class from taking attendance
+     */
+    @Transactional
+    public OpenResult open(UUID sectionId, UUID meetingId, Instant endsAt, Double classroomLatitude, Double classroomLongitude) {
         Optional<UUID> tenantId = courseSectionDirectory.findTenantId(sectionId);
         if (tenantId.isEmpty()) {
             return new OpenResult.SectionNotFound();
@@ -172,6 +182,9 @@ public class AttendanceSessionService {
             session = new AttendanceSession(UUID.randomUUID(), tenant, sectionId, meetingId, currentUserId, now, endsAt, hash);
         } catch (IllegalArgumentException e) {
             return new OpenResult.InvalidSessionData(e.getMessage());
+        }
+        if (CheckInGeo.isValidPosition(classroomLatitude, classroomLongitude)) {
+            session.classroomPosition(classroomLatitude, classroomLongitude);
         }
         try {
             attendanceSessionInsertGuard.insert(session);

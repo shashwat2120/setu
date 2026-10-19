@@ -194,6 +194,10 @@ export interface AttendanceRecordResponse {
   markedAt: string;
   source: string;
   correctedBy: string | null;
+  /** How the check-in's reported position compared with the classroom: NEAR, FAR, NO_LOCATION or NO_REFERENCE; absent for records from before it existed. */
+  locationStatus?: string | null;
+  locationDistanceMeters?: number | null;
+  locationAccuracyMeters?: number | null;
 }
 
 export interface RiskScoreResponse {

@@ -6,6 +6,7 @@ import com.setu.attendance.domain.AttendanceRecordedEvent;
 import com.setu.attendance.domain.AttendanceSession;
 import com.setu.attendance.domain.AttendanceSessionStatus;
 import com.setu.attendance.domain.AttendanceSource;
+import com.setu.attendance.domain.CheckInLocation;
 import com.setu.attendance.infrastructure.AttendanceQrSessionRepository;
 import com.setu.attendance.infrastructure.AttendanceRecordInsertGuard;
 import com.setu.attendance.infrastructure.AttendanceRecordRepository;
@@ -100,7 +101,11 @@ public class AttendanceRecordService {
     }
 
     public sealed interface ScanResult {
-        record Success(UUID recordId) implements ScanResult {
+        /** @param locationStatus how the reported position compared with the classroom; informational, null only for callers that predate it */
+        record Success(UUID recordId, CheckInLocation locationStatus) implements ScanResult {
+            public Success(UUID recordId) {
+                this(recordId, null);
+            }
         }
 
         record AlreadyRecorded(UUID recordId, AttendanceRecordStatus status) implements ScanResult {
@@ -125,9 +130,22 @@ public class AttendanceRecordService {
         }
     }
 
-    /** Authenticated student scan (Day 9 §4). The student is never a request parameter — always resolved from the caller's own principal, so a student can only ever mark their own attendance. */
+    /**
+     * The position a student's device reported at check-in, all optional. Compared with the session's classroom position and then dropped: only the
+     * outcome (status, distance, accuracy) is stored, never these coordinates.
+     */
+    public record LocationReport(Double latitude, Double longitude, Double accuracyMeters) {
+    }
+
+    /** A scan that reports no position (the seeder, older clients): the check-in counts and its location is recorded as {@code NO_LOCATION}. */
     @Transactional
     public ScanResult scan(UUID sessionId, String rawToken) {
+        return scan(sessionId, rawToken, null);
+    }
+
+    /** Authenticated student scan (Day 9 §4). The student is never a request parameter — always resolved from the caller's own principal, so a student can only ever mark their own attendance. Where the check-in came from is recorded for the instructor and never decides whether it counts. */
+    @Transactional
+    public ScanResult scan(UUID sessionId, String rawToken, LocationReport location) {
         Optional<AttendanceSession> maybeSession = attendanceSessionRepository.findById(sessionId);
         if (maybeSession.isEmpty()) {
             return new ScanResult.SessionNotFound();
@@ -168,6 +186,10 @@ public class AttendanceRecordService {
         Instant now = Instant.now();
         AttendanceRecord record = new AttendanceRecord(UUID.randomUUID(), sessionId, enrollmentId.get(),
             AttendanceRecordStatus.PRESENT, now, AttendanceSource.QR_SCAN);
+        CheckInGeo.Outcome where = CheckInGeo.assess(session.anchorLatitude(), session.anchorLongitude(),
+            location == null ? null : location.latitude(), location == null ? null : location.longitude(),
+            location == null ? null : location.accuracyMeters());
+        record.checkInLocation(where.status(), where.distanceMeters(), where.accuracyMeters());
         // The insert runs in its own REQUIRES_NEW transaction (see AttendanceRecordInsertGuard's javadoc) so a lost
         // race against a concurrent duplicate scan (transaction-concurrency-matrix.md scenario 3) only aborts that
         // one separate transaction — this (outer) transaction, and the follow-up read below, stay usable.
@@ -192,7 +214,7 @@ public class AttendanceRecordService {
             session.tenantId(), correlationId, null);
 
         broadcastUpdate(session);
-        return new ScanResult.Success(record.id());
+        return new ScanResult.Success(record.id(), where.status());
     }
 
     /** Day 9 §9: minimal, non-PII payload — a refresh signal, not a roster. The instructor UI re-fetches full roster detail via the authoritative REST GET, never trusting the socket payload as proof of commit. */

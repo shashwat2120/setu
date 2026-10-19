@@ -7,6 +7,7 @@ import { PageHeader } from '../../components/ui/PageHeader';
 import { DataTable, type Column } from '../../components/ui/DataTable';
 import { StatusBadge } from '../../components/ui/StatusBadge';
 import { Skeleton, ErrorState } from '../../components/ui/EmptyState';
+import { getDevicePosition } from '../../lib/devicePosition';
 
 interface Row {
   enrollment: EnrollmentResponse;
@@ -34,10 +35,19 @@ export default function StudentAttendancePage() {
   const [checkingIn, setCheckingIn] = useState(false);
 
   async function checkIn(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault(); setCheckingIn(true); setCheckInMessage('');
+    event.preventDefault(); setCheckingIn(true); setCheckInMessage('Asking your device for your location… you can decline and still check in.');
     try {
-      await apiFetch('/attendance/scan', { method: 'POST', body: { sessionId, qrToken } });
-      setCheckInMessage('Check-in recorded.'); setSessionId(''); setQrToken('');
+      // location is a signal for the instructor, never a requirement: declining, or a device without it, checks in the same
+      const position = await getDevicePosition();
+      setCheckInMessage('Checking in…');
+      const result = await apiFetch<{ status: string; locationStatus?: string | null }>('/attendance/scan', {
+        method: 'POST',
+        body: { sessionId, qrToken, ...(position ? { latitude: position.latitude, longitude: position.longitude, accuracyMeters: position.accuracyMeters } : {}) },
+      });
+      const where = result.locationStatus === 'NEAR' ? ' Your location matches the classroom.'
+        : result.locationStatus === 'FAR' ? ' Your location looks far from the classroom; your instructor will see that.'
+        : result.locationStatus === 'NO_LOCATION' ? ' Your location was not shared, so your instructor sees none.' : '';
+      setCheckInMessage(`Check-in recorded.${where}`); setSessionId(''); setQrToken('');
       enrollments.refetch();
     } catch (e) { setCheckInMessage(e instanceof Error ? e.message : 'Check-in failed.'); }
     finally { setCheckingIn(false); }
@@ -89,6 +99,7 @@ export default function StudentAttendancePage() {
       <form className="card" onSubmit={checkIn} style={{ marginBottom: 18 }}>
         <h2 style={{ fontSize: 17, marginBottom: 8 }}>Check in to a session</h2>
         <p style={{ color: 'var(--ink-soft)', fontSize: 13, marginBottom: 12 }}>Enter the session ID and current rotating token shown by your faculty member.</p>
+        <p style={{ color: 'var(--ink-soft)', fontSize: 12, marginBottom: 12 }}>Your device will ask to share your location. It is used once, to show your instructor whether you are in the room; your coordinates are not saved, only how close you were. Declining still lets you check in.</p>
         <div className="form-field"><label htmlFor="attendance-session">Session ID</label><input id="attendance-session" value={sessionId} onChange={(e) => setSessionId(e.target.value)} required /></div>
         <div className="form-field"><label htmlFor="attendance-token">Check-in token</label><input id="attendance-token" value={qrToken} onChange={(e) => setQrToken(e.target.value)} required autoComplete="off" /></div>
         {checkInMessage && <p role="status" style={{ marginBottom: 10 }}>{checkInMessage}</p>}

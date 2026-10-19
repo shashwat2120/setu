@@ -51,10 +51,40 @@ public class AttendanceRecord {
     @Column(nullable = false)
     private AttendanceSource source;
 
+    /** How the check-in's reported position compared with the classroom (informational; never changes whether the record counts). Null before this existed. */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "location_status")
+    private CheckInLocation locationStatus;
+
+    @Column(name = "location_distance_meters")
+    private Integer locationDistanceMeters;
+
+    @Column(name = "location_accuracy_meters")
+    private Integer locationAccuracyMeters;
+
     @Version
     private int version;
 
     protected AttendanceRecord() {
+    }
+
+    /** Records the outcome of the location comparison; call before the record is first saved. The student's coordinates are not kept, only this outcome. */
+    public void checkInLocation(CheckInLocation status, Integer distanceMeters, Integer accuracyMeters) {
+        this.locationStatus = status;
+        this.locationDistanceMeters = distanceMeters;
+        this.locationAccuracyMeters = accuracyMeters;
+    }
+
+    public CheckInLocation locationStatus() {
+        return locationStatus;
+    }
+
+    public Integer locationDistanceMeters() {
+        return locationDistanceMeters;
+    }
+
+    public Integer locationAccuracyMeters() {
+        return locationAccuracyMeters;
     }
 
     public AttendanceRecord(UUID id, UUID attendanceSessionId, UUID enrollmentId, AttendanceRecordStatus status,

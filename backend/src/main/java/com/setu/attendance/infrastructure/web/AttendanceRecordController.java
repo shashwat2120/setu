@@ -28,24 +28,30 @@ public class AttendanceRecordController {
         this.attendanceRecordService = attendanceRecordService;
     }
 
-    public record ScanRequest(UUID sessionId, String qrToken) {
+    /** The position fields are optional: a student who declines, or a device without location, scans exactly as before. */
+    public record ScanRequest(UUID sessionId, String qrToken, Double latitude, Double longitude, Double accuracyMeters) {
     }
 
+    /** {@code locationStatus} (NEAR, FAR, NO_LOCATION, NO_REFERENCE) and the numbers are null for records made before check-in location existed. */
     public record RecordResponse(UUID id, UUID attendanceSessionId, UUID enrollmentId, String status,
-                                  Instant markedAt, String source, UUID correctedBy) {
+                                  Instant markedAt, String source, UUID correctedBy,
+                                  String locationStatus, Integer locationDistanceMeters, Integer locationAccuracyMeters) {
     }
 
     private static RecordResponse toResponse(AttendanceRecord r) {
         return new RecordResponse(r.id(), r.attendanceSessionId(), r.enrollmentId(), r.status().name(), r.markedAt(),
-            r.source().name(), r.correctedBy());
+            r.source().name(), r.correctedBy(), r.locationStatus() == null ? null : r.locationStatus().name(),
+            r.locationDistanceMeters(), r.locationAccuracyMeters());
     }
 
     @PostMapping("/scan")
     public ResponseEntity<?> scan(@RequestBody ScanRequest request) {
-        var result = attendanceRecordService.scan(request.sessionId(), request.qrToken());
+        var result = attendanceRecordService.scan(request.sessionId(), request.qrToken(),
+            new AttendanceRecordService.LocationReport(request.latitude(), request.longitude(), request.accuracyMeters()));
         return switch (result) {
-            case AttendanceRecordService.ScanResult.Success r -> ResponseEntity.status(HttpStatus.CREATED).body(new ScanResponse(r.recordId(), "PRESENT"));
-            case AttendanceRecordService.ScanResult.AlreadyRecorded r -> ResponseEntity.ok(new ScanResponse(r.recordId(), r.status().name()));
+            case AttendanceRecordService.ScanResult.Success r -> ResponseEntity.status(HttpStatus.CREATED)
+                .body(new ScanResponse(r.recordId(), "PRESENT", r.locationStatus() == null ? null : r.locationStatus().name()));
+            case AttendanceRecordService.ScanResult.AlreadyRecorded r -> ResponseEntity.ok(new ScanResponse(r.recordId(), r.status().name(), null));
             case AttendanceRecordService.ScanResult.SessionNotFound ignored ->
                 ResponseEntity.status(HttpStatus.BAD_REQUEST).body(new ErrorResponse("attendance session not found"));
             case AttendanceRecordService.ScanResult.StudentNotFound ignored ->
@@ -61,7 +67,8 @@ public class AttendanceRecordController {
         };
     }
 
-    public record ScanResponse(UUID recordId, String status) {
+    /** {@code locationStatus} is how the position compared with the classroom, for the student's own confirmation; null on a repeat scan. */
+    public record ScanResponse(UUID recordId, String status, String locationStatus) {
     }
 
     @GetMapping("/sessions/{sessionId}/records")

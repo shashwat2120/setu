@@ -11,6 +11,7 @@ import type {
 import { PageHeader } from '../../components/ui/PageHeader';
 import { Skeleton, EmptyState } from '../../components/ui/EmptyState';
 import { StatusBadge } from '../../components/ui/StatusBadge';
+import { getDevicePosition, locationLabel } from '../../lib/devicePosition';
 
 interface SectionOption {
   assignment: FacultyAssignmentResponse;
@@ -36,6 +37,8 @@ export default function FacultyAttendancePage() {
   const [closedCount, setClosedCount] = useState<number | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  /** Whether this device's position was sent as the classroom position when the session was opened (null: no session opened by this page yet). */
+  const [classroomShared, setClassroomShared] = useState<boolean | null>(null);
 
   useEffect(() => {
     const active = assignments?.filter((a) => a.active) ?? [];
@@ -75,10 +78,13 @@ export default function FacultyAttendancePage() {
     setActionError(null);
     try {
       const endsAt = new Date(Date.now() + 30 * 60 * 1000).toISOString();
+      // this device's position becomes the classroom position students are compared with; optional, so a refusal opens the session all the same
+      const position = await getDevicePosition(6000);
       const result = await apiFetch<AttendanceOpenResponse>('/attendance/sessions', {
         method: 'POST',
-        body: { sectionId: selectedSectionId, meetingId: selectedMeetingId, endsAt },
+        body: { sectionId: selectedSectionId, meetingId: selectedMeetingId, endsAt, ...(position ? { latitude: position.latitude, longitude: position.longitude } : {}) },
       });
+      setClassroomShared(position !== null);
       setSession(result);
       setClosedCount(null);
     } catch (e) {
@@ -241,6 +247,13 @@ export default function FacultyAttendancePage() {
                     </button>
                   )}
                 </div>
+                {classroomShared !== null && (
+                  <p style={{ fontSize: 12, color: 'var(--ink-soft)', marginBottom: 6 }}>
+                    {classroomShared
+                      ? 'Classroom position: taken from this device, so each check-in shows how close the student was.'
+                      : 'Classroom position: not shared from this device, so check-ins show no distance. Allow location and open a new session to enable it.'}
+                  </p>
+                )}
                 <p style={{ fontSize: 12, color: liveConnected ? 'var(--sage, #4a7c59)' : 'var(--ink-soft)' }}>
                   {liveConnected ? '● Live — records below update automatically as students scan.' : liveError ?? 'Connecting to realtime updates…'}
                 </p>
@@ -262,13 +275,16 @@ export default function FacultyAttendancePage() {
           ) : (
             <table className="data-table">
               <thead>
-                <tr><th scope="col">Enrollment</th><th scope="col">Status</th></tr>
+                <tr><th scope="col">Enrollment</th><th scope="col">Status</th><th scope="col">Checked in from</th></tr>
               </thead>
               <tbody>
                 {records.map((r) => (
                   <tr key={r.id}>
                     <td data-label="Enrollment" className="mono">{r.enrollmentId.slice(0, 8)}…</td>
                     <td data-label="Status"><StatusBadge value={r.status} /></td>
+                    <td data-label="Checked in from" style={{ fontSize: 13, color: r.locationStatus === 'FAR' ? 'var(--brass-deep, #8a5a14)' : 'var(--ink-soft)', fontWeight: r.locationStatus === 'FAR' ? 600 : 400 }}>
+                      {r.source === 'QR_SCAN' ? locationLabel(r.locationStatus, r.locationDistanceMeters) : '—'}
+                    </td>
                   </tr>
                 ))}
               </tbody>

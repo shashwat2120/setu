@@ -53,10 +53,33 @@ public class AttendanceSession {
     @Column(nullable = false)
     private AttendanceSessionStatus status;
 
+    /** The classroom position the instructor's device reported when opening the session (optional); check-ins are compared with it. */
+    @Column(name = "anchor_latitude")
+    private Double anchorLatitude;
+
+    @Column(name = "anchor_longitude")
+    private Double anchorLongitude;
+
     @Version
     private int version;
 
     protected AttendanceSession() {
+    }
+
+    /** Sets the classroom position; call before the session is first saved. Both or neither: a half position is not kept. */
+    public void classroomPosition(Double latitude, Double longitude) {
+        if (latitude != null && longitude != null) {
+            this.anchorLatitude = latitude;
+            this.anchorLongitude = longitude;
+        }
+    }
+
+    public Double anchorLatitude() {
+        return anchorLatitude;
+    }
+
+    public Double anchorLongitude() {
+        return anchorLongitude;
     }
 
     public AttendanceSession(UUID id, UUID tenantId, UUID sectionId, UUID meetingId, UUID openedBy, Instant startedAt,

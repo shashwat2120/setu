@@ -46,6 +46,11 @@ and the validation report ([validation-report.md](validation-report.md)) carry t
    to the service directly. The relay is verified over real sockets in containers (not on the development machine) and has no per-frame limits of
    its own.
 9. **Gap. Analytics service** (read-model projections) has no code or tables; the coupling audit dropped it as a candidate for now.
+   **9b. Limit. Check-in location is a signal, not proof.** A student's device reports where it thinks it is, with the accuracy it believes it has. A phone
+   can be made to report any position, and indoors the accuracy can be tens of metres, so a check-in is flagged `FAR` only when it is outside 100 m even
+   allowing for that accuracy, and it is never refused. The classroom position is whatever the instructor's device reports when the session opens (optional:
+   without it a check-in shows no distance). Only the outcome (status, distance, accuracy) is stored, never the student's coordinates; there is no retention
+   rule beyond the record itself, and the consent text is on the check-in form.
    **9a. Gap. No real payment provider is connected** (no Razorpay, Stripe or similar). Finance has the whole lifecycle: fee structures, student
    accounts and charges, payments that start as `INITIATED` (idempotent by a client key) and become `SUCCEEDED`, `FAILED` or `REFUNDED` only through a
    provider event deduplicated by its event id, and receipts; no card number or CVV is ever stored. The "webhook" endpoint stands in for the provider and
