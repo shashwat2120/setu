@@ -18,6 +18,13 @@ pwsh infra/scripts/reset-demo.ps1           # start over: drop the database, cle
 The gateway is `http://localhost:8080`; each service is also published on `127.0.0.1` at its own port (identity 8081, academic 8082, core 8083,
 learning 8084, assessment 8085, attendance 8086, notification 8087, ai 8088). Grafana is `http://localhost:3001`, Prometheus `:9091`.
 
+**The React frontend in front of it.** `npm run dev:stack` (in `frontend/`, or the `setu-frontend-stack` launch configuration) serves the app on
+`http://localhost:5180` with every request proxied to the gateway, and the live attendance board's WebSocket proxied to the Attendance service
+on 8086, because the gateway does not proxy WebSocket upgrades. Port 5180 matters: it is one of the origins the gateway's CORS rule allows. Checked
+in a browser against this stack: sign-in through the gateway, the faculty Assessments page (final-grade checkbox, and the one-final-grade-per-section
+refusal shown to the user), the student Grades page (CS101 completed, final grade B, 4 of 160 credits) and the faculty live attendance board (a
+student's scan appeared on it without a refresh), with no console or network errors apart from the expected 401 before sign-in.
+
 **First time.** Put the stack's secrets in the git-ignored `infra/docker/.env` (`.env.example` says which and how to make them): `JWT_SIGNING_KEY`
 (Identity's token-signing key), `JWT_PUBLIC_KEY` (its public half), `SETU_INTERNAL_TOKEN` (service-to-service calls the gateway never routes),
 `METRICS_SCRAPE_TOKEN` (must equal the contents of `infra/docker/observability/scrape-token.local`, which Prometheus reads), and optionally

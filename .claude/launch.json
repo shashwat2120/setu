@@ -12,6 +12,18 @@
       ],
       "port": 5180,
       "autoPort": true
+    },
+    {
+      "name": "setu-frontend-stack",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "--prefix",
+        "C:\\Users\\ShashwatMishra\\Documents\\setu\\frontend",
+        "run",
+        "dev:stack"
+      ],
+      "port": 5180,
+      "autoPort": false
     }
   ]
 }
