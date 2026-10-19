@@ -58,7 +58,7 @@ its own (6B.2), it becomes the snapshot export of `infra/db/split/split-service.
   circuit breaker and bulkhead, refused rather than guessed when Academic cannot answer; see [data-ownership.md](data-ownership.md) section 3), so
   for grants the rule is absolute wherever `setu.guardian-verify.url` is set. A role change keeps the event-lag bound; logouts and suspensions
   do not, because they travel on the revocation list.
-- **A completed enrollment is no longer active.** When its final grade is published the student leaves the course for every service that asks "is this student actively enrolled" (course content in Learning, attendance sessions): they keep their grades and transcript, not the course page. Grading is the exception, through `gradableEnrollmentId`.
+- **A completed enrollment is no longer active.** When its final grade is published the student leaves the course for every service that asks "is this student actively enrolled" (course content in Learning, attendance sessions): they keep their grades and transcript, **and read access to the course** (lessons, resources, assignments in Learning, with a notice on the page that it is complete); they cannot scan attendance, submit work or record progress. A student who dropped has neither. Grading is the exception, through `gradableEnrollmentId`.
 - **An enrollment is known once it has been ENROLLED.** Requests that were refused or are still waiting never appear in the copy; nothing asks
   about those.
 - **Events carry no history.** Rows that existed before the events did come from `V81`; after that, only events change them.

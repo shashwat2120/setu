@@ -41,6 +41,17 @@ class LearningAccessSupport {
             .filter(studentId -> academic.activeEnrollmentId(sectionId, studentId).isPresent());
     }
 
+    /**
+     * Non-empty only if the CURRENT principal is a student who may <b>read</b> this section's content: enrolled now, or enrolled and finished (a final grade
+     * completed the enrollment). A finished course stays readable to the student who took it. Reading only: submitting work and recording progress still use
+     * {@link #currentEnrolledStudentId}, so nothing can be added to a course that is over, and a student who dropped has neither.
+     */
+    Optional<UUID> currentViewingStudentId(UUID tenantId, UUID sectionId) {
+        UUID currentUserId = authorizationContext.currentUserId();
+        return academic.studentIdOfUser(tenantId, currentUserId)
+            .filter(studentId -> academic.gradableEnrollmentId(sectionId, studentId).isPresent());
+    }
+
     /** The current principal's own student-profile id in this tenant, regardless of any particular section's enrollment — used for "is this MY progress row" ownership checks. */
     Optional<UUID> currentStudentId(UUID tenantId) {
         return academic.studentIdOfUser(tenantId, authorizationContext.currentUserId());

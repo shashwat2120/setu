@@ -220,6 +220,11 @@ terminal states → correction rules → audit → emitted event.
 - **Grading after completion**: grades of a completed enrollment can still be
   published and corrected (late components, corrections of the final grade); only
   a dropped or never-enrolled student cannot be graded.
+- **Reading after completion**: a completed student keeps **read** access to the
+  course's modules, lessons and assignments in Learning (`LearningAccessSupport.currentViewingStudentId`:
+  enrolled or completed). Everything that adds something (attendance scan, assignment
+  submission, learning progress) still requires an active enrollment, and a dropped
+  or never-enrolled student has neither. Tests: `CompletedStudentAccessTests`.
 
 ## 12. Waitlist Entry
 

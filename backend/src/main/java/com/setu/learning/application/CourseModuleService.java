@@ -197,7 +197,7 @@ public class CourseModuleService {
         if (accessSupport.currentAssignedFacultyId(tenantId, sectionId).isPresent()) {
             return true;
         }
-        if (accessSupport.currentEnrolledStudentId(tenantId, sectionId).isPresent()) {
+        if (accessSupport.currentViewingStudentId(tenantId, sectionId).isPresent()) {
             return false;
         }
         authorizationContext.assertCan(VIEW_PERMISSION, ResourceRef.of("course_module", UUID.randomUUID(), tenantId));

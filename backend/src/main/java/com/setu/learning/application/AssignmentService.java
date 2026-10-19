@@ -213,7 +213,7 @@ public class AssignmentService {
         if (accessSupport.currentAssignedFacultyId(tenantId, sectionId).isPresent()) {
             return true;
         }
-        if (accessSupport.currentEnrolledStudentId(tenantId, sectionId).isPresent()) {
+        if (accessSupport.currentViewingStudentId(tenantId, sectionId).isPresent()) {
             return false;
         }
         authorizationContext.assertCan(VIEW_PERMISSION, ResourceRef.of("assignment", UUID.randomUUID(), tenantId));

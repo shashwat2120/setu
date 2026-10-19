@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { createContext, useContext, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { apiFetch } from '../../api/client';
 import { useApiQuery } from '../../api/useApiQuery';
@@ -15,7 +15,14 @@ import { LessonContent } from '../../components/learning/LessonContent';
 
 const inputStyle = { padding: '8px 10px', fontSize: 13, border: '1px solid var(--rule)', borderRadius: 4, background: 'var(--bg-elev)', color: 'var(--ink)' };
 
+/**
+ * True once a final grade has completed the enrollment: the student keeps reading the course they took, and nothing can be added to it (the server
+ * refuses progress, submissions and attempts for a completed enrollment), so the controls that would only fail are not offered.
+ */
+const ReadOnlyCourse = createContext(false);
+
 function LessonRow({ lesson, studentId }: { lesson: LessonResponse; studentId: string }) {
+  const readOnly = useContext(ReadOnlyCourse);
   const progress = useApiQuery<LearningProgressResponse>(`/learning/progress?lessonId=${lesson.id}&studentId=${studentId}`);
   const [saving, setSaving] = useState(false);
   const [open, setOpen] = useState(false);
@@ -54,12 +61,12 @@ function LessonRow({ lesson, studentId }: { lesson: LessonResponse; studentId: s
       <td data-label="Progress">{progress.loading ? <Skeleton height={16} width={70} /> : <StatusBadge value={state} />}</td>
       <td data-label="Actions">
         <div style={{ display: 'flex', gap: 8 }}>
-          {state === 'NOT_STARTED' && (
+          {!readOnly && state === 'NOT_STARTED' && (
             <button type="button" className="btn btn-ghost" style={{ padding: '6px 10px', fontSize: 12 }} disabled={saving} onClick={markInProgress}>
               Start
             </button>
           )}
-          {state !== 'COMPLETED' && (
+          {!readOnly && state !== 'COMPLETED' && (
             <button type="button" className="btn btn-primary" style={{ padding: '6px 10px', fontSize: 12 }} disabled={saving} onClick={markComplete}>
               Mark complete
             </button>
@@ -103,6 +110,7 @@ function ModuleSection({ module, studentId }: { module: CourseModuleResponse; st
 }
 
 function AssignmentRow({ assignment }: { assignment: LearningAssignmentResponse }) {
+  const readOnly = useContext(ReadOnlyCourse);
   const submissions = useApiQuery<AssignmentSubmissionResponse[]>(`/learning/submissions?assignmentId=${assignment.id}`);
   const [contentRef, setContentRef] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -149,7 +157,7 @@ function AssignmentRow({ assignment }: { assignment: LearningAssignmentResponse 
           )}
         </div>
       ) : (
-        assignment.status === 'PUBLISHED' && (
+        assignment.status === 'PUBLISHED' && !readOnly && (
           <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
             <input aria-label="Submission reference" placeholder="ref://your-submission" value={contentRef}
               onChange={(e) => setContentRef(e.target.value)} style={{ ...inputStyle, flex: 1, minWidth: 200 }} />
@@ -244,6 +252,7 @@ function ComponentQuestions({ component, attemptId }: { component: AssessmentCom
 }
 
 function AssessmentCard({ assessment }: { assessment: AssessmentResponse }) {
+  const readOnly = useContext(ReadOnlyCourse);
   const attempts = useApiQuery<AssessmentAttemptResponse[]>(`/assessment/attempts?assessmentId=${assessment.id}`);
   const [starting, setStarting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -294,7 +303,7 @@ function AssessmentCard({ assessment }: { assessment: AssessmentResponse }) {
           )}
         </div>
       ) : (
-        assessment.status === 'OPEN' && (
+        assessment.status === 'OPEN' && !readOnly && (
           <div style={{ marginTop: 10 }}>
             <button type="button" className="btn btn-primary" style={{ padding: '8px 14px', fontSize: 13 }} disabled={starting} onClick={start}>
               {starting ? 'Starting…' : 'Start attempt'}
@@ -329,7 +338,10 @@ export default function StudentCourseDetailPage() {
     return <div className="card"><ErrorState message="Could not load this course." onRetry={enrollment.refetch} /></div>;
   }
 
+  const completed = enrollment.data?.status === 'COMPLETED';
+
   return (
+    <ReadOnlyCourse.Provider value={completed}>
     <div>
       <p style={{ marginBottom: 16 }}>
         <Link to="/app/student/courses" style={{ fontSize: 13 }}>&larr; Back to my courses</Link>
@@ -338,6 +350,11 @@ export default function StudentCourseDetailPage() {
         title={course.data ? `${course.data.code} — ${course.data.title}` : 'Course'}
         subtitle={section.data ? `Section ${section.data.sectionCode}` : undefined}
       />
+      {completed && (
+        <p role="status" className="card" style={{ marginBottom: 16, fontSize: 14 }}>
+          This course is complete{enrollment.data?.finalStatus ? ` (final grade ${enrollment.data.finalStatus})` : ''}. You can still read everything in it; nothing can be added to it now.
+        </p>
+      )}
 
       <h2 style={{ fontSize: 18, marginBottom: 12 }}>Modules & Lessons</h2>
       {modules.loading && <Skeleton height={80} />}
@@ -355,5 +372,6 @@ export default function StudentCourseDetailPage() {
       {assessments.data && assessments.data.length === 0 && <div className="card"><p style={{ color: 'var(--ink-soft)' }}>No assessments yet.</p></div>}
       {assessments.data?.map((a) => <AssessmentCard key={a.id} assessment={a} />)}
     </div>
+    </ReadOnlyCourse.Provider>
   );
 }

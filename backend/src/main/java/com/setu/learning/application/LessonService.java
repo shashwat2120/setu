@@ -199,7 +199,7 @@ public class LessonService {
         if (accessSupport.currentAssignedFacultyId(tenantId, sectionId).isPresent()) {
             return;
         }
-        if (accessSupport.currentEnrolledStudentId(tenantId, sectionId).isPresent()) {
+        if (accessSupport.currentViewingStudentId(tenantId, sectionId).isPresent()) {
             return;
         }
         authorizationContext.assertCan(VIEW_PERMISSION, ResourceRef.of("lesson", UUID.randomUUID(), tenantId));
