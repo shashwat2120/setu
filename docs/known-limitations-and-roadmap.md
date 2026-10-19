@@ -30,8 +30,12 @@ and the validation report ([validation-report.md](validation-report.md)) carry t
 6. ~~**Limit. No automated accessibility test** in the frontend.~~ **Closed for what an engine can check** (`npm test` in `frontend/`): the axe-core
    engine runs against WCAG 2.2 AA on every page of the app, for its role, in the state it shows when its data cannot be loaded, plus the sign-in page,
    the check-in pages with data, the shared table and prompt, keyboard order and activation, live-region announcements and the reduced-motion preference
-   (`src/test/accessibility.*.test.tsx`). **Still not covered, and stated so:** colour contrast (it needs real layout and paint, so it is checked in a
-   browser, not in jsdom), pages with data loaded beyond those above, and use with a real screen reader.
+   (`src/test/accessibility.*.test.tsx`). Colour contrast, which needs real layout and paint, was checked in a real browser with the same engine against the running stack:
+   **38 pages with live data have no WCAG 2.2 AA violations** (sign-in, landing, 9 student pages including a course page, 10 faculty pages, 17 admin pages), and every
+   text and background pair in the design tokens clears 4.5:1 (ink 12.6 to 14.2, soft ink 5.7 to 6.4, button text 5.7, error red 4.9 to 5.6, brass 4.6 to 5.3). **Still not
+   covered, and stated so:** the guardian, placement and super-admin pages in a browser (their error and empty states are in the automated suite), pages opened
+   through an address with an id (apart from the course page), and use with a real screen reader. The engine marks a few spots per page as undecidable (a fixed top
+   bar overlapping the page, a decorative glyph); the colours behind those were computed by hand and pass.
 
 ## Not finished
 
@@ -95,8 +99,7 @@ In the order that removes the most risk first.
 5. **Settle the faculty role-versus-assignment rule** across Learning, Attendance and Assessment and add the test that asserts it (item 10).
 6. **Add a hosted second AI fallback** (for example an NVIDIA-hosted Llama through its OpenAI-compatible endpoint) ahead of the CPU model if
    the local fallback is expected to carry real traffic; this needs the provider and model to be named.
-7. **Done** (item 6): the frontend test runner and its accessibility checks. **Next there:** data states for the remaining pages, and a browser-based
-   contrast check.
+7. **Done** (item 6): the frontend test runner and its accessibility checks. **Next there:** data states for the remaining pages.
 8. **Analytics read models** when a consumer for them exists (item 9).
 
 ## Explicitly not planned (canonical spec §15)

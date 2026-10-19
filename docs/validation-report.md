@@ -67,8 +67,9 @@ chunks because they need an empty database; they passed on one, with the new Fin
 
 **Frontend (`npm test` in `frontend/`): 91 tests in 7 files, all passing**: the axe-core engine against WCAG 2.2 AA on every page of the app for its role in
 the state it shows when its data cannot load, and the sign-in, check-in, advisor, finance and finished-course pages with data (see
-[non-negotiables-test-audit.md](non-negotiables-test-audit.md) item 4). Colour contrast, which needs a real browser, was checked with axe-core in one:
-the sign-in page and the public landing page have no violations (eight text-over-photograph spots are flagged by the engine for a human to look at).
+[non-negotiables-test-audit.md](non-negotiables-test-audit.md) item 4). Colour contrast, which needs a real browser, was checked with axe-core in one against the running stack:
+**38 pages with live data have no WCAG 2.2 AA violations** (sign-in, landing, 9 student pages, 10 faculty pages, 17 admin pages); eight text-over-photograph spots on the landing page
+are flagged by the engine for a human to look at.
 
 | Chunk | Tests |
 |---|---|

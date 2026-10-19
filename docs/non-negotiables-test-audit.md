@@ -124,8 +124,8 @@ chain rejected the handshake the monolith's chain opens). Both are now caught by
    short per-instance cache or the Redis denylist the spec mentions would be the optimisation, not a correctness change.
 4. **Accessibility** (spec §13): ~~no automated accessibility test~~ **now automated for what an engine can check**: `npm test` in `frontend/` runs axe-core
    against WCAG 2.2 AA on every page for its role in its error and empty state, and drives the sign-in and check-in forms, the shared table and the
-   confirm prompt by keyboard, with live-region and reduced-motion checks; a canary test proves the check fails on a bad page. Open: colour contrast
-   (needs a real browser), data states beyond the pages listed, and a real screen reader.
+   confirm prompt by keyboard, with live-region and reduced-motion checks; a canary test proves the check fails on a bad page. Colour contrast was checked in a real browser: 38 pages with live data, no violations, and every design-token
+   text/background pair clears 4.5:1 (details in known-limitations item 6). Open: the guardian, placement and super-admin pages in a browser, and a real screen reader.
 5. ~~Performance: no N+1 detection test.~~ **Closed in 6C.2** for the paths measured: `QueryCountTests` (same statement count for 3 and
    20 rows), `DemoTargetsPerformanceTests` (spec §14 targets, tag `performance`), `ConnectionPoolSizingTests`. Still open: no load test
    over a real network and no Kafka-lag measurement (no consumer can run on this machine); see `docs/contracts/performance.md`.
