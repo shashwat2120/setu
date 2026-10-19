@@ -46,6 +46,11 @@ and the validation report ([validation-report.md](validation-report.md)) carry t
    to the service directly. The relay is verified over real sockets in containers (not on the development machine) and has no per-frame limits of
    its own.
 9. **Gap. Analytics service** (read-model projections) has no code or tables; the coupling audit dropped it as a candidate for now.
+   **9a. Gap. No real payment provider is connected** (no Razorpay, Stripe or similar). Finance has the whole lifecycle: fee structures, student
+   accounts and charges, payments that start as `INITIATED` (idempotent by a client key) and become `SUCCEEDED`, `FAILED` or `REFUNDED` only through a
+   provider event deduplicated by its event id, and receipts; no card number or CVV is ever stored. The "webhook" endpoint stands in for the provider and
+   is restricted to a finance administrator, because there is no real provider signature to verify. Connecting a provider means creating its order,
+   a checkout on the frontend, and a public webhook that verifies the provider's signature and then calls the same `recordWebhookEvent`.
 10. **Open design question. Assigned-faculty access is not tied to the faculty role** in Learning and Attendance, while Assessment requires the
     permission as well ([audit item 9](non-negotiables-test-audit.md)). Assignment is still required everywhere, so this is not a leak, but an
     assignment that outlived a role change would keep access to that section's data.
@@ -71,13 +76,13 @@ and the validation report ([validation-report.md](validation-report.md)) carry t
 In the order that removes the most risk first.
 
 1. **Add the other risk triggers** if wanted (attendance session closed, assignment graded, `AssessmentCompleted`), each with its own test.
-2. **Run the services as real processes**: container images per service and a compose profile, on a machine without the NIO defect; then verify
-   Kafka lag, the DLQ against a live broker, and the Grafana panels against a live scrape (items 2, 5).
+2. **Done for the layout** ([contracts/containers.md](contracts/containers.md)): the services run as containers and Kafka lag, the Grafana panels and the
+   live board were verified live. **Still open:** the DLQ against a live broker with a real poison event, and everything under load (items 2, 5).
 3. **Finish moving Record into Assessment** (the port and the completion event are in place): Academic events for courses, curricula and student
    programs, a read-model implementation of `RecordDirectory`, the `/record` route; **then Finance and Career**, each behind its own read-model
    copy, with the frozen foreign keys replaced by write-time checks and a reconciliation count, the same recipe as 6A.5 (item 7). The completion event now exists, so the record's copy has
    the enrollment facts it needs.
-4. **Proxy WebSocket at the gateway** or standardize clients on the owning service's address (item 8).
+4. **Done for the live attendance board** (item 8). **Still open:** a route for Notification's live delivery and the AI job status, each on a path of its own.
 5. **Settle the faculty role-versus-assignment rule** across Learning, Attendance and Assessment and add the test that asserts it (item 10).
 6. **Add a hosted second AI fallback** (for example an NVIDIA-hosted Llama through its OpenAI-compatible endpoint) ahead of the CPU model if
    the local fallback is expected to carry real traffic; this needs the provider and model to be named.
