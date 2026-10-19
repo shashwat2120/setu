@@ -70,7 +70,8 @@ keeps a processed-event table and a redelivery is a no-op; the claim is idempote
 `causation_id`, `tenant_id` and the W3C `traceparent` of the request that wrote it.
 
 **Risk, advisor alert.** Risk still runs in the core process and reads grades, attendance and learning progress in process. A consumer in the
-risk module reads `GradePublished` from `setu.grades` (group `setu-risk`) and recalculates that student with no signed-in user: the student and
+risk module reads `GradePublished` from `setu.grades` and `AttendanceSessionClosed` from `setu.attendance_sessions` (group `setu-risk`) and recalculates the student, or for a
+closed session every student enrolled in its section, with no signed-in user: the student and
 tenant come from the event's enrollment, the event id is recorded in `risk.processed_events` in the same transaction, and recalculations for one
 student are serialised. The result is stored reproducibly (rule version, feature snapshot hash, calculation time, evidence ids), and an unchanged
 snapshot records nothing. The `RiskScoreChanged` and `RecommendationCreated` events it writes carry the grade event's correlation id and name it

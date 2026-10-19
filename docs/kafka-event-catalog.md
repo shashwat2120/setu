@@ -97,7 +97,7 @@ the section id (aggregate `waitlist_entries`) so promotion order is kept per sec
 - **Metrics:** `setu_notification_events_total{event_type, outcome}` (outcome `created`, `duplicate`, `ignored`, `error`) and
   `setu_notification_events_dead_lettered_total{topic}`.
 - **Risk consumer switches:** `app.risk.consumer.enabled` (default on; the test suite turns it off), `app.risk.consumer.group-id` (`setu-risk`),
-  `app.risk.consumer.aggregates` (`grades`), `app.risk.consumer.topic-prefix`, `app.risk.consumer.retry-initial-ms`.
+  `app.risk.consumer.aggregates` (`grades,attendance_sessions`), `app.risk.consumer.topic-prefix`, `app.risk.consumer.retry-initial-ms`.
 - **Switches:** `app.notification.consumer.enabled` (default on; the test suite turns it off so only an explicit test consumes),
   `app.notification.consumer.group-id`, `app.notification.consumer.topic-prefix`, `app.notification.consumer.aggregates`.
 - **Shown to the user:** `GET /notifications` and the bell in the app header (see openapi-contract-catalog.md). Not built: email and
@@ -176,11 +176,13 @@ the section id (aggregate `waitlist_entries`) so promotion order is kept per sec
   every correction of one student's final grade arrive in order. Academic consumes it (group `setu-enrollment`) and completes the enrollment:
   ENROLLED becomes COMPLETED with the grade code as `final_status`; a correction changes `final_status`. It answers with `EnrollmentCompleted`.
 
-- **Student Success consumes `GradePublished`** (implemented, 6C.3 follow-up): every original publish and every correction recalculates the
-  student's risk (`RiskEventProcessor`, group `setu-risk`, from the earliest offset). The event is only the reason to look again: the
+- **Student Success consumes `GradePublished` and `AttendanceSessionClosed`** (implemented, 6C.3 follow-up): every original publish and every
+  correction recalculates the student's risk, and closing an attendance session recalculates every student actively enrolled in its section (closing is
+  when the absent are marked, so it is the moment attendance changes; a scan alone is not a trigger). The fan-out is one transaction under the one
+  event-id guard, locking the students in sorted order so two overlapping closes cannot deadlock (`RiskEventProcessor`, group `setu-risk`, from the earliest offset). The event is only the reason to look again: the
   recalculation reads the student's current data, so ordering between events does not matter and a replay is harmless. Idempotent on the event id
   (`risk.processed_events`); recalculations for one student are serialised; a recalculation whose inputs hash to the current score's, under the
-  same rule version, records nothing. `AssessmentCompleted` is listed above as a Student Success input but is not a trigger yet.
+  same rule version, records nothing. `AssessmentCompleted`, submissions and learning progress are listed as Student Success inputs but are not triggers yet.
 
 - **`GradePublished` corrections**: since `grades` is append-only
   (state-machines.md #19), a correction publishes a *new* event, not an

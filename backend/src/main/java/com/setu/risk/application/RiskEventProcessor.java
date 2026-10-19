@@ -8,17 +8,23 @@ import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.List;
 import java.util.Set;
+import java.util.TreeSet;
 import java.util.UUID;
 
 /**
  * Recalculates a student's risk when the inputs it is computed from change, driven by a Kafka business event instead of a person pressing
  * Recalculate (canonical spec section 16: "grade event -> risk recalculation").
  * <p>
- * <b>What starts it.</b> {@code GradePublished}, which is written once for a new grade and again for a correction (it carries a
- * {@code supersedesId} then). The recalculation always reads the student's <i>current</i> state, not the event's contents, so it cannot be
- * made to compute anything other than what the stored data says: the event is only the reason to look again. Other signals (attendance,
- * submissions, progress) are not triggers yet; adding one is a line in {@link #TRIGGERS} and a test.
+ * <b>What starts it.</b> Two events. {@code GradePublished}, written once for a new grade and again for a correction (it carries a
+ * {@code supersedesId} then), names one enrollment and so one student. {@code AttendanceSessionClosed} names a section: closing a session is when
+ * every absent student is marked, so it refreshes every student actively enrolled in that section, in one transaction. (A scan on its own is not a
+ * trigger: the close that follows settles presence and absence together, once.) The recalculation always reads the student's <i>current</i> state,
+ * not the event's contents, so it cannot be made to compute anything other than what the stored data says: the event is only the reason to look
+ * again. Other signals (submissions, learning progress) are not triggers yet; adding one is a line in {@link #TRIGGERS} and a test.
  * <p>
  * <b>Idempotency</b> (canonical spec section 8): the event id is inserted into {@code risk.processed_events} in the same transaction as
  * the recalculation. Kafka delivers at least once, so a redelivery finds the id there and does nothing; the insert is the guard, not a prior
@@ -42,7 +48,9 @@ public class RiskEventProcessor {
     public static final int SUPPORTED_EVENT_VERSION = 1;
 
     /** The event types that make a recalculation worth doing. */
-    static final Set<String> TRIGGERS = Set.of("GradePublished");
+    static final Set<String> TRIGGERS = Set.of("GradePublished", "AttendanceSessionClosed");
+
+    private static final String SESSION_CLOSED = "AttendanceSessionClosed";
 
     public enum Outcome { RECALCULATED, UNCHANGED, DUPLICATE, IGNORED }
 
@@ -73,7 +81,8 @@ public class RiskEventProcessor {
         if (headerTenantId != null && !tenantId.equals(uuid(headerTenantId, "tenant_id header"))) {
             throw new PoisonEventException("tenant_id header does not match the payload's tenantId for event " + eventId);
         }
-        UUID enrollmentId = uuid(text(payload, "enrollmentId"), "enrollmentId");
+        boolean wholeSection = SESSION_CLOSED.equals(eventType);
+        UUID subjectId = uuid(text(payload, wholeSection ? "sectionId" : "enrollmentId"), wholeSection ? "sectionId" : "enrollmentId");
 
         // The guard: only the first delivery of this event id gets past this insert.
         int inserted = jdbc.sql("INSERT INTO risk.processed_events (event_id, event_type) VALUES (:id, :type) ON CONFLICT (event_id) DO NOTHING")
@@ -82,19 +91,38 @@ public class RiskEventProcessor {
             return Outcome.DUPLICATE;
         }
 
-        AcademicDirectory.EnrollmentRef enrollment = directory.enrollment(enrollmentId)
-            .orElseThrow(() -> new StudentNotKnownException(eventType + " names an enrollment not known (yet): " + enrollmentId));
-        if (!tenantId.equals(enrollment.tenantId())) {
-            throw new PoisonEventException(eventType + " tenant does not match enrollment " + enrollmentId);
+        // The students this event is a reason to look at again: the one enrollment's student, or every active student of the section.
+        TreeSet<UUID> students = new TreeSet<>(Comparator.naturalOrder());   // sorted, so two overlapping fan-outs lock in the same order and cannot deadlock
+        if (wholeSection) {
+            List<UUID> enrollmentIds = new ArrayList<>(directory.activeEnrollmentIds(subjectId));
+            for (UUID id : enrollmentIds) {
+                AcademicDirectory.EnrollmentRef ref = directory.enrollment(id).orElse(null);
+                if (ref == null) {
+                    continue;   // dropped between the two reads: nothing to recalculate for it
+                }
+                if (!tenantId.equals(ref.tenantId())) {
+                    throw new PoisonEventException(eventType + " tenant does not match section " + subjectId);
+                }
+                students.add(ref.studentId());
+            }
+        } else {
+            AcademicDirectory.EnrollmentRef enrollment = directory.enrollment(subjectId)
+                .orElseThrow(() -> new StudentNotKnownException(eventType + " names an enrollment not known (yet): " + subjectId));
+            if (!tenantId.equals(enrollment.tenantId())) {
+                throw new PoisonEventException(eventType + " tenant does not match enrollment " + subjectId);
+            }
+            students.add(enrollment.studentId());
         }
 
-        // One recalculation per student at a time; released when this transaction ends.
-        jdbc.sql("SELECT pg_advisory_xact_lock(hashtext(:key))").param("key", "risk-recalculate:" + enrollment.studentId()).query().singleRow();
-
-        return switch (calculationService.recalculateForEvent(enrollment.studentId(), tenantId, eventId, eventType)) {
-            case RECALCULATED -> Outcome.RECALCULATED;
-            case UNCHANGED -> Outcome.UNCHANGED;
-        };
+        Outcome result = Outcome.UNCHANGED;
+        for (UUID studentId : students) {
+            // One recalculation per student at a time; released when this transaction ends.
+            jdbc.sql("SELECT pg_advisory_xact_lock(hashtext(:key))").param("key", "risk-recalculate:" + studentId).query().singleRow();
+            if (calculationService.recalculateForEvent(studentId, tenantId, eventId, eventType) == RiskCalculationService.EventRecalculation.RECALCULATED) {
+                result = Outcome.RECALCULATED;
+            }
+        }
+        return result;
     }
 
     private JsonNode parse(String json) {

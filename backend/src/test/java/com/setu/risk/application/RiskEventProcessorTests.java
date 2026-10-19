@@ -210,6 +210,73 @@ class RiskEventProcessorTests {
         }
     }
 
+    private String sessionClosedPayload(UUID eventId, UUID tenantId, UUID sectionId) {
+        return "{\"eventId\":\"" + eventId + "\",\"tenantId\":\"" + tenantId + "\",\"sectionId\":\"" + sectionId + "\",\"sessionId\":\"" + UUID.randomUUID() + "\",\"absentRecordsGenerated\":1}";
+    }
+
+    @Test
+    void aClosedAttendanceSessionRecalculatesEveryStudentActivelyEnrolledInTheSection() {
+        var s = scenarioWithGrade("RE10", "B", "3.0");
+        UUID eventId = UUID.randomUUID();
+        assertThat(scores(s.student().studentId())).isZero();
+
+        var outcome = processor.process("AttendanceSessionClosed", eventId.toString(), s.tenant().tenantId().toString(),
+            sessionClosedPayload(eventId, s.tenant().tenantId(), s.sectionId()));
+
+        assertThat(outcome).isEqualTo(RiskEventProcessor.Outcome.RECALCULATED);
+        assertThat(scores(s.student().studentId())).isEqualTo(1);
+        assertThat(processed(eventId)).as("one guard row for the event, however many students it touched").isEqualTo(1);
+        var audit = jdbc.sql("SELECT actor_user_id, after_json::text AS details FROM governance.audit_logs a JOIN risk.risk_scores r ON r.id = a.resource_id "
+                + "WHERE a.action = 'RISK_SCORE_CALCULATED' AND r.student_id = :s").param("s", s.student().studentId()).query().singleRow();
+        assertThat(audit.get("actor_user_id")).isNull();
+        assertThat((String) audit.get("details")).contains("AttendanceSessionClosed").contains(eventId.toString());
+    }
+
+    @Test
+    void aRedeliveredSessionClosedEventDoesNothing() {
+        var s = scenarioWithGrade("RE11", "B", "3.0");
+        UUID eventId = UUID.randomUUID();
+        String payload = sessionClosedPayload(eventId, s.tenant().tenantId(), s.sectionId());
+        processor.process("AttendanceSessionClosed", eventId.toString(), s.tenant().tenantId().toString(), payload);
+
+        var again = processor.process("AttendanceSessionClosed", eventId.toString(), s.tenant().tenantId().toString(), payload);
+
+        assertThat(again).isEqualTo(RiskEventProcessor.Outcome.DUPLICATE);
+        assertThat(scores(s.student().studentId())).isEqualTo(1);
+    }
+
+    @Test
+    void aSessionClosedEventNamingAnotherCollegesTenantIsRefusedAndLeavesNothingBehind() {
+        var s = scenarioWithGrade("RE12", "B", "3.0");
+        UUID eventId = UUID.randomUUID();
+        UUID otherTenant = UUID.randomUUID();
+
+        assertThatThrownBy(() -> processor.process("AttendanceSessionClosed", eventId.toString(), otherTenant.toString(),
+            sessionClosedPayload(eventId, otherTenant, s.sectionId()))).isInstanceOf(PoisonEventException.class);
+
+        assertThat(scores(s.student().studentId())).isZero();
+        assertThat(processed(eventId)).as("the refusal rolled back the guard row with it").isZero();
+    }
+
+    @Test
+    void aSessionClosedEventForASectionWithNobodyEnrolledChangesNothingAndIsStillRecorded() {
+        UUID eventId = UUID.randomUUID();
+        UUID tenant = UUID.randomUUID();
+
+        var outcome = processor.process("AttendanceSessionClosed", eventId.toString(), tenant.toString(), sessionClosedPayload(eventId, tenant, UUID.randomUUID()));
+
+        assertThat(outcome).isEqualTo(RiskEventProcessor.Outcome.UNCHANGED);
+        assertThat(processed(eventId)).isEqualTo(1);
+    }
+
+    @Test
+    void aSessionClosedEventWithoutASectionIsPoison() {
+        UUID tenant = UUID.randomUUID();
+        String noSection = "{\"eventId\":\"" + UUID.randomUUID() + "\",\"tenantId\":\"" + tenant + "\"}";
+
+        assertThatThrownBy(() -> processor.process("AttendanceSessionClosed", null, null, noSection)).isInstanceOf(PoisonEventException.class);
+    }
+
     @Test
     void anEventThatIsNotATriggerIsIgnoredAndNotRecorded() {
         UUID eventId = UUID.randomUUID();
