@@ -128,9 +128,18 @@ rest carry on) and Kafka stopped during a grade (nothing lost, everything follow
 
 These are single-user timings on one machine, not load figures.
 
+## Run live on the containers after the fifth full run
+
+| Claim | How it was checked | Result |
+|---|---|---|
+| A poison event is dead-lettered by the real consumers on the real broker | a malformed `GradePublished` (`this is not json`, with its headers) published to `setu.grades` with the console producer | the risk and notification consumers each logged `dead-lettered to setu.grades.DLQ: JsonParseException`; the topic `setu.grades.DLQ` appeared; `setu_risk_events_dead_lettered_total` and `setu_notification_events_dead_lettered_total` each read 1; the enrollment consumer, which reacts only to `FinalGradePublished`, acknowledged it as ignored; no consumer stopped, and the service stayed healthy |
+| Closing an attendance session recalculates the section's students through Kafka | opened a session with no scans and closed it (six students marked absent) | the demo student's risk was recalculated about 7 s later (24.995 to 27.219, a new score row), counted as `AttendanceSessionClosed recalculated` in `setu_risk_events_total` |
+| A finished course stays readable and nothing can be added, across services | a final grade published for a student, then calls as that student through the gateway, with Learning and Attendance running as their own services | enrollment `COMPLETED` (final B) in about a second; reading modules, lessons and assignments: 200; recording progress: 403; an attendance scan: 403; a student still enrolled: 200 |
+| The advisor's streaming endpoint works through the gateway and answers from the student's real data | `POST /ai/chat/stream` through the gateway and, for comparison, straight to the AI service | identical timing both ways (first event about 8 s, answer 14 to 15 s, tokens 0.2 to 0.3 s apart), so the gateway adds no delay; the answer names the real attendance (50 %) and grades. Before the fix the same questions got "no data" |
+
 ## Not validated
 
-- Kafka consumer lag **under load**, and the dead-letter path with a real poison event on the real stack (the policy itself is tested without a broker).
+- Kafka consumer lag **under load**. (The dead-letter path **was** run with a real poison event on the real stack, see below.)
 - WebSocket traffic through the gateway **under load** (one live board is verified end to end, with the update 289 ms after a scan; many simultaneous
   connections, slow readers and the 512 KiB send buffer limit are not), and the frame size limit of relayed connections (the container's default).
 - Load over a real network, or beyond the 40-scan burst.
