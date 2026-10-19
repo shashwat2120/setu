@@ -30,8 +30,11 @@ public record GatewayProperties(
      * @param publicPaths the subset of requests the gateway lets through without a token (the service itself still enforces what it must,
      *                   for example the step-up endpoints under {@code /auth})
      * @param ratePerMinute overrides the default request limit for callers of this route
+     * @param websocket  true when this route's paths carry live connections: the gateway then relays a WebSocket upgrade to the owning service
+     *                   (see {@link WebSocketRelayHandler}); on any other route an upgrade is refused with 501
      */
-    public record RouteProperties(String id, String service, List<String> paths, @DefaultValue List<String> publicPaths, Integer ratePerMinute) {
+    public record RouteProperties(String id, String service, List<String> paths, @DefaultValue List<String> publicPaths, Integer ratePerMinute,
+                                  @DefaultValue("false") boolean websocket) {
     }
 
     public record CorsProperties(@DefaultValue List<String> allowedOrigins) {

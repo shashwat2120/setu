@@ -10,8 +10,12 @@ import com.setu.shared.web.CorrelationIdFilter;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import jakarta.servlet.FilterChain;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.http.HttpMethod;
 import org.springframework.mock.web.MockHttpServletResponse;
+import org.springframework.web.filter.OncePerRequestFilter;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
@@ -48,6 +52,7 @@ class GatewayFilterTests {
     private final Set<UUID> revokedLogins = new HashSet<>();
     private final List<Upstream.Request> sent = new ArrayList<>();
     private final List<String> failedInstances = new ArrayList<>();
+    private final List<RouteTable.Route> relayed = new ArrayList<>();
     private List<URI> instances = List.of(A);
     private boolean denyRate;
     private Upstream.Response answer = new Upstream.Response(200, List.of(new Upstream.Header("Content-Type", "application/json")),
@@ -103,12 +108,22 @@ class GatewayFilterTests {
             new GatewayProperties.UpstreamProperties(Duration.ofSeconds(2), Duration.ofSeconds(30), Duration.ofSeconds(15)),
             new GatewayProperties.LimitProperties(120, 600));
         RouteTable routes = new RouteTable(List.of(
-            new GatewayProperties.RouteProperties("core", "core", List.of("/**"), List.of("/swagger-ui/**"), null),
-            new GatewayProperties.RouteProperties("identity", "identity", List.of("/auth/**", "/identity/**"), List.of("/auth/**"), null),
-            new GatewayProperties.RouteProperties("academic", "academic", List.of("/institution/**"), List.of(), null)));
+            new GatewayProperties.RouteProperties("core", "core", List.of("/**"), List.of("/swagger-ui/**"), null, false),
+            new GatewayProperties.RouteProperties("identity", "identity", List.of("/auth/**", "/identity/**"), List.of("/auth/**"), null, false),
+            new GatewayProperties.RouteProperties("academic", "academic", List.of("/institution/**"), List.of(), null, false),
+            new GatewayProperties.RouteProperties("live", "attendance", List.of("/live/**"), List.of("/live/**"), null, true),
+            new GatewayProperties.RouteProperties("live-private", "attendance", List.of("/live-private/**"), List.of(), null, true)));
         GatewayFilter filter = new GatewayFilter(routes, authenticator, limiter, directory, upstream, objectMapper, properties,
             new SimpleMeterRegistry());
-        mvc = MockMvcBuilders.standaloneSetup(new Object()).addFilters(new CorrelationIdFilter(), filter).build();
+        // stands in for the relay handler: whatever the gateway lets through to it is recorded here
+        OncePerRequestFilter relay = new OncePerRequestFilter() {
+            @Override
+            protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain chain) {
+                relayed.add((RouteTable.Route) request.getAttribute(WebSocketRelayHandler.ROUTE_ATTRIBUTE));
+                response.setStatus(204);
+            }
+        };
+        mvc = MockMvcBuilders.standaloneSetup(new Object()).addFilters(new CorrelationIdFilter(), filter, relay).build();
     }
 
     private static MockHttpServletRequestBuilder signedIn(MockHttpServletRequestBuilder builder) {
@@ -331,9 +346,50 @@ class GatewayFilterTests {
     }
 
     @Test
-    void aWebSocketUpgradeIsRefusedHonestlyInsteadOfSilentlyBroken() throws Exception {
+    void aWebSocketUpgradeOnARouteThatDoesNotCarryLiveConnectionsIsRefusedHonestlyInsteadOfSilentlyBroken() throws Exception {
         MockHttpServletResponse response = mvc.perform(get("/ws").header("Upgrade", "websocket")).andReturn().getResponse();
         assertThat(response.getStatus()).isEqualTo(501);
         assertThat(body(response).get("code").asText()).isEqualTo("WEBSOCKET_NOT_SUPPORTED");
+        assertThat(relayed).isEmpty();
+        assertThat(sent).isEmpty();
+    }
+
+    @Test
+    void aWebSocketUpgradeOnALiveRouteIsHandedToTheRelayWithTheRouteThatPassedTheChecksAndNeverProxiedAsHttp() throws Exception {
+        MockHttpServletResponse response = mvc.perform(get("/live/attendance").header("Upgrade", "websocket")).andReturn().getResponse();
+        assertThat(response.getStatus()).isEqualTo(204);
+        assertThat(relayed).singleElement().satisfies(route -> {
+            assertThat(route.id()).isEqualTo("live");
+            assertThat(route.service()).isEqualTo("attendance");
+        });
+        assertThat(sent).as("the upgrade is not an HTTP exchange with the service").isEmpty();
+    }
+
+    @Test
+    void aLiveRouteThatIsNotPublicStillDemandsAValidTokenBeforeTheUpgrade() throws Exception {
+        assertThat(mvc.perform(get("/live-private/x").header("Upgrade", "websocket")).andReturn().getResponse().getStatus()).isEqualTo(401);
+        assertThat(mvc.perform(get("/live-private/x").header("Upgrade", "websocket").header("Authorization", "Bearer forged")).andReturn()
+            .getResponse().getStatus()).isEqualTo(401);
+        assertThat(relayed).isEmpty();
+
+        assertThat(mvc.perform(signedIn(get("/live-private/x")).header("Upgrade", "websocket")).andReturn().getResponse().getStatus()).isEqualTo(204);
+        assertThat(relayed).hasSize(1);
+    }
+
+    @Test
+    void aWebSocketUpgradeIsRateLimitedLikeAnyOtherRequest() throws Exception {
+        denyRate = true;
+        MockHttpServletResponse response = mvc.perform(get("/live/attendance").header("Upgrade", "websocket")).andReturn().getResponse();
+        assertThat(response.getStatus()).isEqualTo(429);
+        assertThat(response.getHeader("Retry-After")).isEqualTo("17");
+        assertThat(relayed).isEmpty();
+    }
+
+    @Test
+    void aPlainRequestToALiveRouteIsStillAnOrdinaryProxiedRequest() throws Exception {
+        MockHttpServletResponse response = mvc.perform(get("/live/info")).andReturn().getResponse();
+        assertThat(response.getStatus()).isEqualTo(200);
+        assertThat(sent).hasSize(1);
+        assertThat(relayed).isEmpty();
     }
 }

@@ -76,8 +76,8 @@ its own (6B.2), it becomes the snapshot export of `infra/db/split/split-service.
   in process from the core.
 - **Live attendance WebSocket.** The STOMP support (`shared.websocket`) moved out of the notification module so the Attendance service can serve
   its live board itself, with the token check behind a `StompTokenAuthenticator` port (Identity's in the monolith, published keys plus revocation
-  list in a service). Clients connect to the Attendance service directly: the gateway answers a WebSocket upgrade with 501 rather than
-  proxying it. A frame-level proxy is the open item; it could not be verified on this machine.
+  list in a service). Clients connect through the gateway, which relays the WebSocket to the Attendance service frame for frame (`WebSocketRelayHandler`,
+  [gateway.md](gateway.md) section 3a); it was verified over real sockets in containers, not on this machine.
 - **Foreign keys across services**: the 17 that tied Academic, Learning, Assessment and Attendance tables to another service's are dropped by
   `V83` and replaced by write-time checks and a reconciliation count (data-ownership.md section 2). The 17 on tables of modules still in the core
   (record, finance, career, risk) stay until those are extracted; they are frozen in `cross-service-foreign-keys.txt`.

@@ -19,7 +19,7 @@ public class RouteTable {
     public record Match(Route route, boolean isPublic) {
     }
 
-    public record Route(String id, String service, Integer ratePerMinute) {
+    public record Route(String id, String service, Integer ratePerMinute, boolean websocket) {
     }
 
     private record Entry(PathPattern pattern, Route route) {
@@ -31,7 +31,7 @@ public class RouteTable {
     public RouteTable(List<GatewayProperties.RouteProperties> routes) {
         PathPatternParser parser = new PathPatternParser();
         for (GatewayProperties.RouteProperties properties : routes) {
-            Route route = new Route(properties.id(), properties.service(), properties.ratePerMinute());
+            Route route = new Route(properties.id(), properties.service(), properties.ratePerMinute(), properties.websocket());
             for (String path : properties.paths()) {
                 owned.add(new Entry(parser.parse(path), route));
             }

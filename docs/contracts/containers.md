@@ -19,8 +19,8 @@ The gateway is `http://localhost:8080`; each service is also published on `127.0
 learning 8084, assessment 8085, attendance 8086, notification 8087, ai 8088). Grafana is `http://localhost:3001`, Prometheus `:9091`.
 
 **The React frontend in front of it.** `npm run dev:stack` (in `frontend/`, or the `setu-frontend-stack` launch configuration) serves the app on
-`http://localhost:5180` with every request proxied to the gateway, and the live attendance board's WebSocket proxied to the Attendance service
-on 8086, because the gateway does not proxy WebSocket upgrades. Port 5180 matters: it is one of the origins the gateway's CORS rule allows. Checked
+`http://localhost:5180` with every request, the live attendance board's WebSocket included, proxied to the gateway, which relays it to the Attendance
+service. Port 5180 matters: it is one of the origins the gateway's CORS rule allows. Checked
 in a browser against this stack: sign-in through the gateway, the faculty Assessments page (final-grade checkbox, and the one-final-grade-per-section
 refusal shown to the user), the student Grades page (CS101 completed, final grade B, 4 of 160 credits) and the faculty live attendance board (a
 student's scan appeared on it without a refresh), with no console or network errors apart from the expected 401 before sign-in.
@@ -61,7 +61,8 @@ them takes under a minute; the core, whose database outlives it, skips seeding.
 | Every service starts and is healthy; none restarts, none is killed | 9 containers, several full resets | zero errors in any log; the only warnings are Kafka noting a topic was just created, and the core's ephemeral-key notice |
 | One token, issued by Identity, is accepted by every service | a sweep of every parameter-free GET of the platform through the gateway | no 401, no 5xx |
 | The reference flow works across processes (spec section 16) | `smoke-flow.js` | 19 of 19 steps: attendance session and scan, an assessment with a final-grade component, the grade, the enrollment completing 1.6 s later through Kafka, risk recalculated, the student notified, the transcript updated, and the advisor answering |
-| The live board updates over a real WebSocket | `smoke-websocket.js` | the update arrives 141 ms after the scan; no token and a student on the faculty board are both refused |
+| The live board updates over a real WebSocket, through the gateway | `smoke-websocket.js` (the gateway relays `/ws` to Attendance) | 8 of 8 steps: the update arrives 289 ms after the scan (141 ms connecting to Attendance directly); no token and a student on the faculty board are both refused by the service, and the refusal reaches the client; an upgrade on a non-live path is a 501 |
+| The relay says so honestly when the service is gone | Attendance stopped, then a handshake through the gateway | 504 with the error envelope (the stopped container's address did not answer within the 2 s connect timeout); 101 again once it was back. A browser (Vite dev server in front of the gateway) showed "Live" and a scanned student appeared on the board without a refresh |
 | The read models in the services are fed by events from other processes | the flow above: Attendance, Assessment and the rest decide from their own copies, filled from events the core wrote while seeding | works |
 | A trace follows one request across processes and through Kafka | Tempo: the grade request's trace holds spans from the gateway, Assessment, Notification, Learning, Attendance and the core | works |
 | Prometheus reaches every service with the scrape token | the targets page | 9 of 9 up |
@@ -98,7 +99,7 @@ without the fix.
 ## Limits that remain
 
 - **One machine, one broker, one database server.** Nothing here is highly available. TLS is not terminated anywhere.
-- **The gateway still does not proxy WebSocket upgrades** (501); clients connect to Attendance or Notification directly, on their own ports.
+- **Only one live route goes through the gateway** (`/ws`, the live attendance board, relayed to Attendance). Live delivery from Notification and job status from the AI service have no route yet: an upgrade there is a 501 and those clients connect to the service directly, on its own port.
 - **Start-up is slow** (about 90 s per service when all start at once) and the whole stack wants about 8 GB; 12 GB is comfortable if everything peaks.
 - **Start-up order is by health, not by readiness for traffic:** a service reports healthy when its context is up, before its Kafka consumer has caught up.
 - **The config server is not in the stack,** and secrets are in an environment file. SpringDoc's `/v3/api-docs` is on (it is how the route-coverage test

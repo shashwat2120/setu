@@ -70,8 +70,8 @@ records it for **the token's** user and college (never from the body), only for 
 * Conversation memory is in the AI service's process, keyed by (user, college), last six exchanges, 30 minutes idle: unchanged, and it never
   holds tool arguments or results. Rate limiting is Redis-backed per (college, user): unchanged.
 * The AI service reaches the data service through the gateway (`GATEWAY_URL`), so discovery and health-aware routing apply; `/ai-facts/**` falls
-  to the core route. The gateway still answers a WebSocket upgrade with 501, so clients subscribe to job status on the AI service directly,
-  as for Attendance and Notification.
+  to the core route. The gateway relays WebSocket upgrades only on its live route (`/ws`, the live attendance board), and answers an upgrade anywhere else with 501,
+  so clients subscribe to job status on the AI service directly; it would need a path and a route of its own to go through the gateway.
 * `/ai-facts/**` is an ordinary authenticated API: a user who calls it directly gets what the advisor would have got for them, which they could
   already read through the normal endpoints.
 

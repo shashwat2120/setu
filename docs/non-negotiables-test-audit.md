@@ -135,6 +135,7 @@ chain rejected the handshake the monolith's chain opens). Both are now caught by
 9. **Assigned-faculty access is not tied to the faculty role in Learning and Attendance** (Assessment requires the permission as well). A
    faculty assignment that outlives a role change would keep access to that section's learning and attendance data. Decide whether the role is
    required everywhere before relying on it; no test asserts either way yet.
-10. **The gateway cannot proxy WebSocket upgrades** (it answers 501); STOMP clients connect to the Notification/Attendance service directly.
+10. **Only the live attendance board goes through the gateway.** `/ws` is relayed to Attendance (`WebSocketRelayHandlerTests`, and `smoke-websocket.js` on
+    real sockets in containers); an upgrade on any other route is a 501, so Notification's live delivery and the AI job status connect to their service directly.
 11. **Distributed state is verified in-process only.** Cross-service behavior (grant confirmation, remote AI facts, circuit breakers) is
     covered with blocking-socket stubs and MockMvc (`ExtractedServiceWiringSupport`, `GuardedCall` tests), not across real processes.

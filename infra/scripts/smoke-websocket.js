@@ -1,15 +1,16 @@
 #!/usr/bin/env node
 // The live attendance board over a real WebSocket (STOMP), against the running stack: the faculty member subscribes to a section's topic, a
-// student scans the code, and the update must arrive; and the same topic must refuse someone who may not see it. The gateway does not proxy
-// WebSocket upgrades (it answers 501), so clients connect to the Attendance service directly.
+// student scans the code, and the update must arrive; and the same topic must refuse someone who may not see it. The connection goes through the
+// gateway, which relays the WebSocket to the Attendance service (a path that does not carry live connections answers an upgrade with 501).
 //
-//   node infra/scripts/smoke-websocket.js        (GATEWAY=http://localhost:8080  ATTENDANCE=ws://localhost:8086/ws)
+//   node infra/scripts/smoke-websocket.js        (GATEWAY=http://localhost:8080  LIVE=ws://localhost:8080/ws)
 //
+// LIVE=ws://localhost:8086/ws connects to the Attendance service directly instead, to tell a gateway problem from a service problem.
 // Needs Node 22+ (a global WebSocket) and nothing installed. Writes one attendance session and one record into the demo college, so it needs a
 // student who is still in the course: students whose course was completed by smoke-flow.js can no longer scan.
 
 const GATEWAY = process.env.GATEWAY || 'http://localhost:8080';
-const WS = process.env.ATTENDANCE || 'ws://localhost:8086/ws';
+const WS = process.env.LIVE || process.env.ATTENDANCE || GATEWAY.replace(/^http/, 'ws') + '/ws';
 const PASSWORD = process.env.DEMO_PASSWORD || 'SetuDemo#2025!';
 const t0 = Date.now();
 let failed = 0;
@@ -26,6 +27,21 @@ async function call(token, method, path, body) {
   return { status: res.status, json, text };
 }
 const login = async email => (await call(null, 'POST', '/auth/login', { email, password: PASSWORD })).json?.accessToken;
+
+/** The status the gateway answers to a WebSocket upgrade request for a path (101 means it was accepted). */
+function upgradeStatus(base, path) {
+  return new Promise(resolve => {
+    const req = require('node:http').request({
+      host: base.hostname, port: base.port || 80, path, method: 'GET',
+      headers: { Connection: 'Upgrade', Upgrade: 'websocket', 'Sec-WebSocket-Version': '13', 'Sec-WebSocket-Key': 'dGhlIHNhbXBsZSBub25jZQ==' },
+    });
+    req.on('response', res => { res.resume(); resolve(res.statusCode); });
+    req.on('upgrade', (res, socket) => { socket.destroy(); resolve(101); });
+    req.on('error', () => resolve(0));
+    req.setTimeout(10000, () => { req.destroy(); resolve(0); });
+    req.end();
+  });
+}
 
 /** A minimal STOMP 1.2 client: just enough to connect with a bearer token, subscribe, and collect frames. */
 function stomp(token) {
@@ -78,6 +94,12 @@ function stomp(token) {
   const meetingId = ((await call(faculty, 'GET', `/catalog/meeting-patterns?sectionId=${sectionId}`)).json || [])[0]?.id;
   const stale = ((await call(faculty, 'GET', `/attendance/sessions?sectionId=${sectionId}`)).json || []).filter(x => x.meetingId === meetingId && x.status === 'OPEN');
   for (const x of stale) await call(faculty, 'POST', `/attendance/sessions/${x.id}/close`);
+
+  // 0. the gateway relays live connections only on the live route
+  if (WS.startsWith(GATEWAY.replace(/^http/, 'ws'))) {
+    const upgrade = await upgradeStatus(new URL(GATEWAY), '/notifications/live');
+    note('an upgrade on a path that does not carry live connections is refused with 501', upgrade === 501, `HTTP ${upgrade}`);
+  }
 
   // 1. no token: refused at CONNECT
   const anonymous = await stomp(null);

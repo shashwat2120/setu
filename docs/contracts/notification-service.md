@@ -40,8 +40,8 @@ recipient may already read over REST (`id, type, title, message, link, createdAt
   same bearer token and revocation list as HTTP (`RemoteStompTokenAuthenticator`).
 * **A push is a convenience, never the record.** The notification is in the table and on `GET /notifications` whether or not anyone was
   listening; a client that reconnects reads the list.
-* **The gateway does not proxy WebSockets** (it answers an upgrade with 501), so live clients connect to this service directly, as they do to
-  Attendance for the live board.
+* **No WebSocket route through the gateway yet.** The gateway relays only its live route (`/ws`, the live attendance board) and answers an upgrade
+  anywhere else with 501, so live clients connect to this service directly. It needs a path of its own and a route marked `websocket` to go through.
 
 ## 4. Data
 

@@ -41,8 +41,10 @@ and the validation report ([validation-report.md](validation-report.md)) carry t
    passed courses only. Open consequences of the decision: **there is still no period close**, so a course whose section never gets a final-grade
    component never completes; **a completed student is no longer actively enrolled**, so they lose the course page and attendance for it (grades and
    transcript stay); a course can be completed only through Kafka, so on the development machine (slow Kafka client) it can take minutes.
-8. **Gap. The gateway cannot proxy WebSocket upgrades** (it answers 501); STOMP clients connect to the owning service directly. A frame-level
-   proxy is the open item and could not be verified on the development machine.
+8. **Gap. Only the live attendance board goes through the gateway.** The gateway relays WebSocket upgrades on one route (`/ws`, to Attendance) and
+   answers an upgrade anywhere else with 501; Notification's live delivery and the AI service's job status have no route yet, so those clients connect
+   to the service directly. The relay is verified over real sockets in containers (not on the development machine) and has no per-frame limits of
+   its own.
 9. **Gap. Analytics service** (read-model projections) has no code or tables; the coupling audit dropped it as a candidate for now.
 10. **Open design question. Assigned-faculty access is not tied to the faculty role** in Learning and Attendance, while Assessment requires the
     permission as well ([audit item 9](non-negotiables-test-audit.md)). Assignment is still required everywhere, so this is not a leak, but an

@@ -60,7 +60,8 @@ applied. The one place a stale copy is not tolerated is a guardian's delegated a
 guess when Academic cannot answer ([data-ownership §3](contracts/data-ownership.md)).
 
 **WebSocket.** After commit, Attendance broadcasts to `/topic/attendance/section/{id}`. Connection and subscription are authorized separately
-(token on connect; per-destination on subscribe). The gateway does not proxy upgrades, so the client connects to Attendance directly.
+(token on connect; per-destination on subscribe). The client connects through the gateway, which relays the WebSocket to Attendance without reading
+the frames, so the service still decides who may connect and subscribe ([gateway.md](contracts/gateway.md) section 3a).
 
 **Assessment and the grade event.** Assessment writes a new grade version and the `GradePublished` outbox row in one transaction; the outbox
 publisher sends it to Kafka only after commit and marks it published after the broker acknowledges. Delivery is at-least-once, so every consumer

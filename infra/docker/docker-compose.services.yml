@@ -156,7 +156,8 @@ services:
     depends_on:
       core: {condition: service_healthy}
     mem_limit: 640m
-    # the live attendance board is served here and clients connect to it directly: the gateway does not proxy WebSocket upgrades
+    # the live attendance board is served here; clients reach it through the gateway (route attendance-live, /ws). The port stays published to
+    # tell a gateway problem from a service problem (LIVE=ws://localhost:8086/ws node infra/scripts/smoke-websocket.js)
     ports: ["127.0.0.1:8086:8086"]
     environment:
       <<: *common

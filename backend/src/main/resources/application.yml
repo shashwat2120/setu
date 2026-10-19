@@ -317,9 +317,18 @@ app:
       - id: attendance
         service: attendance
         paths: ["/attendance/**", "/staff-attendance/**"]
+      - id: attendance-live
+        service: attendance
+        # The live attendance board: STOMP over WebSocket, relayed to the Attendance service (WebSocketRelayHandler). The handshake itself carries no
+        # token, so it is public at the gateway; the STOMP CONNECT frame carries it and the service verifies it and authorizes every subscription.
+        # An upgrade on any route that is not marked websocket is refused with 501.
+        paths: ["/ws", "/ws/**"]
+        public-paths: ["/ws", "/ws/**"]
+        websocket: true
+        rate-per-minute: 60
       - id: notification
         service: notification
-        # Live delivery (/ws) is not proxied: the gateway answers a WebSocket upgrade with 501 and clients connect to the service directly.
+        # Live delivery from the Notification service has no WebSocket route yet (/ws belongs to the live attendance board above).
         paths: ["/notifications/**"]
       - id: ai
         service: ai

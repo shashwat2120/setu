@@ -106,11 +106,14 @@ class GatewayRouteCoverageTests {
         RouteTable routes = routes();
         Set<String> dead = new TreeSet<>();
         for (GatewayProperties.RouteProperties route : properties.routes()) {
+            if (route.websocket()) {
+                continue;   // a live route fronts a STOMP endpoint, not a controller: liveRouteFrontsTheStompEndpointTheServicesExpose covers it
+            }
             for (String path : route.paths()) {
                 if (path.equals("/**")) {
                     continue;
                 }
-                RouteTable single = new RouteTable(java.util.List.of(new GatewayProperties.RouteProperties(route.id(), route.service(), java.util.List.of(path), java.util.List.of(), null)));
+                RouteTable single = new RouteTable(java.util.List.of(new GatewayProperties.RouteProperties(route.id(), route.service(), java.util.List.of(path), java.util.List.of(), null, false)));
                 if (patterns.stream().noneMatch(p -> single.match(p).isPresent())) {
                     dead.add(route.id() + ": " + path);
                 }
@@ -137,5 +140,28 @@ class GatewayRouteCoverageTests {
         assertThat(open).as("endpoints the gateway lets through without a token").allSatisfy(
             p -> assertThat(p.startsWith("/auth/") || p.equals("/.well-known/jwks.json")).as(p).isTrue());
         assertThat(open).contains("/auth/login", "/.well-known/jwks.json");
+    }
+
+    /** The STOMP endpoint every live service registers (shared.websocket.WebSocketConfig). */
+    private static final String STOMP_ENDPOINT = "/ws";
+
+    @Test
+    void liveRouteFrontsTheStompEndpointTheServicesExpose() {
+        GatewayProperties properties = Binder.get(environment).bind("app.gateway", GatewayProperties.class).get();
+        RouteTable routes = routes();
+
+        RouteTable.Match live = routes.match(STOMP_ENDPOINT).orElseThrow();
+        assertThat(live.route().websocket()).as("the STOMP endpoint is on a route that relays live connections").isTrue();
+        assertThat(live.route().service()).as("the live attendance board is the Attendance service's").isEqualTo("attendance");
+        assertThat(live.isPublic()).as("the handshake carries no token; the STOMP CONNECT frame does, and the service verifies it").isTrue();
+        assertThat(routes.match(STOMP_ENDPOINT + "/info")).hasValueSatisfying(m -> assertThat(m.route().websocket()).isTrue());
+
+        // nothing else may relay live connections, and no live route may reach beyond the endpoint: a wildcard here would carry other paths unvetted
+        for (GatewayProperties.RouteProperties route : properties.routes()) {
+            if (route.websocket()) {
+                assertThat(route.paths()).as(route.id()).allSatisfy(p -> assertThat(p).startsWith(STOMP_ENDPOINT));
+                assertThat(route.ratePerMinute()).as(route.id() + " limits connection attempts").isNotNull();
+            }
+        }
     }
 }

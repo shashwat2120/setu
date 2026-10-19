@@ -12,14 +12,14 @@ const BACKEND_PREFIXES = [
 
 // Three ways to run it:
 //   npm run dev         the single-process backend on the Windows development bridge (port 8089), the default.
-//   npm run dev:stack   the containerised services (docker-compose.services.yml): every request goes through the gateway on 8080, and the
-//                       live attendance board's WebSocket goes to the Attendance service on 8086 DIRECTLY, because the gateway does not
-//                       proxy WebSocket upgrades (it answers 501). Its addresses are in this file.
-//   BACKEND_URL=... WS_URL=... PORT=... npm run dev     anything else; a real environment variable beats a file.
+//   npm run dev:stack   the containerised services (docker-compose.services.yml): every request, the live attendance board's WebSocket
+//                       included, goes through the gateway on 8080 (it relays /ws to the Attendance service). Its address is in this file.
+//   BACKEND_URL=... WS_URL=... PORT=... npm run dev     anything else; a real environment variable beats a file. WS_URL is only needed
+//                       to send the WebSocket somewhere other than BACKEND_URL.
 // https://vite.dev/config/
 export default defineConfig(({ mode }) => {
   // the addresses of the containerised stack (not secrets: ports on this machine); a real environment variable beats them
-  const stack = mode === 'stack' ? { BACKEND_URL: 'http://127.0.0.1:8080', WS_URL: 'http://127.0.0.1:8086', PORT: '5180' } : {}
+  const stack = mode === 'stack' ? { BACKEND_URL: 'http://127.0.0.1:8080', PORT: '5180' } : {}
   const env = { ...stack, ...loadEnv(mode, process.cwd(), ''), ...process.env }
   const backend = env.BACKEND_URL ?? 'http://127.0.0.1:8089'
   return {

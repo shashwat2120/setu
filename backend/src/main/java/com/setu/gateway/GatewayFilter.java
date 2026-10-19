@@ -45,7 +45,8 @@ import java.util.UUID;
  *       retried on another instance, and only when no instance answered at all.</li>
  * </ol>
  * Headers a client could use to impersonate the edge ({@code X-Forwarded-*}, {@code Forwarded}) are discarded and set from the real
- * connection. WebSocket upgrades are refused with 501 until live routing is added (6A.5).
+ * connection. A WebSocket upgrade takes the same first four steps; on a route marked {@code websocket} it is then handed to
+ * {@link WebSocketRelayHandler}, which relays the frames to the owning service, and on any other route it is refused with 501.
  */
 public class GatewayFilter extends OncePerRequestFilter {
 
@@ -109,11 +110,7 @@ public class GatewayFilter extends OncePerRequestFilter {
             addCors(response, origin);
         }
 
-        if ("websocket".equalsIgnoreCase(request.getHeader("Upgrade"))) {
-            count("none", "websocket_unsupported");
-            writeError(request, response, 501, "WEBSOCKET_NOT_SUPPORTED", "live connections are not routed through the gateway yet");
-            return;
-        }
+        boolean upgrade = "websocket".equalsIgnoreCase(request.getHeader("Upgrade"));
 
         // /internal/** is the services' way of asking each other things (docs/contracts/data-ownership.md). The catch-all route would
         // otherwise carry it to the core, so it is refused here, before routing, whatever routes are configured.
@@ -130,6 +127,13 @@ public class GatewayFilter extends OncePerRequestFilter {
             return;
         }
         RouteTable.Route route = match.get().route();
+
+        if (upgrade && !route.websocket()) {
+            // only routes that say they carry live connections are relayed; anywhere else a half-working upgrade would be worse than a refusal
+            count(route.id(), "websocket_unsupported");
+            writeError(request, response, 501, "WEBSOCKET_NOT_SUPPORTED", "this path does not carry live connections");
+            return;
+        }
 
         Optional<AccessTokenClaims> caller = Optional.empty();
         if (!match.get().isPublic()) {
@@ -150,6 +154,15 @@ public class GatewayFilter extends OncePerRequestFilter {
             count(route.id(), "rate_limited");
             response.setHeader("Retry-After", Long.toString(decision.retryAfterSeconds()));
             writeError(request, response, 429, "RATE_LIMITED", "too many requests; try again shortly");
+            return;
+        }
+
+        if (upgrade) {
+            // the handshake is completed by WebSocketRelayHandler, which opens the matching connection to the owning service; the route it
+            // reads here is the one that passed the checks above
+            request.setAttribute(WebSocketRelayHandler.ROUTE_ATTRIBUTE, route);
+            count(route.id(), "websocket_relayed");
+            chain.doFilter(request, response);
             return;
         }
 

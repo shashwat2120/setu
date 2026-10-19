@@ -9,7 +9,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 class RouteTableTests {
 
     private static GatewayProperties.RouteProperties route(String id, String service, List<String> paths, List<String> publicPaths) {
-        return new GatewayProperties.RouteProperties(id, service, paths, publicPaths, null);
+        return new GatewayProperties.RouteProperties(id, service, paths, publicPaths, null, false);
     }
 
     private final RouteTable table = new RouteTable(List.of(

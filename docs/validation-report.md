@@ -118,7 +118,8 @@ These are single-user timings on one machine, not load figures.
 ## Not validated
 
 - Kafka consumer lag **under load**, and the dead-letter path with a real poison event on the real stack (the policy itself is tested without a broker).
-- WebSocket traffic through the gateway (it answers 501 for upgrades; clients connect to the owning service).
+- WebSocket traffic through the gateway **under load** (one live board is verified end to end, with the update 289 ms after a scan; many simultaneous
+  connections, slow readers and the 512 KiB send buffer limit are not), and the frame size limit of relayed connections (the container's default).
 - Load over a real network, or beyond the 40-scan burst.
 - The cached dashboard aggregate's latency.
 - Accessibility (no automated frontend test exists).
