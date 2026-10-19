@@ -147,6 +147,8 @@ export default function StudentAdvisorPage() {
             </div>
           </div>
         )}
+        {/* the conversation is a live region: a new answer is announced when it arrives, and not word by word while it is still being written */}
+        <div role="log" aria-label="Conversation with the AI Advisor" aria-live="polite" aria-relevant="additions text" aria-busy={sending} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
         {turns.map((turn, i) => {
           if (turn.role === 'assistant' && turn.streaming && !turn.text) return null; // shown as the activity line instead
           return (
@@ -173,6 +175,7 @@ export default function StudentAdvisorPage() {
             </div>
           );
         })}
+        </div>
         {activity && (
           <div role="status" style={{ alignSelf: 'flex-start', fontSize: 13, color: 'var(--ink-soft)' }}>{activity}…</div>
         )}
@@ -183,7 +186,7 @@ export default function StudentAdvisorPage() {
         onSubmit={(e) => { e.preventDefault(); send(); }}
         style={{ display: 'flex', gap: 8 }}
       >
-        <label htmlFor="advisor-message" style={{ display: 'none' }}>Ask the AI Advisor</label>
+        <label htmlFor="advisor-message" className="visually-hidden">Ask the AI Advisor</label>
         <input
           id="advisor-message"
           value={message}

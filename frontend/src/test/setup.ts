@@ -5,7 +5,7 @@ import { installMatchMedia } from './matchMedia';
 // Every test replaces the two things a page reaches outside itself for: the API client and the signed-in user (see helpers.tsx).
 vi.mock('../api/client', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../api/client')>();
-  return { ...actual, apiFetch: vi.fn() };
+  return { ...actual, apiFetch: vi.fn(), apiStream: vi.fn() };
 });
 vi.mock('../auth/AuthContext', () => ({
   useAuth: vi.fn(),

@@ -154,7 +154,7 @@ export default function StaffAttendancePage() {
       header: '',
       render: (r) => (deciding?.id === r.id ? (
         <form onSubmit={(e) => { e.preventDefault(); decide(); }} style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
-          <label htmlFor={`note-${r.id}`} style={{ display: 'none' }}>Note</label>
+          <label htmlFor={`note-${r.id}`} className="visually-hidden">Note</label>
           <input id={`note-${r.id}`} value={decisionNote} onChange={(e) => setDecisionNote(e.target.value)} maxLength={300}
             placeholder={deciding.mode === 'reject' ? 'Reason for rejecting (required)' : 'Note (optional)'} required={deciding.mode === 'reject'} />
           <button type="submit" className="btn btn-primary" disabled={decisionBusy || (deciding.mode === 'reject' && !decisionNote.trim())}>
@@ -205,11 +205,11 @@ export default function StaffAttendancePage() {
           style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}
           onClick={(e) => e.stopPropagation()}
         >
-          <label htmlFor={`status-${r.faculty.id}`} style={{ display: 'none' }}>Status</label>
+          <label htmlFor={`status-${r.faculty.id}`} className="visually-hidden">Status</label>
           <select id={`status-${r.faculty.id}`} value={status} onChange={(e) => setStatus(e.target.value as StaffAttendanceStatus)}>
             {STATUSES.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
           </select>
-          <label htmlFor={`reason-${r.faculty.id}`} style={{ display: 'none' }}>Reason</label>
+          <label htmlFor={`reason-${r.faculty.id}`} className="visually-hidden">Reason</label>
           <input id={`reason-${r.faculty.id}`} value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Reason (required)" required maxLength={300} />
           <button type="submit" className="btn btn-primary" disabled={saving || !reason.trim()}>{saving ? 'Saving…' : 'Save'}</button>
           <button type="button" className="btn btn-ghost" style={{ padding: '6px 10px', fontSize: 12 }} onClick={() => setEditing(null)} disabled={saving}>Cancel</button>
