@@ -223,7 +223,10 @@ public class DemoDataSeeder implements ApplicationRunner {
      * collision masking as a test failure.
      */
     private String demoCode(String code) {
-        return (emailBase == null || emailBase.isBlank()) ? code : code + "-ALIAS";
+        // the suffix comes from the base itself, so two runs with different bases (the aliasing test and the restart test) can share a database,
+        // and the same base always gives the same code
+        return (emailBase == null || emailBase.isBlank()) ? code
+            : code + "-" + Integer.toHexString(emailBase.trim().toLowerCase().hashCode()).toUpperCase();
     }
 
     public DemoDataSeeder(UserRegistrationService userRegistrationService, PasswordResetService passwordResetService,
@@ -537,6 +540,10 @@ public class DemoDataSeeder implements ApplicationRunner {
                 {"MCQ_SINGLE", "40", "Which keyword defines a function in Python?  A) func   B) def   C) function   D) lambda only", "{\"correctOption\":\"B\"}"},
                 {"TRUE_FALSE", "30", "In Python, the characters of a string can be changed in place after the string is created.", "{\"correctOption\":\"False\"}"},
                 {"SHORT_ANSWER", "30", "Which built-in function returns the number of items in a list?", "{\"correctAnswer\":\"len\"}"}};
+            case "PYTHON_FINAL" -> new String[][]{
+                {"MCQ_SINGLE", "40", "What does the expression [x * 2 for x in range(3)] evaluate to in Python?  A) [0, 2, 4]   B) [2, 4, 6]   C) [0, 1, 2]   D) (0, 2, 4)", "{\"correctOption\":\"A\"}"},
+                {"TRUE_FALSE", "30", "A Python dictionary can use a list as one of its keys.", "{\"correctOption\":\"False\"}"},
+                {"SHORT_ANSWER", "30", "Which keyword starts a block that runs whether or not an exception was raised?", "{\"correctAnswer\":\"finally\"}"}};
             case "DATA_STRUCTURES" -> new String[][]{
                 {"MCQ_SINGLE", "40", "What is the time complexity of binary search on a sorted array?  A) O(n)   B) O(log n)   C) O(n log n)   D) O(1)", "{\"correctOption\":\"B\"}"},
                 {"TRUE_FALSE", "30", "A stack removes the most recently added item first.", "{\"correctOption\":\"True\"}"},
@@ -697,6 +704,17 @@ public class DemoDataSeeder implements ApplicationRunner {
         seedQuizQuestions(componentId, "PYTHON");
         assessmentService.schedule(assessmentId);
         assessmentService.open(assessmentId);
+
+        // CS101-A's final exam: open, no grade published. Its component is the course's final grade, so publishing a student's grade on
+        // it is what completes that student's enrollment (the demo's "course ends" step); until someone does, nothing about the seeded
+        // risk story changes, because risk reads published grades only.
+        UUID finalExamId = assessmentService.createForSeed(section1Id, "EXAM", "Final Exam", new BigDecimal("100"),
+            90, Instant.now().minusSeconds(3600), Instant.now().plusSeconds(86400L * 30));
+        UUID finalExamComponentId = assessmentComponentService.createFinalGradeForSeed(finalExamId, "FINAL", new BigDecimal("100"),
+            new BigDecimal("100"), 1);
+        seedQuizQuestions(finalExamComponentId, "PYTHON_FINAL");
+        assessmentService.schedule(finalExamId);
+        assessmentService.open(finalExamId);
 
         // 5 attendance sessions on CS101-A's meeting pattern. Present sets chosen so the post-hoc percentage
         // matches the arithmetic documented in this method's own javadoc exactly (5/5, 3/5, 0/5).

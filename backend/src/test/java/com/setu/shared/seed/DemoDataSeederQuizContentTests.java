@@ -34,14 +34,14 @@ class DemoDataSeederQuizContentTests {
             from assessment.assessments a
             join assessment.assessment_components c on c.assessment_id = a.id
             left join assessment.questions q on q.component_id = c.id
-            where a.title in ('Midterm Quiz', 'Data Structures Midterm', 'Reading Response Quiz')
+            where a.title in ('Midterm Quiz', 'Data Structures Midterm', 'Reading Response Quiz', 'Final Exam')
             group by a.id, a.title, a.total_marks
             """);
 
         // The demo data can be seeded more than once in a full test run (the alias test seeds a second copy), so check every copy,
         // and that all three quizzes are present, instead of assuming exactly one row each.
         assertThat(rows).extracting(r -> r.get("title")).as("the seeded quizzes")
-            .contains("Midterm Quiz", "Data Structures Midterm", "Reading Response Quiz");
+            .contains("Midterm Quiz", "Data Structures Midterm", "Reading Response Quiz", "Final Exam");
         for (Map<String, Object> row : rows) {
             long questions = ((Number) row.get("questions")).longValue();
             long keyed = ((Number) row.get("keyed_choice")).longValue() + ((Number) row.get("keyed_short")).longValue();
@@ -50,5 +50,24 @@ class DemoDataSeederQuizContentTests {
             assertThat(((Number) row.get("points")).doubleValue()).as("%s: question points add up to the quiz's marks", row.get("title"))
                 .isEqualTo(((Number) row.get("total_marks")).doubleValue());
         }
+    }
+
+    @Test
+    void theSeededFinalExamIsItsSectionsOnlyFinalGradeComponentAndIsOpenWithNothingGraded() {
+        List<Map<String, Object>> finals = jdbc.queryForList("""
+            select a.section_id as section_id, a.title as title, a.status as status,
+                   (select count(*) from assessment.grades g where g.component_id = c.id) as grades
+            from assessment.assessment_components c
+            join assessment.assessments a on a.id = c.assessment_id
+            where c.is_final
+            """);
+
+        assertThat(finals).as("the demo seeds a final-grade component").isNotEmpty();
+        assertThat(finals).extracting(r -> r.get("section_id")).as("one final-grade component per section")
+            .doesNotHaveDuplicates();
+        assertThat(finals).filteredOn(r -> "Final Exam".equals(r.get("title"))).isNotEmpty().allSatisfy(r -> {
+            assertThat(r.get("status")).as("the final exam is open, ready to be graded").isEqualTo("OPEN");
+            assertThat(((Number) r.get("grades")).longValue()).as("seeding publishes no final grade, so nobody's enrollment completes").isZero();
+        });
     }
 }

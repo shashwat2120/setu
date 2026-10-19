@@ -129,6 +129,12 @@ open **Assessments**, choose the section, and press **Attempts** on the quiz: th
 button. Evaluating auto-grades every question that has an answer key and shows the score (for example "Score 70: 3 questions graded
 automatically"); the student then sees "EVALUATED — score 70". Answer keys are never sent to students.
 
+**Ending a course.** CS101-A has a seeded, open **Final Exam** (three questions, its component is marked as the course's final grade; no grade
+is published, so nothing about the risk story above changes). As `faculty.rao@demo.setu.local`, open **Grades**, choose the section, the **Final Exam** assessment
+and its **FINAL** component, and **Publish** marks, a grade and a grade point for a student: within a couple of seconds that student's CS101 enrollment becomes **COMPLETED**, and their **Grades**
+page shows the course with its final grade (a failing grade completes the course but earns no credit). The section has one such component at
+most; a second is refused.
+
 **Registering for a section.** `student.strong` is already in both seeded sections, so *Register for a section* is empty for them. Log in as
 `student.learning.risk@demo.setu.local` instead: CS201-A is offered with an **Enroll** button, and enrolling runs the full chain of checks
 ("Enrollment confirmed").

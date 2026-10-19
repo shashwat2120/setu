@@ -200,4 +200,13 @@ public class AssessmentComponentService {
         };
     }
 
+    /** As {@link #createForSeed(UUID, String, java.math.BigDecimal, java.math.BigDecimal, Integer)}, for the component that is the course's final grade. */
+    @Transactional
+    public UUID createFinalGradeForSeed(UUID assessmentId, String code, java.math.BigDecimal maxMarks, java.math.BigDecimal weight, Integer orderNo) {
+        return switch (create(assessmentId, code, maxMarks, weight, orderNo, true)) {
+            case CreateResult.Success s -> s.componentId();
+            default -> throw new IllegalStateException("seed final-grade component creation failed: " + code);
+        };
+    }
+
 }
