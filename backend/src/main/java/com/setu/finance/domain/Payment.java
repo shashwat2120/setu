@@ -47,13 +47,27 @@ public class Payment {
     @Column(nullable = false)
     private PaymentStatus status;
 
+    /** The provider's order id (Razorpay {@code order_...}); set once, when the checkout order is created. Never a card number. */
     @Column(name = "provider_ref")
     private String providerRef;
+
+    /** The provider's id of the money that moved ({@code pay_...}); set when the provider confirms it. Needed to refund through the provider. */
+    @Column(name = "provider_payment_id")
+    private String providerPaymentId;
+
+    /** The fee this payment settles, if it was started from a charge; its amount then came from the charge, not from the client. */
+    @Column(name = "student_charge_id")
+    private UUID studentChargeId;
 
     protected Payment() {
     }
 
     public Payment(UUID id, UUID tenantId, UUID studentAccountId, BigDecimal amount, String currency, String method) {
+        this(id, tenantId, studentAccountId, amount, currency, method, null);
+    }
+
+    public Payment(UUID id, UUID tenantId, UUID studentAccountId, BigDecimal amount, String currency, String method, UUID studentChargeId) {
+        this.studentChargeId = studentChargeId;
         if (amount == null || amount.compareTo(BigDecimal.ZERO) <= 0) {
             throw new IllegalArgumentException("amount must be > 0");
         }
@@ -99,6 +113,14 @@ public class Payment {
 
     public String providerRef() {
         return providerRef;
+    }
+
+    public String providerPaymentId() {
+        return providerPaymentId;
+    }
+
+    public UUID studentChargeId() {
+        return studentChargeId;
     }
 
     public boolean canTransitionTo(PaymentStatus target) {

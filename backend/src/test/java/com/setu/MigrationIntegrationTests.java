@@ -73,8 +73,8 @@ class MigrationIntegrationTests {
             "WHERE table_schema = ANY(?) AND table_type = 'BASE TABLE'",
             Integer.class, (Object) EXPECTED_SCHEMAS.toArray(new String[0]));
         // Updated for Sprint 6 (V80 to V93), which added the read-model copies each extracted service keeps of the facts it needs (52 `rm_*` tables
-        // in all) and the per-consumer processed-event tables (8 in all), with no new schema. Counted on a clean database migrated to V93; V92 and V93
-        // add columns only.
+        // in all) and the per-consumer processed-event tables (8 in all), with no new schema. Counted on a clean database migrated to V94; V92, V93 and V94
+        // add columns and indexes only.
         assertThat(count).isEqualTo(147);
     }
 

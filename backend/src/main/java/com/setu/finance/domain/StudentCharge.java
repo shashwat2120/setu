@@ -110,7 +110,9 @@ public class StudentCharge {
             case PENDING -> target == StudentChargeStatus.PAID || target == StudentChargeStatus.WAIVED
                 || target == StudentChargeStatus.OVERDUE;
             case OVERDUE -> target == StudentChargeStatus.PAID || target == StudentChargeStatus.WAIVED;
-            case PAID, WAIVED -> false;
+            // A paid fee is reopened only when its payment is refunded (StudentChargeService#reopenAfterRefund); no endpoint offers it.
+            case PAID -> target == StudentChargeStatus.PENDING;
+            case WAIVED -> false;
         };
     }
 }
