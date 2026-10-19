@@ -113,7 +113,7 @@ class GatewayRouteCoverageTests {
                 if (path.equals("/**")) {
                     continue;
                 }
-                RouteTable single = new RouteTable(java.util.List.of(new GatewayProperties.RouteProperties(route.id(), route.service(), java.util.List.of(path), java.util.List.of(), null, false)));
+                RouteTable single = new RouteTable(java.util.List.of(new GatewayProperties.RouteProperties(route.id(), route.service(), java.util.List.of(path), java.util.List.of(), null, false, null)));
                 if (patterns.stream().noneMatch(p -> single.match(p).isPresent())) {
                     dead.add(route.id() + ": " + path);
                 }

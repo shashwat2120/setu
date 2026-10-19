@@ -126,6 +126,26 @@ class ApacheUpstreamTests {
     }
 
     @Test
+    void aRouteThatIsSlowByNatureMayWaitLongerThanTheClientsDefaultForItsOwnRequestsOnly() throws Exception {
+        stub.delayMillis = 1500;   // longer than the client's 600 ms default, shorter than the route's own 5 s
+
+        try (Upstream.Response response = upstream.exchange(new Upstream.Request("GET", stub.uri().resolve("/ai/chat"), List.of(), null, 0, Duration.ofSeconds(5)))) {
+            assertThat(response.status()).as("the route's own patience applied").isEqualTo(200);
+        }
+
+        assertThatThrownBy(() -> upstream.exchange(new Upstream.Request("GET", stub.uri().resolve("/other"), List.of(), null, 0)))
+            .as("every other request keeps the default")
+            .isInstanceOfSatisfying(Upstream.UpstreamException.class, e -> assertThat(e.kind()).isEqualTo(Upstream.UpstreamException.Kind.TIMEOUT));
+    }
+
+    @Test
+    void aRouteTimeoutThatIsShorterThanTheDefaultAlsoApplies() {
+        stub.delayMillis = 1500;
+        assertThatThrownBy(() -> upstream.exchange(new Upstream.Request("GET", stub.uri().resolve("/fast-only"), List.of(), null, 0, Duration.ofMillis(200))))
+            .isInstanceOfSatisfying(Upstream.UpstreamException.class, e -> assertThat(e.kind()).isEqualTo(Upstream.UpstreamException.Kind.TIMEOUT));
+    }
+
+    @Test
     void aConnectionDroppedWithoutAResponseIsAConnectFailureSoAGetMayTryAnotherInstance() {
         stub.dropWithoutAnswer = true;
         assertThatThrownBy(() -> upstream.exchange(new Upstream.Request("GET", stub.uri().resolve("/drop"), List.of(), null, 0)))

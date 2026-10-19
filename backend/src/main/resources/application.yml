@@ -334,6 +334,9 @@ app:
         service: ai
         # The advisor only (/ai/**). Its facts (/ai-facts/**) are served by the service that holds the data, and fall to the core route.
         paths: ["/ai/**"]
+        # An answer is slow by nature: the advisor may spend its own 60 s budget on the model, then on a fallback model. The 30 s every other route gets
+        # would end such a call with a 504 while the advisor is still working. The streaming endpoint (/ai/chat/stream) is flushed to the client as it is produced.
+        response-timeout: 120s
       - id: core
         service: core
         paths: ["/**"]

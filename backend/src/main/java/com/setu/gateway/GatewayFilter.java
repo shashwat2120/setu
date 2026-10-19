@@ -192,7 +192,7 @@ public class GatewayFilter extends OncePerRequestFilter {
             if (failure != null && !mayRetry) {
                 break;
             }
-            try (Upstream.Response answer = upstream.exchange(buildRequest(request, instance))) {
+            try (Upstream.Response answer = upstream.exchange(buildRequest(request, instance, route.responseTimeout()))) {
                 copyResponse(answer, response);
                 count(route.id(), "proxied");
                 return;
@@ -222,7 +222,7 @@ public class GatewayFilter extends OncePerRequestFilter {
         }
     }
 
-    private Upstream.Request buildRequest(HttpServletRequest request, URI instance) throws IOException {
+    private Upstream.Request buildRequest(HttpServletRequest request, URI instance, java.time.Duration responseTimeout) throws IOException {
         String base = instance.toString();
         String target = (base.endsWith("/") ? base.substring(0, base.length() - 1) : base) + request.getRequestURI()
             + (request.getQueryString() == null ? "" : "?" + request.getQueryString());
@@ -246,7 +246,7 @@ public class GatewayFilter extends OncePerRequestFilter {
 
         boolean hasBody = request.getContentLengthLong() > 0 || request.getHeader("Transfer-Encoding") != null;
         InputStream body = hasBody ? request.getInputStream() : null;
-        return new Upstream.Request(request.getMethod(), URI.create(target), headers, body, hasBody ? request.getContentLengthLong() : 0);
+        return new Upstream.Request(request.getMethod(), URI.create(target), headers, body, hasBody ? request.getContentLengthLong() : 0, responseTimeout);
     }
 
     private void copyResponse(Upstream.Response answer, HttpServletResponse response) throws IOException {
@@ -260,8 +260,24 @@ public class GatewayFilter extends OncePerRequestFilter {
             response.addHeader(header.name(), header.value());
         }
         try (OutputStream out = response.getOutputStream()) {
-            answer.body().transferTo(out);
+            if (isEventStream(answer)) {
+                // server-sent events are meant to arrive as they are produced: without a flush per chunk the servlet buffer holds them back until
+                // the answer is finished, and the browser sees nothing while the advisor is working
+                byte[] chunk = new byte[2048];
+                int read;
+                while ((read = answer.body().read(chunk)) != -1) {
+                    out.write(chunk, 0, read);
+                    out.flush();
+                }
+            } else {
+                answer.body().transferTo(out);
+            }
         }
+    }
+
+    private static boolean isEventStream(Upstream.Response answer) {
+        return answer.headers().stream().anyMatch(h -> h.name().equalsIgnoreCase("content-type") && h.value() != null
+            && h.value().toLowerCase(Locale.ROOT).startsWith("text/event-stream"));
     }
 
     private static boolean isPreflight(HttpServletRequest request) {

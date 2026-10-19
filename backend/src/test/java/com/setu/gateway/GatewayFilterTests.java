@@ -11,6 +11,9 @@ import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import jakarta.servlet.FilterChain;
+import jakarta.servlet.ServletOutputStream;
+import jakarta.servlet.WriteListener;
+import jakarta.servlet.http.HttpServletResponseWrapper;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.http.HttpMethod;
@@ -21,6 +24,9 @@ import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilde
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
 import java.io.ByteArrayInputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.net.URI;
 import java.time.Duration;
 import java.time.Instant;
@@ -53,6 +59,8 @@ class GatewayFilterTests {
     private final List<Upstream.Request> sent = new ArrayList<>();
     private final List<String> failedInstances = new ArrayList<>();
     private final List<RouteTable.Route> relayed = new ArrayList<>();
+    /** How many times the gateway flushed the client's output stream while copying an answer. */
+    private final AtomicInteger flushes = new AtomicInteger();
     private List<URI> instances = List.of(A);
     private boolean denyRate;
     private Upstream.Response answer = new Upstream.Response(200, List.of(new Upstream.Header("Content-Type", "application/json")),
@@ -108,11 +116,12 @@ class GatewayFilterTests {
             new GatewayProperties.UpstreamProperties(Duration.ofSeconds(2), Duration.ofSeconds(30), Duration.ofSeconds(15)),
             new GatewayProperties.LimitProperties(120, 600));
         RouteTable routes = new RouteTable(List.of(
-            new GatewayProperties.RouteProperties("core", "core", List.of("/**"), List.of("/swagger-ui/**"), null, false),
-            new GatewayProperties.RouteProperties("identity", "identity", List.of("/auth/**", "/identity/**"), List.of("/auth/**"), null, false),
-            new GatewayProperties.RouteProperties("academic", "academic", List.of("/institution/**"), List.of(), null, false),
-            new GatewayProperties.RouteProperties("live", "attendance", List.of("/live/**"), List.of("/live/**"), null, true),
-            new GatewayProperties.RouteProperties("live-private", "attendance", List.of("/live-private/**"), List.of(), null, true)));
+            new GatewayProperties.RouteProperties("core", "core", List.of("/**"), List.of("/swagger-ui/**"), null, false, null),
+            new GatewayProperties.RouteProperties("identity", "identity", List.of("/auth/**", "/identity/**"), List.of("/auth/**"), null, false, null),
+            new GatewayProperties.RouteProperties("academic", "academic", List.of("/institution/**"), List.of(), null, false, null),
+            new GatewayProperties.RouteProperties("live", "attendance", List.of("/live/**"), List.of("/live/**"), null, true, null),
+            new GatewayProperties.RouteProperties("live-private", "attendance", List.of("/live-private/**"), List.of(), null, true, null),
+            new GatewayProperties.RouteProperties("slow", "ai", List.of("/slow/**"), List.of(), null, false, Duration.ofSeconds(120))));
         GatewayFilter filter = new GatewayFilter(routes, authenticator, limiter, directory, upstream, objectMapper, properties,
             new SimpleMeterRegistry());
         // stands in for the relay handler: whatever the gateway lets through to it is recorded here
@@ -123,7 +132,27 @@ class GatewayFilterTests {
                 response.setStatus(204);
             }
         };
-        mvc = MockMvcBuilders.standaloneSetup(new Object()).addFilters(new CorrelationIdFilter(), filter, relay).build();
+        // counts the flushes of the client-facing output stream, which is what makes a server-sent event reach the browser as it is produced
+        OncePerRequestFilter counting = new OncePerRequestFilter() {
+            @Override
+            protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain chain) throws java.io.IOException, jakarta.servlet.ServletException {
+                chain.doFilter(request, new HttpServletResponseWrapper(response) {
+                    @Override
+                    public ServletOutputStream getOutputStream() throws IOException {
+                        ServletOutputStream delegate = super.getOutputStream();
+                        return new ServletOutputStream() {
+                            @Override public void write(int b) throws IOException { delegate.write(b); }
+                            @Override public void write(byte[] b, int off, int len) throws IOException { delegate.write(b, off, len); }
+                            @Override public void flush() throws IOException { flushes.incrementAndGet(); delegate.flush(); }
+                            @Override public void close() throws IOException { delegate.close(); }
+                            @Override public boolean isReady() { return delegate.isReady(); }
+                            @Override public void setWriteListener(WriteListener listener) { delegate.setWriteListener(listener); }
+                        };
+                    }
+                });
+            }
+        };
+        mvc = MockMvcBuilders.standaloneSetup(new Object()).addFilters(new CorrelationIdFilter(), counting, filter, relay).build();
     }
 
     private static MockHttpServletRequestBuilder signedIn(MockHttpServletRequestBuilder builder) {
@@ -383,6 +412,60 @@ class GatewayFilterTests {
         assertThat(response.getStatus()).isEqualTo(429);
         assertThat(response.getHeader("Retry-After")).isEqualTo("17");
         assertThat(relayed).isEmpty();
+    }
+
+    // --- slow routes and streamed answers (the AI advisor)
+
+    @Test
+    void aRouteWithItsOwnResponseTimeoutPassesItToTheUpstreamAndOtherRoutesDoNot() throws Exception {
+        mvc.perform(signedIn(get("/slow/chat"))).andReturn();
+        mvc.perform(signedIn(get("/institution/colleges"))).andReturn();
+
+        assertThat(sent).hasSize(2);
+        assertThat(sent.get(0).responseTimeout()).isEqualTo(Duration.ofSeconds(120));
+        assertThat(sent.get(1).responseTimeout()).as("the client's default applies").isNull();
+    }
+
+    /** An answer that arrives in pieces, one read at a time, as a stream of events does. */
+    private static InputStream inPieces(String... pieces) {
+        List<byte[]> queue = new ArrayList<>(java.util.Arrays.stream(pieces).map(p -> p.getBytes(java.nio.charset.StandardCharsets.UTF_8)).toList());
+        return new InputStream() {
+            @Override
+            public int read() {
+                throw new UnsupportedOperationException("read(byte[]) only");
+            }
+
+            @Override
+            public int read(byte[] b, int off, int len) {
+                if (queue.isEmpty()) {
+                    return -1;
+                }
+                byte[] next = queue.remove(0);
+                System.arraycopy(next, 0, b, off, next.length);
+                return next.length;
+            }
+        };
+    }
+
+    @Test
+    void aServerSentEventStreamIsFlushedToTheClientPieceByPieceSoTokensArriveAsTheyAreMade() throws Exception {
+        String tool = "event: tool\ndata: {}\n\n";
+        String token = "event: token\ndata: {\"text\":\"Hi\"}\n\n";
+        String done = "event: done\ndata: {}\n\n";
+        answer = new Upstream.Response(200, List.of(new Upstream.Header("Content-Type", "text/event-stream")), inPieces(tool, token, done), null);
+
+        MockHttpServletResponse response = mvc.perform(signedIn(get("/slow/chat/stream"))).andReturn().getResponse();
+
+        assertThat(response.getContentAsString()).isEqualTo(tool + token + done);
+        assertThat(flushes.get()).as("one flush per piece").isGreaterThanOrEqualTo(3);
+    }
+
+    @Test
+    void anOrdinaryAnswerIsNotFlushedPieceByPiece() throws Exception {
+        MockHttpServletResponse response = mvc.perform(signedIn(get("/institution/colleges"))).andReturn().getResponse();
+
+        assertThat(response.getContentAsString()).isEqualTo("{\"ok\":true}");
+        assertThat(flushes.get()).isZero();
     }
 
     @Test

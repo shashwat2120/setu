@@ -32,9 +32,10 @@ public record GatewayProperties(
      * @param ratePerMinute overrides the default request limit for callers of this route
      * @param websocket  true when this route's paths carry live connections: the gateway then relays a WebSocket upgrade to the owning service
      *                   (see {@link WebSocketRelayHandler}); on any other route an upgrade is refused with 501
+     * @param responseTimeout how long the service may take to answer on this route; unset means {@code app.gateway.upstream.response-timeout}
      */
     public record RouteProperties(String id, String service, List<String> paths, @DefaultValue List<String> publicPaths, Integer ratePerMinute,
-                                  @DefaultValue("false") boolean websocket) {
+                                  @DefaultValue("false") boolean websocket, Duration responseTimeout) {
     }
 
     public record CorsProperties(@DefaultValue List<String> allowedOrigins) {

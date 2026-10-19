@@ -52,7 +52,8 @@ In order; the first rule that applies decides.
 5. **Rate limit,** per route: per signed-in user, otherwise per client address, one-minute fixed window in Redis (defaults 600 and 120; a
    route may override). Over the limit is 429 `RATE_LIMITED` with `Retry-After`. Redis down means the limiter fails open.
 6. **Forward** to the first reachable instance (section 4). Method, path, raw query string and body are preserved; request bodies are
-   streamed, not buffered.
+   streamed, not buffered. An answer whose `Content-Type` is `text/event-stream` (the advisor's `/ai/chat/stream`) is **flushed to the client after every
+   chunk**, so its events arrive as the service produces them instead of all at once when it finishes.
 
 Headers: hop-by-hop headers and anything the gateway sets itself are dropped; `X-Forwarded-For/Proto/Host` are set from the real connection
 and any the client sent are discarded (they cannot be used to impersonate the edge); `X-Correlation-Id` is the client's if valid, otherwise
@@ -65,7 +66,7 @@ Failures are the standard error envelope (`code`, `message`, `path`, `requestId`
 |---|---|---|
 | no instance known for the service | 503 (`Retry-After: 5`) | `SERVICE_UNAVAILABLE` |
 | nothing answered (refused, unreachable, connection dropped) | 502 | `BAD_GATEWAY` |
-| connected but no answer within 30 s | 504 | `GATEWAY_TIMEOUT` |
+| connected but no answer within the route's time (30 s unless the route sets `response-timeout`; the `ai` route sets 120 s, because an advisor answer is slow by nature) | 504 | `GATEWAY_TIMEOUT` |
 
 Retries: only a `GET`, `HEAD` or `OPTIONS` is retried on the next instance, and only when the previous one gave no answer at all. A request
 that may have been processed (timeout, or any failure after connecting) and every request that changes data are never sent twice.
@@ -123,7 +124,7 @@ The gateway's own `/actuator/health` and `/actuator/info` are served locally and
 ## 6. What it does not do (yet)
 
 - **Live delivery from the Notification service** (no WebSocket route for it yet, see section 3a), **per-message limits** on relayed connections (the container's default frame size applies), and **TLS termination**, which is assumed at the deployment edge.
-- **Request size limits** and **per-route timeouts** (one global timeout today).
+- **Request size limits.** (Per-route response timeouts exist: `response-timeout` on a route, used by the `ai` route; connect timeout and quarantine are still global.)
 - **Tracing across the hop** beyond the correlation id (6C.1).
 - **Running as a real server on the Windows development machine.** Embedded Tomcat does not start there (see `backend/README.md`), so the gateway
   is verified as a whole application through MockMvc, with the real HTTP client talking to a real blocking socket stub and the real Redis. In

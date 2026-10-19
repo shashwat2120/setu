@@ -3,6 +3,7 @@ package com.setu.gateway;
 import org.apache.hc.client5.http.config.ConnectionConfig;
 import org.apache.hc.client5.http.config.RequestConfig;
 import org.apache.hc.client5.http.impl.classic.CloseableHttpClient;
+import org.apache.hc.client5.http.protocol.HttpClientContext;
 import org.apache.hc.client5.http.impl.classic.HttpClients;
 import org.apache.hc.client5.http.impl.io.PoolingHttpClientConnectionManager;
 import org.apache.hc.client5.http.impl.io.PoolingHttpClientConnectionManagerBuilder;
@@ -79,7 +80,13 @@ public class ApacheUpstream implements Upstream, DisposableBean {
                 if (traceParent != null) {
                     outgoing.setHeader("traceparent", traceParent);
                 }
-                return client.executeOpen(null, outgoing, null);
+                HttpClientContext context = null;
+                if (request.responseTimeout() != null) {
+                    // this route's own patience, for this exchange only: it covers the wait for the answer and the gaps between the bytes of it
+                    context = HttpClientContext.create();
+                    context.setRequestConfig(RequestConfig.custom().setResponseTimeout(Timeout.of(request.responseTimeout())).build());
+                }
+                return client.executeOpen(null, outgoing, context);
             });
             List<Header> headers = new ArrayList<>();
             for (org.apache.hc.core5.http.Header h : response.getHeaders()) {

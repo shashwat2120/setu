@@ -45,7 +45,7 @@ class WebSocketRelayHandlerTests {
 
     private static final URI A = URI.create("http://a.internal:8086");
     private static final URI B = URI.create("http://b.internal:8086");
-    private static final RouteTable.Route ROUTE = new RouteTable.Route("attendance-live", "attendance", 60, true);
+    private static final RouteTable.Route ROUTE = new RouteTable.Route("attendance-live", "attendance", 60, true, null);
 
     private final ObjectMapper objectMapper = new ObjectMapper().findAndRegisterModules();
     private final List<URI> failedInstances = new ArrayList<>();
