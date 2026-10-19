@@ -11,7 +11,8 @@ and the validation report ([validation-report.md](validation-report.md)) carry t
    to run only when a person pressed **Recalculate**. A risk consumer now recalculates a student's risk on every `GradePublished` (original or
    correction): see [kafka-event-catalog.md](kafka-event-catalog.md) and `RiskEventProcessor`. The consumer's logic and its Kafka envelope handling
    are tested without a broker, with the real outbox payload; consuming from a live broker is the same unverified-here limit as item 2.
-   Still not triggers: attendance, submissions, learning progress and `AssessmentCompleted`; adding one is a line in `RiskEventProcessor.TRIGGERS`
+   Closing an attendance session is now a trigger too: it recalculates every student actively enrolled in that section, so absences move the score
+   without a grade. Still not triggers: submissions, learning progress and `AssessmentCompleted`; adding one is a line in `RiskEventProcessor.TRIGGERS`
    and a test.
 
 ## Not verified in this environment
@@ -42,8 +43,8 @@ and the validation report ([validation-report.md](validation-report.md)) carry t
    section has one final-grade component; a grade published for it (`FinalGradePublished`) makes Academic move the enrollment ENROLLED to COMPLETED
    with the grade as `final_status`, and a correction of that grade changes it ([state-machines.md #11](state-machines.md)). Degree progress counts
    passed courses only. Open consequences of the decision: **there is still no period close**, so a course whose section never gets a final-grade
-   component never completes; **a completed student is no longer actively enrolled**, so they lose the course page and attendance for it (grades and
-   transcript stay); a course can be completed only through Kafka, so on the development machine (slow Kafka client) it can take minutes.
+   component never completes; **a completed student is no longer actively enrolled**, so they can no longer take attendance in it, submit work or record progress, but they keep
+   reading the course (lessons, resources, assignments) with a notice that it is complete, as well as their grades and transcript; a course can be completed only through Kafka, so on the development machine (slow Kafka client) it can take minutes.
 8. **Gap. Only the live attendance board goes through the gateway.** The gateway relays WebSocket upgrades on one route (`/ws`, to Attendance) and
    answers an upgrade anywhere else with 501; Notification's live delivery and the AI service's job status have no route yet, so those clients connect
    to the service directly. The relay is verified over real sockets in containers (not on the development machine) and has no per-frame limits of
@@ -83,7 +84,7 @@ and the validation report ([validation-report.md](validation-report.md)) carry t
 
 In the order that removes the most risk first.
 
-1. **Add the other risk triggers** if wanted (attendance session closed, assignment graded, `AssessmentCompleted`), each with its own test.
+1. **Add the remaining risk triggers** if wanted (assignment graded, `AssessmentCompleted`; attendance session closed is done), each with its own test.
 2. **Done for the layout** ([contracts/containers.md](contracts/containers.md)): the services run as containers and Kafka lag, the Grafana panels and the
    live board were verified live. **Still open:** the DLQ against a live broker with a real poison event, and everything under load (items 2, 5).
 3. **Finish moving Record into Assessment** (the port and the completion event are in place): Academic events for courses, curricula and student
