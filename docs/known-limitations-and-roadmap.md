@@ -97,7 +97,7 @@ and the validation report ([validation-report.md](validation-report.md)) carry t
 14. **The gateway is a small servlet gateway, not Spring Cloud Gateway**, because no Spring Cloud release train supports Boot 4.1
     ([gateway §1](contracts/gateway.md)). It sits behind the same route table and tests, so swapping it is one class.
 15. **No OpenFeign**; Resilience4j core is used directly behind `GuardedCall` ([data-ownership §3](contracts/data-ownership.md)).
-16. **Gemini is the primary AI provider** for chat and embeddings, with a second Gemini model and then local Ollama as the last resort. The local
+16. **Gemini is the primary AI provider** for chat and embeddings, with a second Gemini model, then (when a key is set) a hosted NVIDIA model, and then local Ollama as the last resort. The local
     model is CPU-only on the development machine and slow; it is a fallback, not the demo path. Gemini's free embedding tier is capped at 1,000
     requests a day, so tests embed with the built-in local embedder and one opt-in test (`live-gemini`) checks the real thing.
 17. **Seed and example data are marked as such**; none of the demo numbers are real.
@@ -115,8 +115,10 @@ In the order that removes the most risk first.
    the enrollment facts it needs.
 4. **Done for the live attendance board** (item 8). **Still open:** a route for Notification's live delivery and the AI job status, each on a path of its own.
 5. ~~Settle the faculty role-versus-assignment rule~~ **Done** (item 10).
-6. **Add a hosted second AI fallback** (for example an NVIDIA-hosted Llama through its OpenAI-compatible endpoint) ahead of the CPU model if
-   the local fallback is expected to carry real traffic; this needs the provider and model to be named.
+6. ~~Add a hosted second AI fallback~~ **Built, off until a key is set.** A hosted model on NVIDIA's OpenAI-compatible endpoint (`meta/llama-3.3-70b-instruct` by default; any
+   tool-calling model) is tried after the second Gemini model and before the local one, through the same tools and the same per-user authorization. It needs
+   `NVIDIA_API_KEY` in the git-ignored `.env` files (`pwsh infra/scripts/set-nvidia-key.ps1` asks for it without showing it); without a key nothing about it exists.
+   Scripted tests cover the order (`AiChatNvidiaFallbackTests`) and the on/off wiring; **not yet checked against the real endpoint**.
 7. **Done** (item 6): the frontend test runner and its accessibility checks. **Next there:** data states for the remaining pages.
 8. **Analytics read models** when a consumer for them exists (item 9).
 

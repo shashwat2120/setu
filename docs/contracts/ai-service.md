@@ -79,6 +79,11 @@ records it for **the token's** user and college (never from the body), only for 
 
 * **Gemini is the primary provider everywhere**: the running services and every backend test (`AI_PROVIDER` defaults to `google-genai`). Ollama
   (the local `llama3.2:3b`) is the fallback only, because it is slow on this machine, minutes where Gemini takes seconds.
+* **The order models are tried**: the primary Gemini model, then a second Gemini model (`app.ai.gemini-fallback-model`), then a hosted NVIDIA model
+  (`app.ai.nvidia.*`; only when `NVIDIA_API_KEY` is set, through NVIDIA's OpenAI-compatible endpoint with the same application-owned tools and the same
+  per-user authorization), and only then the local Ollama model. Each answer names the model that gave it. A hosted model answers in seconds where the local one
+  takes minutes, so it is tried first; an answer that has already started streaming is never continued by another model. `AiChatNvidiaFallbackTests` covers the order
+  with scripted models; `AiChatNvidiaConfigTests` and `AiChatNvidiaConfigOffTests` cover that nothing exists without a key.
 * **No key, no failure.** A run without `GEMINI_API_KEY` starts with Ollama as primary and says so in the log (`AiProviderSafetyPostProcessor`);
   a present-but-wrong key starts normally and falls back at request time. `AI_PROVIDER=ollama` forces the local model.
 * **Retries are capped** (`spring.ai.retry`: 2 attempts, quick backoff, none for client errors such as a bad key or an exhausted quota; the hand-built

@@ -75,6 +75,9 @@ public class AiChatService {
     /** A second Gemini model tried before Ollama when the primary fails; null when there is none (Ollama primary, or no different model configured). */
     private ChatClient secondaryChatClient;
     private String secondaryModelName;
+    /** A hosted NVIDIA model tried after the second Gemini model and before Ollama; null when no NVIDIA key is configured. */
+    private ChatClient nvidiaChatClient;
+    private String nvidiaModelName;
     private final ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor();
 
     /**
@@ -136,6 +139,25 @@ public class AiChatService {
             this.secondaryChatClient = client;
             this.secondaryModelName = model;
         }
+    }
+
+    /**
+     * Wired by Spring when an NVIDIA API key is configured ({@code app.ai.nvidia.api-key}); not called otherwise. A hosted model answers in seconds, where the local
+     * Ollama model takes minutes, so it is tried before Ollama and after the second Gemini model.
+     */
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    void nvidia(@Qualifier("nvidiaChatClient") ChatClient client, @Value("${app.ai.nvidia.model:}") String model) {
+        if (client != null && model != null && !model.isBlank()) {
+            this.nvidiaChatClient = client;
+            this.nvidiaModelName = model;
+        }
+    }
+
+    /** For tests and hand-built services: the hosted NVIDIA model, or null for none. */
+    public AiChatService withNvidia(ChatClient client, String model) {
+        this.nvidiaChatClient = client;
+        this.nvidiaModelName = model;
+        return this;
     }
 
     /** For tests and hand-built services: the second Gemini model, or null for none. */
@@ -255,6 +277,20 @@ public class AiChatService {
                     return new ChatResult.ProviderUnavailable();
                 } catch (Exception secondaryFailure) {
                     logProviderFailure(secondaryFailure, tenantId, userId, correlationId, "secondary");
+                }
+            }
+            // Second fallback: a hosted NVIDIA model, when a key is configured (still minutes quicker than the local model).
+            if (recovered == null && nvidiaChatClient != null) {
+                invocationRecorder.drain();
+                try {
+                    recovered = attempt(nvidiaChatClient, message, nvidiaModelName, false, primaryTimeoutSeconds, tracked, history,
+                        tenantId, userId, correlationId);
+                    audit("AI_CHAT_FALLBACK_USED", correlationId, Map.of("fallbackModel", nvidiaModelName));
+                } catch (AuditUnavailableException auditFailure) {
+                    log.warn("AI answer withheld: it could not be recorded ({})", auditFailure.getMessage());
+                    return new ChatResult.ProviderUnavailable();
+                } catch (Exception nvidiaFailure) {
+                    logProviderFailure(nvidiaFailure, tenantId, userId, correlationId, "nvidia");
                 }
             }
             if (recovered != null) {

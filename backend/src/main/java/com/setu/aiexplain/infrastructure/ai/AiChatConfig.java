@@ -6,6 +6,8 @@ import org.springframework.ai.model.tool.ToolCallingManager;
 import org.springframework.ai.ollama.OllamaChatModel;
 import org.springframework.ai.ollama.api.OllamaApi;
 import org.springframework.ai.ollama.api.OllamaChatOptions;
+import org.springframework.ai.openai.OpenAiChatModel;
+import org.springframework.ai.openai.OpenAiChatOptions;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -158,6 +160,35 @@ public class AiChatConfig {
         return ChatClient.builder(chatModel)
             .defaultSystem(SYSTEM_PROMPT)
             .defaultOptions(org.springframework.ai.google.genai.GoogleGenAiChatOptions.builder().model(fallbackModel))
+            .build();
+    }
+
+    /**
+     * A hosted model on NVIDIA's OpenAI-compatible endpoint (build.nvidia.com), tried after the second Gemini model and before the local one. Present only
+     * when {@code app.ai.nvidia.api-key} is set; without a key nothing about it exists. Built by hand like the Ollama client (no auto-configuration, whichever
+     * provider is primary), sharing the one {@link ToolCallingManager} so the same application-owned tools, with the same per-user authorization, are
+     * available to it, and with no retries of its own (the fallback chain decides what happens next). The key is read from configuration only and never
+     * logged or returned to anyone.
+     */
+    @Bean(name = "nvidiaChatClient")
+    @org.springframework.boot.autoconfigure.condition.ConditionalOnExpression("!'${app.ai.nvidia.api-key:}'.isBlank()")
+    public ChatClient nvidiaChatClient(ToolCallingManager toolCallingManager,
+                                       @Value("${app.ai.nvidia.api-key}") String apiKey,
+                                       @Value("${app.ai.nvidia.base-url:https://integrate.api.nvidia.com/v1}") String baseUrl,
+                                       @Value("${app.ai.nvidia.model:meta/llama-3.3-70b-instruct}") String model,
+                                       @Value("${app.ai.nvidia.timeout-seconds:40}") long timeoutSeconds) {
+        OpenAiChatModel nvidiaModel = OpenAiChatModel.builder()
+            .options(OpenAiChatOptions.builder()
+                .baseUrl(baseUrl)
+                .apiKey(apiKey)
+                .model(model)
+                .timeout(java.time.Duration.ofSeconds(timeoutSeconds))
+                .maxRetries(0)
+                .build())
+            .toolCallingManager(toolCallingManager)
+            .build();
+        return ChatClient.builder(nvidiaModel)
+            .defaultSystem(SYSTEM_PROMPT)
             .build();
     }
 

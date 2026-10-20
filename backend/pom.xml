@@ -137,6 +137,13 @@
 			<groupId>org.springframework.ai</groupId>
 			<artifactId>spring-ai-starter-model-google-genai</artifactId>
 		</dependency>
+		<!-- A hosted fallback model on NVIDIA's OpenAI-compatible endpoint (build.nvidia.com). Only the model module, not its starter: the client is built by hand in
+		     AiChatConfig#nvidiaChatClient and exists only when an NVIDIA key is configured, so no OpenAI auto-configuration is switched on. It uses the
+		     openai-java SDK over blocking OkHttp, not Netty/NIO, like the Gemini SDK above. -->
+		<dependency>
+			<groupId>org.springframework.ai</groupId>
+			<artifactId>spring-ai-openai</artifactId>
+		</dependency>
 		<!-- Gemini text embeddings (gemini-embedding-001) for college-policy search. A separate artifact from the chat model;
 		     its auto-configuration is already provided by spring-ai-autoconfigure-model-google-genai and is switched on only when
 		     AiProviderSafetyPostProcessor selects Gemini embeddings. Same blocking OkHttp-based SDK as the chat starter. -->
