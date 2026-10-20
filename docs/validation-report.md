@@ -151,6 +151,23 @@ Automated first: `PaymentProviderTests` (40), `ProviderWebhookHttpTests` (11, ov
 
 What this run did **not** cover: Razorpay's own webhook delivery (a laptop has no public address, so the server-to-server lookup after checkout confirmed the payment; the webhook path is covered by the tests and the 401 check above), a failed attempt in the live window, and a refund through Razorpay.
 
+## Faculty rule, period close and check-in location, run live (2026-10-20)
+
+On the nine containers, through the gateway, after rebuilding the image with the faculty-role rule, the period close and the student check-in history.
+
+| Claim | How it was checked | Result |
+|---|---|---|
+| Faculty sees where each check-in was made from | faculty opened a session with the classroom position; three students scanned (about 10 m away, about 5.5 km away, no position shared); faculty read the records | NEAR (10 m), FAR (5,560 m), NO_LOCATION, each QR_SCAN; no coordinate in any field |
+| A student sees their own check-ins and where they were made from, and nobody else's | the new `GET /attendance/enrollments/{id}/records` as the student, as another student, as the section's faculty, with no token; and the Attendance page in a browser | 200 with the location outcome; 403; 200 (11 records); 401; the page shows "Your recent check-ins" with "In the room (10 m)", marks the system wrote show "—" |
+| An assigned faculty member who still holds the role works the section (the new rule must not lock out real faculty) | the same scans and reads as faculty.rao across Attendance and Enrollment after the rebuild | all 200 |
+| A period cannot close while a section is open or a student is enrolled, and a blocked close changes nothing | a throwaway period with one open section and one enrolled student: close-check, close, close with `closeOpenSections` | close-check `canClose=false`, 1 open section, 1 ungraded; both closes 409; the section was still OPEN and the period still IN_PROGRESS afterwards |
+| Only the calendar manager may ask or close | a student asked the close-check | 403 |
+| Once the student is dropped, the close goes through, closing the section with it, and is announced | student dropped the course; close with `closeOpenSections` | 204; section CLOSED, period CLOSED; a second close is refused (400) and announces nothing more |
+| The close is audited and announced | outbox, audit log and the Kafka topic | `PeriodClosed` PUBLISHED and present on `setu.academic_periods`; status changes in the audit log |
+| An empty period closes | a throwaway period with no sections | 204 |
+
+**Not run live, and why:** an assignment that outlived a revoked faculty role. Revoking a FACULTY role needs a fresh passkey step-up (`ELEVATED_ROLES`), which a script cannot give; it is covered by `FacultyRoleRequiredTests` (6 tests, including the section lists and learning content). The live run did leave its throwaway data in the demo college: two closed periods named `Live close test …`, one closed section and one dropped enrollment (student.intervention). `reset-demo.ps1` removes them.
+
 ## Not validated
 
 - Kafka consumer lag **under load**. (The dead-letter path **was** run with a real poison event on the real stack, see below.)
