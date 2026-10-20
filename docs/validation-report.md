@@ -65,7 +65,7 @@ passing on its own: the risk trigger on a closed attendance session (5 in `RiskE
 `MigrationIntegrationTests`, whose table count (147) had been stale since Sprint 6. The seeder classes (`DemoDataSeeder*`, 15 tests) are excluded from the
 chunks because they need an empty database; they passed on one, with the new Final Exam test.
 
-**Frontend (`npm test` in `frontend/`): 91 tests in 7 files, all passing**: the axe-core engine against WCAG 2.2 AA on every page of the app for its role in
+**Frontend (`npm test` in `frontend/`): 103 tests in 8 files, all passing**: the axe-core engine against WCAG 2.2 AA on every page of the app for its role in
 the state it shows when its data cannot load, and the sign-in, check-in, advisor, finance and finished-course pages with data (see
 [non-negotiables-test-audit.md](non-negotiables-test-audit.md) item 4). Colour contrast, which needs a real browser, was checked with axe-core in one against the running stack:
 **38 pages with live data have no WCAG 2.2 AA violations** (sign-in, landing, 9 student pages, 10 faculty pages, 17 admin pages); eight text-over-photograph spots on the landing page
@@ -137,6 +137,19 @@ These are single-user timings on one machine, not load figures.
 | Closing an attendance session recalculates the section's students through Kafka | opened a session with no scans and closed it (six students marked absent) | the demo student's risk was recalculated about 7 s later (24.995 to 27.219, a new score row), counted as `AttendanceSessionClosed recalculated` in `setu_risk_events_total` |
 | A finished course stays readable and nothing can be added, across services | a final grade published for a student, then calls as that student through the gateway, with Learning and Attendance running as their own services | enrollment `COMPLETED` (final B) in about a second; reading modules, lessons and assignments: 200; recording progress: 403; an attendance scan: 403; a student still enrolled: 200. Afterwards (Assessment and the advisor's facts extended the same way): the finished student reads the course's assessments (200), and the advisor lists both grades by name, "Midterm Quiz" (MAIN) and "Final Exam" (FINAL), where it had shown component UUIDs and would have lost the finished course's grade |
 | The advisor's streaming endpoint works through the gateway and answers from the student's real data | `POST /ai/chat/stream` through the gateway and, for comparison, straight to the AI service | identical timing both ways (first event about 8 s, answer 14 to 15 s, tokens 0.2 to 0.3 s apart), so the gateway adds no delay; the answer names the real attendance (50 %) and grades. Before the fix the same questions got "no data" |
+
+## Online payment through Razorpay, run live (test mode)
+
+Automated first: `PaymentProviderTests` (40), `ProviderWebhookHttpTests` (11, over the real security chain with no token), `RazorpayGatewayTests` (13, against a stub provider),
+`RazorpaySignatureTests` (9). Then on the containers, with Razorpay **test** keys from the git-ignored `.env`:
+
+| Claim | How it was checked | Result |
+|---|---|---|
+| Checkout opens a real order for the fee's amount and leaks nothing | a payment for a 50,000 INR fee created through the gateway, then `POST .../checkout` | 200: order id from Razorpay, `amount` 5000000 paise, only the public key id in the answer (no secret) |
+| The webhook path is open without a token but refuses an unsigned body | `POST /finance/provider-webhooks/razorpay` through the gateway, no token, no signature; an unauthenticated `GET /finance/payments/{id}` | 401 `invalid signature`; 401 |
+| A real payment in Razorpay's own window is confirmed by the server, not the browser | the fee paid in Razorpay's test checkout (test netbanking, "Success") from a real browser on the stack | payment `SUCCEEDED` with a provider payment id, the fee `PAID`, a receipt issued, the balance down by the amount, a `PaymentSuccessful` outbox row `PUBLISHED` and an audit row `PAYMENT_SUCCEEDED` with no acting user (the provider), the event recorded as `reconcile:pay_...` |
+
+What this run did **not** cover: Razorpay's own webhook delivery (a laptop has no public address, so the server-to-server lookup after checkout confirmed the payment; the webhook path is covered by the tests and the 401 check above), a failed attempt in the live window, and a refund through Razorpay.
 
 ## Not validated
 

@@ -33,6 +33,10 @@ fixed it and tested it), **open** (no test yet; stated plainly in "Open items").
 | Room capacity supports section capacity | `CourseSectionTests.roomCapacityInsufficientIsRejected` | covered |
 | Binary media outside PostgreSQL | **`SchemaInvariantTests.binaryMediaStaysOutsidePostgres`** (only the three WebAuthn crypto columns; no large objects) | added |
 | No card PAN/CVV stored | **`SchemaInvariantTests.paymentTablesNeverHoldCardNumbers`** | added |
+| Payment status only from the provider, never the client (§5) | `PaymentProviderTests` (a signed capture settles; an unsigned, badly signed or altered body changes nothing; the browser's callback is only a prompt: `reconcileDoesNotBelieveAPaymentTheProviderHasNotCaptured`), `ProviderWebhookHttpTests` (over the real security chain, no token) | added |
+| Provider webhook is idempotent on its event id; amount and currency must match | `PaymentProviderTests.theSameEventDeliveredTwiceIsAppliedOnce`, `concurrentDeliveriesOfTheSameEventApplyOnce`, `anAmountThatIsNotThePaymentsIsNotAppliedAndIsRaisedInTheAuditLog`, `aCurrencyThatIsNotThePaymentsIsNotApplied` | added |
+| No card, contact or provider secret kept; fee amount never taken from the client | `PaymentProviderTests.noCardDetailsOrContactDataAreKept`, `aPaymentForAFeeTakesTheFeesAmountNotTheClients`, `ProviderWebhookHttpTests.theCheckoutAnswerNeverContainsASecretOrCardField`; a fee has at most one open payment: `theDatabaseItselfRefusesTwoOpenPaymentsForOneFee` | added |
+| A refund goes to the provider first and re-opens the fee | `PaymentProviderTests.anAdminRefundGoesThroughTheProviderFirstThenReopensTheFeeAndRestoresTheBalance`, `ifTheProviderWillNotRefundNothingChangesHere` | added |
 | Optimistic locking on mutable aggregates | `MigrationIntegrationTests.optimisticLockingVersionColumnsArePresentOnMutableAggregates`, concurrency tests | covered |
 | Official history preserved | `…gradesAndTranscriptsAreAppendOnlyByDesign`, versioned grades, append-only risk rows (`RiskConcurrencyTests`) | covered |
 
@@ -74,8 +78,8 @@ career and risk concurrency tests.
 - `GET /enrollment/faculty-assignments` answered **500** when neither `sectionId` nor `facultyId` was given. It now answers 400.
   (Found by the tenant-escape sweep.)
 - `docs/openapi-contract-catalog.md` described `POST /finance/payments/webhook` as a provider callback verified by a provider
-  signature. The code is an authenticated stand-in (`POST /finance/payments/{paymentId}/events`, administrator only, idempotent on the
-  provider event id); no provider signature scheme exists. The catalog now says so.
+  signature while the code was an authenticated administrator stand-in. The catalog said so; since the Razorpay integration the real
+  signed webhook exists (`POST /finance/provider-webhooks/razorpay`) and the stand-in is documented as the counter-payment path.
 
 ## Defects found by the Sprint 6C.2 failure/security/performance pass
 
