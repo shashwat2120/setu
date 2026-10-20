@@ -266,6 +266,22 @@ Selecting a student takes the package offered (the job's own when left alone) an
 
 Unit and integration tests cover the job's own package as the default, no CTC (not zero) when neither the job nor the offer gives one, no joining date invented, a refused offer leaving the application shortlisted with no placement, and shortlisting or rejecting recording nothing. The student's career page shows the package as "₹9.25 LPA" with the joining date. **Limits:** the placement is dated by the server's clock (UTC in the containers), so around midnight in India it can carry the previous day's date; a student gets two notifications for one selection; the package is for the officer to state, nothing checks it against the job's advertised one beyond the 0 to 1000 range.
 
+## Placement statistics and the student's applications page, run live (2026-10-21)
+
+**Statistics** (`GET /career/placement-stats`, the Statistics page of the placement officer): students placed, the percentage placed of the students actively in a program (overall and for each program), the average, highest and lowest package, the top five recruiters, the applications by stage and the jobs by whether they still take applications. Read by the placement officer and the administrator only; Career learns the program cohorts through a port that AI facts answers from Enrollment, so it gains no dependency on it. Run on the containers with the demo data (6 students in one program, 2 placed):
+
+| Check | Result |
+|---|---|
+| The officer's figures | 2 placed, 33.3% of 6 students in a program, average ₹7.88 LPA, highest ₹9.25 LPA, recruiters Brightline Technologies and Example Co, 4 / 3 / 3 / 1 / 0 applications by stage, 21 jobs of which 19 take applications, 1 past its deadline, 1 full |
+| A student asking | 403 |
+| The page in the browser | the same figures, in the college's visual style; requests 200 |
+
+Rules the figures follow, each tested: a student placed twice counts once; a placement with no package is a placement, not a package of zero, and the page says how many placements state one; a percentage is only given where there are students to take it of ("No students" otherwise); a placed student in no active program (graduated) is counted as placed but is in no program's percentage; a program's placed count never exceeds its students.
+
+**My applications** (`/app/student/applications`): every job the student has applied to, newest first, with its status, a sentence on what happens next (waiting for review, shortlisted, selected with the package and joining date, not taken forward, withdrawn), the placement officer's note, and Withdraw while it is still open. It uses the existing endpoints, so nothing new on the server. Checked live as Ishaan: 4 applications (1 selected, 2 shortlisted, 1 not taken forward), the notes and the next steps as above.
+
+**Limits:** statistics are the present state, not a history or a comparison with last year; "placed" counts every student with a placement record, including those recorded outside the portal; the administrator can read the endpoint but has no page for it yet.
+
 ## Not validated
 
 - Kafka consumer lag **under load**. (The dead-letter path **was** run with a real poison event on the real stack, see below.)
