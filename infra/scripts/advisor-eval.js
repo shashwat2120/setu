@@ -16,8 +16,8 @@
 
 const GATEWAY = process.env.GATEWAY || 'http://localhost:8080';
 const PASSWORD = process.env.DEMO_PASSWORD || 'SetuDemo#2025!';
-const PACE_MS = Number(process.env.EVAL_PACE_MS || 4000);
-const ASK_TIMEOUT_MS = 150000;
+const PACE_MS = Number(process.env.EVAL_PACE_MS || 2000);
+const ASK_TIMEOUT_MS = 100000;
 
 async function call(token, method, path, body, timeout = 30000) {
   const res = await fetch(GATEWAY + path, {
@@ -206,7 +206,7 @@ async function ask(token, message) {
 (async () => {
   const wanted = process.argv.slice(2);
   const cases = wanted.length ? CASES.filter((c) => c.tags.some((t) => wanted.includes(t))) : CASES;
-  const token = await login('student.average@demo.setu.local');
+  let token = await login('student.average@demo.setu.local');
   const truth = await truthFor(token);
   const otherToken = await login('student.strong@demo.setu.local');
   const other = { ...(await truthFor(otherToken)), callerOverall: truth.overall };
@@ -215,6 +215,7 @@ async function ask(token, message) {
   let failed = 0, slowest = 0, totalSeconds = 0;
   const models = {};
   for (const c of cases) {
+    token = await login('student.average@demo.setu.local');   // an access token lives 15 minutes and a slow run outlasts one
     await call(token, 'DELETE', '/ai/chat/history');
     let result;
     try {

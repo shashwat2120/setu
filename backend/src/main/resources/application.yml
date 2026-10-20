@@ -285,6 +285,8 @@ app:
     # Tried before Ollama when the primary Gemini model fails (a 503 "high demand" on one model rarely hits another). Blank disables; ignored when equal to
     # the primary model. Needs a model this key can use: `GET /v1beta/models` lists them.
     gemini-fallback-model: ${GEMINI_FALLBACK_MODEL:gemini-3.5-flash}
+    # After the primary model fails, questions go straight to the next model for this many seconds instead of each waiting out the primary again (0 disables).
+    primary-cooldown-seconds: ${AI_PRIMARY_COOLDOWN_SECONDS:60}
     # A hosted model on NVIDIA's OpenAI-compatible endpoint, tried after the second Gemini model and before the local one. Off without a key; the key is
     # never committed (git-ignored backend/.env.local and infra/docker/.env). Use a model that supports tool calling.
     nvidia:

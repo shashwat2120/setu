@@ -75,6 +75,13 @@ public class AiChatService {
     /** A second Gemini model tried before Ollama when the primary fails; null when there is none (Ollama primary, or no different model configured). */
     private ChatClient secondaryChatClient;
     private String secondaryModelName;
+    /**
+     * After the primary model fails (a timeout, an overload) it is left alone for this long and questions go straight to the next model, instead of every question
+     * first waiting out the primary's budget again. 0 (the default for a hand-built service) disables it; Spring sets {@code app.ai.primary-cooldown-seconds} (60).
+     * Not applied when the primary IS the last resort (the local model), where there is nothing to hand over to. After the cooldown the primary is tried again.
+     */
+    private volatile long primaryCooldownSeconds = 0;
+    private volatile Instant primarySkippedUntil = Instant.EPOCH;
     /** A hosted NVIDIA model tried after the second Gemini model and before Ollama; null when no NVIDIA key is configured. */
     private ChatClient nvidiaChatClient;
     private String nvidiaModelName;
@@ -150,6 +157,24 @@ public class AiChatService {
         if (client != null && model != null && !model.isBlank()) {
             this.nvidiaChatClient = client;
             this.nvidiaModelName = model;
+        }
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    void primaryCooldown(@Value("${app.ai.primary-cooldown-seconds:60}") long seconds) {
+        this.primaryCooldownSeconds = Math.max(0, seconds);
+    }
+
+    /** For tests and hand-built services: leave the primary alone for this many seconds after it fails (0: never). */
+    public AiChatService withPrimaryCooldown(long seconds) {
+        this.primaryCooldownSeconds = Math.max(0, seconds);
+        return this;
+    }
+
+    /** Marks a primary attempt that was not made because the primary failed moments ago: not a failure, so nothing is logged for it. */
+    private static final class PrimarySkipped extends RuntimeException {
+        PrimarySkipped() {
+            super("primary model skipped: it failed recently", null, false, false);
         }
     }
 
@@ -254,13 +279,22 @@ public class AiChatService {
         invocationRecorder.drain(); // clear any stale state left on this (pooled) thread by an earlier call
         ChatResult result;
         try {
+            if (primaryCooldownSeconds > 0 && !fallbackIsRedundant && Instant.now().isBefore(primarySkippedUntil)) {
+                throw new PrimarySkipped();
+            }
             result = attempt(chatClient, message, modelName, primaryCanStream && tracked != null, primaryTimeoutSeconds, tracked, history,
                 tenantId, userId, correlationId);
+            primarySkippedUntil = Instant.EPOCH;   // it answered: it is healthy again
         } catch (AuditUnavailableException auditFailure) {
             log.warn("AI answer withheld: it could not be recorded ({})", auditFailure.getMessage());
             return new ChatResult.ProviderUnavailable();
         } catch (Exception primaryFailure) {
-            logProviderFailure(primaryFailure, tenantId, userId, correlationId, "primary");
+            if (!(primaryFailure instanceof PrimarySkipped)) {
+                logProviderFailure(primaryFailure, tenantId, userId, correlationId, "primary");
+                if (primaryCooldownSeconds > 0 && !fallbackIsRedundant) {
+                    primarySkippedUntil = Instant.now().plusSeconds(primaryCooldownSeconds);
+                }
+            }
             if (tokensSent[0]) {
                 return new ChatResult.ProviderUnavailable();   // an answer already started cannot be spliced with another model's
             }
@@ -283,7 +317,8 @@ public class AiChatService {
             if (recovered == null && nvidiaChatClient != null) {
                 invocationRecorder.drain();
                 try {
-                    recovered = attempt(nvidiaChatClient, message, nvidiaModelName, false, primaryTimeoutSeconds, tracked, history,
+                    // the hosted fallback gets the full budget, not the primary's short one: a tool-calling answer is two model calls
+                    recovered = attempt(nvidiaChatClient, message, nvidiaModelName, false, this.timeoutSeconds, tracked, history,
                         tenantId, userId, correlationId);
                     audit("AI_CHAT_FALLBACK_USED", correlationId, Map.of("fallbackModel", nvidiaModelName));
                 } catch (AuditUnavailableException auditFailure) {
