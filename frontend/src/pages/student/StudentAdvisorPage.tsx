@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { apiFetch, apiStream, ApiError } from '../../api/client';
 import type { AiChatResponse } from '../../api/types';
 import { PageHeader } from '../../components/ui/PageHeader';
+import { AdvisorEvidence } from '../../components/AdvisorEvidence';
 
 interface ChatTurn {
   role: 'user' | 'assistant';
@@ -167,11 +168,7 @@ export default function StudentAdvisorPage() {
                 {turn.text}
                 {turn.streaming && <span aria-hidden="true"> ▍</span>}
               </div>
-              {turn.sources && turn.sources.length > 0 && (
-                <p style={{ fontSize: 11, color: 'var(--ink-soft)', marginTop: 4 }}>
-                  Sources: {turn.sources.join(', ')}
-                </p>
-              )}
+              {turn.role === 'assistant' && !turn.error && !turn.streaming && <AdvisorEvidence sources={turn.sources} model={turn.model} />}
             </div>
           );
         })}
