@@ -12,5 +12,9 @@ public interface StudentProgramRepository extends JpaRepository<StudentProgram, 
 
     List<StudentProgram> findByStudentId(UUID studentId);
 
+    List<StudentProgram> findByTenantIdAndStatus(UUID tenantId, StudentProgramStatus status);
+
+    List<StudentProgram> findByStudentIdInAndStatus(java.util.Collection<UUID> studentIds, StudentProgramStatus status);
+
     Optional<StudentProgram> findByTenantIdAndStudentIdAndStatusAndPrimaryTrue(UUID tenantId, UUID studentId, StudentProgramStatus status);
 }

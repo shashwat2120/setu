@@ -172,6 +172,31 @@ public class StudentProgramService {
             .findFirst();
     }
 
+    /** For each program, how many distinct students are actively in it (no authorization of its own: same precedent as {@link #activeProgramIdUnchecked}). */
+    @Transactional(readOnly = true)
+    public java.util.Map<UUID, Integer> activeStudentCountsByProgramUnchecked(UUID tenantId) {
+        java.util.Map<UUID, java.util.Set<UUID>> students = new java.util.HashMap<>();
+        for (StudentProgram p : studentProgramRepository.findByTenantIdAndStatus(tenantId, StudentProgramStatus.ACTIVE)) {
+            students.computeIfAbsent(p.programId(), k -> new java.util.HashSet<>()).add(p.studentId());
+        }
+        java.util.Map<UUID, Integer> counts = new java.util.HashMap<>();
+        students.forEach((program, ids) -> counts.put(program, ids.size()));
+        return counts;
+    }
+
+    /** The active program of each of these students that has one, primary first (no authorization of its own). */
+    @Transactional(readOnly = true)
+    public java.util.Map<UUID, UUID> activeProgramsUnchecked(java.util.Collection<UUID> studentIds) {
+        java.util.Map<UUID, UUID> out = new java.util.HashMap<>();
+        if (studentIds.isEmpty()) {
+            return out;
+        }
+        studentProgramRepository.findByStudentIdInAndStatus(studentIds, StudentProgramStatus.ACTIVE).stream()
+            .sorted(java.util.Comparator.comparing((StudentProgram p) -> !p.isPrimary()))
+            .forEach(p -> out.putIfAbsent(p.studentId(), p.programId()));
+        return out;
+    }
+
     /**
      * The year this student is expected to graduate: the admission year of their ACTIVE program plus the program's length in years (its terms divided by the college's
      * terms per year, rounded up). Empty if they have no active program or the program has no length. No authorization of its own: same precedent and callers' obligations

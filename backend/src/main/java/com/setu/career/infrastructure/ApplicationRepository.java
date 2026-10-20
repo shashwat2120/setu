@@ -21,6 +21,10 @@ public interface ApplicationRepository extends JpaRepository<Application, UUID> 
 
     long countByJobIdAndStatus(UUID jobId, ApplicationStatus status);
 
+    /** Rows of (status, count) across a college's applications. */
+    @Query("select a.status, count(a) from Application a where a.tenantId = :tenantId group by a.status")
+    List<Object[]> countByStatusForTenant(@Param("tenantId") UUID tenantId);
+
     /** For each of these jobs that has any, how many applications are in this status: rows of (job id, count). */
     @Query("select a.jobId, count(a) from Application a where a.jobId in :jobIds and a.status = :status group by a.jobId")
     List<Object[]> countByJobForStatus(@Param("jobIds") java.util.Collection<UUID> jobIds, @Param("status") ApplicationStatus status);

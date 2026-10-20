@@ -441,6 +441,22 @@ export interface ApplicationResponse {
   decidedAt: string | null;
 }
 
+/** GET /career/placement-stats: the college's placement figures. Packages are in lakhs per annum; a percentage is null where there are no students to take it of. */
+export interface PlacementStatsResponse {
+  placements: {
+    activeStudents: number;
+    placedStudents: number;
+    placements: number;
+    placedInCohorts: number;
+    placedPercentage: number | null;
+    packages: { counted: number; averageLpa: number | null; highestLpa: number | null; lowestLpa: number | null };
+    byProgram: Array<{ programId: string; students: number; placed: number; placedPercentage: number | null }>;
+    topRecruiters: Array<{ employer: string; placements: number; averageLpa: number | null }>;
+  };
+  applications: { submitted: number; shortlisted: number; selected: number; rejected: number; withdrawn: number };
+  jobs: { total: number; open: number; closedByOfficer: number; deadlinePassed: number; full: number };
+}
+
 export interface PlacementRecordResponse {
   id: string;
   tenantId: string;

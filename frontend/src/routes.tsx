@@ -15,6 +15,8 @@ import StudentAttendancePage from './pages/student/StudentAttendancePage';
 import StudentGradesPage from './pages/student/StudentGradesPage';
 import StudentRiskSuccessPage from './pages/student/StudentSuccessPage';
 import StudentCareerPage from './pages/student/StudentCareerPage';
+import StudentApplicationsPage from './pages/student/StudentApplicationsPage';
+import PlacementStatisticsPage from './pages/placement/PlacementStatisticsPage';
 import StudentFinancePage from './pages/student/StudentFinancePage';
 import StudentAdvisorPage from './pages/student/StudentAdvisorPage';
 import AdminDashboard from './pages/admin/AdminDashboard';
@@ -123,11 +125,13 @@ export default function AppRoutes() {
             <Route path="student/grades" element={<StudentGradesPage />} />
             <Route path="student/success" element={<StudentRiskSuccessPage />} />
             <Route path="student/career" element={<StudentCareerPage />} />
+            <Route path="student/applications" element={<StudentApplicationsPage />} />
             <Route path="student/finance" element={<StudentFinancePage />} />
             <Route path="student/advisor" element={<StudentAdvisorPage />} />
           </Route>
           <Route element={<ProtectedRoute allow={['PLACEMENT_OFFICER']} />}>
             <Route path="placement" element={<PlacementDashboard />} />
+            <Route path="placement/statistics" element={<PlacementStatisticsPage />} />
             <Route path="placement/jobs" element={<PlacementJobsPage />} />
             <Route path="placement/skills" element={<PlacementSkillsPage />} />
             <Route path="placement/placements" element={<PlacementPlacementsPage />} />
