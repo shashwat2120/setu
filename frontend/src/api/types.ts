@@ -430,6 +430,9 @@ export interface ApplicationResponse {
   status: string;
   appliedAt: string;
   notes: string | null;
+  /** What the placement officer told the student about the last decision; always present for a rejection. */
+  decisionReason: string | null;
+  decidedAt: string | null;
 }
 
 export interface PlacementRecordResponse {

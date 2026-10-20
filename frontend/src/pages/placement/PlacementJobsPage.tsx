@@ -220,17 +220,32 @@ function RequiredSkills({ jobId, skills }: { jobId: string; skills: SkillRespons
   );
 }
 
+type DecisionAction = 'shortlist' | 'select' | 'reject';
+const DECISION_LABELS: Record<DecisionAction, string> = { shortlist: 'Shortlist', select: 'Select', reject: 'Reject' };
+
 function JobApplications({ jobId, studentNameFor }: { jobId: string; studentNameFor: (id: string) => string }) {
   const applications = useApiQuery<ApplicationResponse[]>(`/career/applications/by-job?jobId=${jobId}`);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [deciding, setDeciding] = useState<{ id: string; action: DecisionAction } | null>(null);
+  const [reason, setReason] = useState('');
 
-  const act = async (applicationId: string, action: string) => {
+  const open = (id: string, action: DecisionAction) => { setActionError(null); setReason(''); setDeciding({ id, action }); };
+
+  /** The reason is what the student is shown, so it is part of the decision, and a rejection cannot be sent without one. */
+  const decide = async () => {
+    if (!deciding) return;
+    const text = reason.trim();
+    if (deciding.action === 'reject' && !text) {
+      setActionError('A rejection needs a reason, which the student is shown.');
+      return;
+    }
     setActionError(null);
     try {
-      await apiFetch(`/career/applications/${applicationId}/${action}`, { method: 'POST' });
+      await apiFetch(`/career/applications/${deciding.id}/${deciding.action}`, { method: 'POST', body: { reason: text || null } });
+      setDeciding(null);
       applications.refetch();
     } catch (err) {
-      setActionError(err instanceof Error ? err.message : `Could not ${action} this application.`);
+      setActionError(err instanceof Error ? err.message : `Could not ${deciding.action} this application.`);
     }
   };
 
@@ -238,20 +253,36 @@ function JobApplications({ jobId, studentNameFor }: { jobId: string; studentName
     { key: 'student', header: 'Student', render: (a) => studentNameFor(a.studentId) },
     { key: 'status', header: 'Status', render: (a) => <StatusBadge value={a.status} /> },
     { key: 'appliedAt', header: 'Applied', render: (a) => new Date(a.appliedAt).toLocaleDateString() },
+    { key: 'reason', header: 'Reason given', render: (a) => a.decisionReason ?? '' },
     {
       key: 'actions',
       header: 'Actions',
-      render: (a) => (a.status === 'SUBMITTED' || a.status === 'SHORTLISTED') ? (
-        <div style={{ display: 'flex', gap: 8 }}>
-          {a.status === 'SUBMITTED' && (
-            <ConfirmActionButton label="Shortlist" confirmMessage="Shortlist this application?" onConfirm={() => act(a.id, 'shortlist')} />
-          )}
-          {a.status === 'SHORTLISTED' && (
-            <ConfirmActionButton label="Select" confirmMessage="Select this candidate?" onConfirm={() => act(a.id, 'select')} />
-          )}
-          <ConfirmActionButton label="Reject" variant="danger" confirmMessage="Reject this application?" onConfirm={() => act(a.id, 'reject')} />
-        </div>
-      ) : null,
+      render: (a) => {
+        if (deciding?.id === a.id) {
+          const rejecting = deciding.action === 'reject';
+          return (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, minWidth: 220 }}>
+              <label htmlFor={`reason-${a.id}`} style={{ fontSize: 12, fontWeight: 600 }}>
+                {rejecting ? 'Reason shown to the student (required)' : 'Note shown to the student (optional)'}
+              </label>
+              <textarea id={`reason-${a.id}`} value={reason} maxLength={500} rows={2} onChange={(e) => setReason(e.target.value)} style={inputStyle} />
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button type="button" className={`btn btn-${rejecting ? 'danger' : 'primary'}`} style={{ padding: '8px 14px', fontSize: 13 }} onClick={decide}>
+                  {DECISION_LABELS[deciding.action]}
+                </button>
+                <button type="button" className="btn btn-ghost" style={{ padding: '8px 14px', fontSize: 13 }} onClick={() => setDeciding(null)}>Cancel</button>
+              </div>
+            </div>
+          );
+        }
+        return (a.status === 'SUBMITTED' || a.status === 'SHORTLISTED') ? (
+          <div style={{ display: 'flex', gap: 8 }}>
+            {a.status === 'SUBMITTED' && <button type="button" className="btn btn-ghost" style={{ padding: '8px 14px', fontSize: 13 }} onClick={() => open(a.id, 'shortlist')}>Shortlist</button>}
+            {a.status === 'SHORTLISTED' && <button type="button" className="btn btn-ghost" style={{ padding: '8px 14px', fontSize: 13 }} onClick={() => open(a.id, 'select')}>Select</button>}
+            <button type="button" className="btn btn-danger" style={{ padding: '8px 14px', fontSize: 13 }} onClick={() => open(a.id, 'reject')}>Reject</button>
+          </div>
+        ) : null;
+      },
     },
   ];
 

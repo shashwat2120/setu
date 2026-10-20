@@ -148,12 +148,17 @@ function JobCard({ job, studentId }: { job: JobResponse; studentId: string }) {
       )}
       <div style={{ marginTop: 10 }}>
         {myApplication ? (
+          <>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <StatusBadge value={myApplication.status} />
             {myApplication.status === 'SUBMITTED' && (
               <ConfirmActionButton label="Withdraw" variant="danger" confirmMessage="Withdraw your application?" onConfirm={withdraw} />
             )}
           </div>
+          {myApplication.decisionReason && (
+            <p style={{ fontSize: 13, marginTop: 6 }}><span style={{ fontWeight: 600 }}>Placement officer's note: </span>{myApplication.decisionReason}</p>
+          )}
+          </>
         ) : job.status === 'OPEN' && (
           <button type="button" className="btn btn-primary" style={{ padding: '8px 14px', fontSize: 13 }} disabled={applying || !canApply} onClick={apply}
             aria-describedby={canApply ? undefined : `why-${job.id}`}>
