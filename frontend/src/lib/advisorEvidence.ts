@@ -20,6 +20,8 @@ const KNOWN: Record<string, Omit<Evidence, 'key'>> = {
   getUpcomingDeadlines: { label: 'Your upcoming deadlines', covers: 'assignments and assessments still ahead, in your enrolled courses', to: '/app/student/courses' },
   getSkillGap: { label: 'Your skills compared with a job', covers: 'your skill profile against that job\'s requirements', to: '/app/student/career' },
   searchCollegePolicy: { label: 'College policy documents', covers: 'passages from your own college\'s policy documents', to: null },
+  getTranscript: { label: 'Your academic transcript', covers: 'every course with its credits and grade point, your GPA to date and your degree progress', to: '/app/student/grades' },
+  getFeeStatus: { label: 'Your fee charges', covers: 'each charge with its amount, due date and status, and what is still outstanding', to: '/app/student/finance' },
   recommendLearningResources: { label: 'Learning resources for your courses', covers: 'resources attached to the courses you are enrolled in', to: '/app/student/courses' },
 };
 

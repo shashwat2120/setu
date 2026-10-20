@@ -32,6 +32,17 @@ describe('what an advisor answer is based on', () => {
     expect(evidence[2].to).toBeNull();
   });
 
+  it('knows every tool the advisor has, so none shows as a generic lookup', () => {
+    const all = ['getStudentAttendance', 'getAcademicProgress', 'getAssessmentResults', 'getUpcomingDeadlines', 'getSkillGap', 'searchCollegePolicy',
+      'recommendLearningResources', 'getTranscript', 'getFeeStatus'];
+
+    for (const tool of all) {
+      expect(evidenceFor([tool])[0].label, tool).not.toBe('Your records');
+    }
+    expect(evidenceFor(['getFeeStatus'])[0].to).toBe('/app/student/finance');
+    expect(evidenceFor(['getTranscript'])[0].to).toBe('/app/student/grades');
+  });
+
   it('never shows a raw function name for a tool it does not know', () => {
     const [e] = evidenceFor(['someFutureTool']);
 

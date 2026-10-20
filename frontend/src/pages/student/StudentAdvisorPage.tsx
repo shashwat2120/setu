@@ -23,6 +23,8 @@ const TOOL_LABELS: Record<string, string> = {
   getSkillGap: 'Comparing your skills with job requirements',
   searchCollegePolicy: 'Searching college policy',
   recommendLearningResources: 'Finding learning resources',
+  getTranscript: 'Reading your transcript',
+  getFeeStatus: 'Checking your fees',
 };
 
 const SUGGESTIONS = [
