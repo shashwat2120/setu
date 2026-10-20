@@ -111,7 +111,7 @@ class CareerConcurrencyTests {
 
         List<ApplicationService.TransitionResult> results = runConcurrently(
             () -> transitionAs(s.placementOfficer, () -> applicationService.shortlist(applicationId)),
-            () -> transitionAs(s.placementOfficer, () -> applicationService.reject(applicationId)));
+            () -> transitionAs(s.placementOfficer, () -> applicationService.reject(applicationId, "Not taken forward")));
 
         long successCount = results.stream().filter(r -> r instanceof ApplicationService.TransitionResult.Success).count();
         assertThat(successCount).isEqualTo(1);

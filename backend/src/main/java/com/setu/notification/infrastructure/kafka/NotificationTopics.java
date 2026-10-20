@@ -17,7 +17,7 @@ public class NotificationTopics {
     private final String[] names;
 
     NotificationTopics(@Value("${app.notification.consumer.topic-prefix:${app.outbox.topic-prefix:setu.}}") String prefix,
-                       @Value("${app.notification.consumer.aggregates:grades,payments,placement_records,recommendations,interventions,student_profiles,enrollments,waitlist_entries}") String aggregates) {
+                       @Value("${app.notification.consumer.aggregates:grades,payments,placement_records,applications,recommendations,interventions,student_profiles,enrollments,waitlist_entries}") String aggregates) {
         this.names = Arrays.stream(aggregates.split(",")).map(String::trim).filter(a -> !a.isEmpty()).map(a -> prefix + a).toArray(String[]::new);
     }
 

@@ -29,11 +29,16 @@ public class ApplicationController {
     public record ApplyRequest(UUID jobId, UUID studentId) {
     }
 
-    public record ApplicationResponse(UUID id, UUID tenantId, UUID jobId, UUID studentId, String status, Instant appliedAt, String notes) {
+    public record ApplicationResponse(UUID id, UUID tenantId, UUID jobId, UUID studentId, String status, Instant appliedAt, String notes, String decisionReason,
+                                      Instant decidedAt) {
     }
 
     private static ApplicationResponse toResponse(Application a) {
-        return new ApplicationResponse(a.id(), a.tenantId(), a.jobId(), a.studentId(), a.status().name(), a.appliedAt(), a.notes());
+        return new ApplicationResponse(a.id(), a.tenantId(), a.jobId(), a.studentId(), a.status().name(), a.appliedAt(), a.notes(), a.decisionReason(), a.decidedAt());
+    }
+
+    /** The reason is shown to the student; required to reject, optional otherwise. */
+    public record DecisionRequest(String reason) {
     }
 
     @PostMapping
@@ -86,22 +91,26 @@ public class ApplicationController {
             case ApplicationService.TransitionResult.NotFound ignored -> ResponseEntity.status(HttpStatus.NOT_FOUND).build();
             case ApplicationService.TransitionResult.InvalidTransition ignored ->
                 ResponseEntity.status(HttpStatus.CONFLICT).body(new ErrorResponse("invalid status transition"));
+            case ApplicationService.TransitionResult.ReasonRequired ignored ->
+                ResponseEntity.badRequest().body(new ErrorResponse("a rejection needs a reason, which the student is shown"));
+            case ApplicationService.TransitionResult.ReasonTooLong ignored ->
+                ResponseEntity.badRequest().body(new ErrorResponse("the reason must be at most " + ApplicationService.MAX_REASON_LENGTH + " characters"));
         };
     }
 
     @PostMapping("/{applicationId}/shortlist")
-    public ResponseEntity<?> shortlist(@PathVariable UUID applicationId) {
-        return handleTransition(applicationService.shortlist(applicationId));
+    public ResponseEntity<?> shortlist(@PathVariable UUID applicationId, @RequestBody(required = false) DecisionRequest body) {
+        return handleTransition(applicationService.shortlist(applicationId, body == null ? null : body.reason()));
     }
 
     @PostMapping("/{applicationId}/reject")
-    public ResponseEntity<?> reject(@PathVariable UUID applicationId) {
-        return handleTransition(applicationService.reject(applicationId));
+    public ResponseEntity<?> reject(@PathVariable UUID applicationId, @RequestBody(required = false) DecisionRequest body) {
+        return handleTransition(applicationService.reject(applicationId, body == null ? null : body.reason()));
     }
 
     @PostMapping("/{applicationId}/select")
-    public ResponseEntity<?> select(@PathVariable UUID applicationId) {
-        return handleTransition(applicationService.select(applicationId));
+    public ResponseEntity<?> select(@PathVariable UUID applicationId, @RequestBody(required = false) DecisionRequest body) {
+        return handleTransition(applicationService.select(applicationId, body == null ? null : body.reason()));
     }
 
     @PostMapping("/{applicationId}/withdraw")

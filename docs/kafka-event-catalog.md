@@ -56,7 +56,7 @@ shown implicitly by its aggregate. `event_version` is `1` for every row.
 
 ## Implementation status
 
-**50 events are emitted today:** `EnrollmentCompleted` and `FinalGradePublished` (6C.3 follow-up: publishing a final grade completes the enrollment); `GradePublished`; `AttendanceRecorded`, **`AttendanceSessionOpened`, `AttendanceSessionClosed`** and the 8 staff-attendance events; `PlacementRecorded`;
+**52 events are emitted today:** **`ApplicationDecided`** (a placement officer shortlisted, rejected or selected an application; carries the reason the student is shown); `EnrollmentCompleted` and `FinalGradePublished` (6C.3 follow-up: publishing a final grade completes the enrollment); `GradePublished`; `AttendanceRecorded`, **`AttendanceSessionOpened`, `AttendanceSessionClosed`** and the 8 staff-attendance events; `PlacementRecorded`;
 `StudentAdmitted`; **`StudentEnrolled`, `StudentWaitlisted`, `WaitlistConverted`, `EnrollmentDropped`, `CourseSectionOpened`, `CourseSectionCancelled`** (added by the Sprint 6 coupling
 audit: the Academic service had published nothing, and Learning, Attendance, Student Success, Record and Notification need them);
 `PaymentSuccessful`, `PaymentFailed`, `PaymentRefunded`; `PasskeyRevoked`, `SessionRevoked`, `UserSuspended`, `UserDeactivated`,
@@ -68,7 +68,7 @@ the section id (aggregate `waitlist_entries`) so promotion order is kept per sec
 ## Consumers that exist
 
 **Notification** (`com.setu.notification`, built in the monolith, same contract it will keep when extracted). Consumer group
-`setu-notification`, reading `setu.grades`, `setu.payments`, `setu.placement_records`, `setu.recommendations`,
+`setu-notification`, reading `setu.grades`, `setu.payments`, `setu.placement_records`, `setu.applications`, `setu.recommendations`,
 `setu.interventions`, `setu.student_profiles`, `setu.enrollments` and `setu.waitlist_entries` from the earliest offset. It turns these events into rows in
 `notification.notifications`; every other event type on those topics is acknowledged and left alone.
 
@@ -77,6 +77,7 @@ the section id (aggregate `waitlist_entries`) so promotion order is kept per sec
 | `GradePublished` | the student who owns the enrollment | `GRADE_PUBLISHED` |
 | `PaymentSuccessful` / `PaymentFailed` / `PaymentRefunded` | the student | `PAYMENT_RECEIVED` / `PAYMENT_FAILED` / `PAYMENT_REFUNDED` |
 | `PlacementRecorded` | the student | `PLACEMENT_RECORDED` |
+| `ApplicationDecided` | the student (what was decided, and the officer's reason if given) | `APPLICATION_SHORTLISTED` / `APPLICATION_SELECTED` / `APPLICATION_REJECTED` |
 | `RecommendationCreated` | the student | `RECOMMENDATION_AVAILABLE` |
 | `StudentAdmitted` | the student | `ADMISSION_CONFIRMED` |
 | `StudentWaitlisted` | the student (with their position) | `WAITLISTED` |
@@ -162,6 +163,7 @@ the section id (aggregate `waitlist_entries`) so promotion order is kept per sec
 | `PaymentFailed` | Finance | Notification | `payments` | `student_account_id` | `payment_id, student_id, reason` |
 | `PaymentRefunded` 🆕 | Finance | Notification, Analytics | `payments` | `student_account_id` | `payment_id, student_id, amount, refunded_by` |
 | `PlacementRecorded` | Career | Notification, Analytics | `placement_records` | `student_id` | `placement_id, student_id, employer` |
+| `ApplicationDecided` 🆕 | Career | Notification | `applications` | `student_id` | `application_id, student_id, job_id, job_title, employer, decision, reason \| null` |
 | `RiskScoreChanged` | Student Success | Notification (advisor alert), Analytics, AI (context refresh, read-only) | `risk_scores` | `student_id` | `risk_score_id, student_id, old_band \| null, new_band, rule_version` — **emitted only when `band` actually changes** (state machine note — avoids alert fatigue) |
 | `RecommendationCreated` | Student Success | Notification | `recommendations` | `student_id` | `recommendation_id, student_id, generated_by ('RULE'\|'AI')` |
 | `InterventionCreated` | Student Success | Notification | `interventions` | `student_id` | `intervention_id, student_id, owner_user_id` |

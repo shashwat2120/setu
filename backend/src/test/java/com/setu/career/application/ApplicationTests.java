@@ -127,7 +127,7 @@ class ApplicationTests {
         assertThat(applicationService.shortlist(applicationId)).isInstanceOf(ApplicationService.TransitionResult.Success.class);
         assertThat(applicationService.select(applicationId)).isInstanceOf(ApplicationService.TransitionResult.Success.class);
 
-        var afterTerminal = applicationService.reject(applicationId);
+        var afterTerminal = applicationService.reject(applicationId, "Not taken forward");
         assertThat(afterTerminal).isInstanceOf(ApplicationService.TransitionResult.InvalidTransition.class);
     }
 

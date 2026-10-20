@@ -4,7 +4,7 @@ Generated from the event classes by `EventSchemaFreezeTests` (`-Dfreeze.update=t
 envelope in its Kafka headers (see [contracts/kafka-contracts.md](contracts/kafka-contracts.md)); this lists what varies per event.
 `Topic` is `setu.<aggregate>`, and the record key is the aggregate id, so one aggregate's events stay in order.
 
-**50 events from 11 producers.**
+**52 events from 11 producers.**
 
 ## assessment
 
@@ -34,6 +34,7 @@ envelope in its Kafka headers (see [contracts/kafka-contracts.md](contracts/kafk
 
 | Event | Version | Topic | Payload fields |
 |---|---|---|---|
+| `ApplicationDecided` | 1 | `setu.applications` | `applicationId` UUID, `studentId` UUID, `jobId` UUID, `jobTitle` String, `employer` String, `decision` String, `reason` String |
 | `PlacementRecorded` | 1 | `setu.placement_records` | `placementId` UUID, `studentId` UUID, `employer` String |
 
 ## catalog
@@ -42,6 +43,7 @@ envelope in its Kafka headers (see [contracts/kafka-contracts.md](contracts/kafk
 |---|---|---|---|
 | `MeetingPatternRemoved` | 1 | `setu.meeting_patterns` | `meetingPatternId` UUID, `sectionId` UUID |
 | `MeetingPatternScheduled` | 1 | `setu.meeting_patterns` | `meetingPatternId` UUID, `sectionId` UUID |
+| `PeriodClosed` | 1 | `setu.academic_periods` | `periodId` UUID, `academicYearId` UUID, `periodCode` String |
 
 ## directory
 
@@ -62,7 +64,6 @@ envelope in its Kafka headers (see [contracts/kafka-contracts.md](contracts/kafk
 | `EnrollmentDropped` | 1 | `setu.enrollments` | `enrollmentId` UUID, `sectionId` UUID, `studentId` UUID, `droppedAt` Instant, `wasEnrolled` boolean |
 | `FacultyAssigned` | 1 | `setu.faculty_assignments` | `assignmentId` UUID, `sectionId` UUID, `facultyId` UUID, `endsAt` LocalDate |
 | `FacultyAssignmentEnded` | 1 | `setu.faculty_assignments` | `assignmentId` UUID, `sectionId` UUID, `facultyId` UUID, `endsAt` LocalDate |
-| `PeriodClosed` | 1 | `setu.academic_periods` | `periodId` UUID, `academicYearId` UUID, `periodCode` String |
 | `StudentEnrolled` | 1 | `setu.enrollments` | `enrollmentId` UUID, `sectionId` UUID, `studentId` UUID, `viaWaitlist` boolean |
 | `StudentWaitlisted` | 1 | `setu.enrollments` | `enrollmentId` UUID, `sectionId` UUID, `studentId` UUID, `position` int |
 | `WaitlistConverted` | 1 | `setu.waitlist_entries` | `waitlistEntryId` UUID, `enrollmentId` UUID, `sectionId` UUID, `studentId` UUID |

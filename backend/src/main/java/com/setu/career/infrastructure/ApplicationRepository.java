@@ -23,4 +23,10 @@ public interface ApplicationRepository extends JpaRepository<Application, UUID> 
     @Modifying
     @Query("update Application a set a.status = :target where a.id = :id and a.status = :expected")
     int transitionIfStatus(@Param("id") UUID id, @Param("expected") ApplicationStatus expected, @Param("target") ApplicationStatus target);
+
+    /** The same guarded transition for an officer's decision, recording the reason given to the student and when. */
+    @Modifying
+    @Query("update Application a set a.status = :target, a.decisionReason = :reason, a.decidedAt = :at where a.id = :id and a.status = :expected")
+    int decideIfStatus(@Param("id") UUID id, @Param("expected") ApplicationStatus expected, @Param("target") ApplicationStatus target,
+                       @Param("reason") String reason, @Param("at") java.time.Instant at);
 }

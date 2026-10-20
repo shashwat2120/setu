@@ -116,6 +116,7 @@ public class NotificationEventProcessor {
                 "A refund of " + amount(p) + " was issued for one of your payments.", "/app/student/finance"));
             case "PlacementRecorded" -> Optional.of(student(studentId(p), tenantId, "PLACEMENT_RECORDED", "Placement recorded",
                 "Your placement with " + text(p, "employer") + " has been recorded.", "/app/student/career"));
+            case "ApplicationDecided" -> Optional.of(applicationDecision(p, tenantId));
             case "RecommendationCreated" -> Optional.of(student(studentId(p), tenantId, "RECOMMENDATION_AVAILABLE", "New study recommendation",
                 "There is a new recommendation to help you stay on track.", "/app/student/success"));
             case "StudentWaitlisted" -> Optional.of(student(studentId(p), tenantId, "WAITLISTED", "You are on a waitlist",
@@ -131,6 +132,21 @@ public class NotificationEventProcessor {
                     "A student-success intervention has been assigned to you.", null));
             }
             default -> Optional.empty();
+        };
+    }
+
+    /** What a placement officer decided about a student's application, in words the student can act on; the officer's reason, when there is one, is quoted as written. */
+    private Draft applicationDecision(JsonNode p, UUID tenantId) {
+        String job = text(p, "jobTitle") + " at " + text(p, "employer");
+        String reason = p.hasNonNull("reason") && !p.get("reason").asText().isBlank() ? " Reason given: " + p.get("reason").asText().strip() : "";
+        return switch (text(p, "decision")) {
+            case "SHORTLISTED" -> student(studentId(p), tenantId, "APPLICATION_SHORTLISTED", "You have been shortlisted",
+                "Your application for " + job + " has been shortlisted." + reason, "/app/student/career");
+            case "SELECTED" -> student(studentId(p), tenantId, "APPLICATION_SELECTED", "You have been selected",
+                "You have been selected for " + job + "." + reason, "/app/student/career");
+            case "REJECTED" -> student(studentId(p), tenantId, "APPLICATION_REJECTED", "Your application was not taken forward",
+                "Your application for " + job + " was not taken forward." + reason, "/app/student/career");
+            default -> throw new PoisonEventException("ApplicationDecided has an unknown decision");
         };
     }
 

@@ -36,6 +36,13 @@ public class Application {
 
     private String notes;
 
+    /** What the placement officer told the student about the last decision; required for a rejection. */
+    @Column(name = "decision_reason")
+    private String decisionReason;
+
+    @Column(name = "decided_at")
+    private Instant decidedAt;
+
     protected Application() {
     }
 
@@ -74,6 +81,14 @@ public class Application {
 
     public String notes() {
         return notes;
+    }
+
+    public String decisionReason() {
+        return decisionReason;
+    }
+
+    public Instant decidedAt() {
+        return decidedAt;
     }
 
     public boolean canTransitionTo(ApplicationStatus target) {

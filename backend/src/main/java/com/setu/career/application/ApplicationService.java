@@ -1,6 +1,7 @@
 package com.setu.career.application;
 
 import com.setu.career.domain.Application;
+import com.setu.career.domain.ApplicationDecidedEvent;
 import com.setu.career.domain.ApplicationStatus;
 import com.setu.career.domain.Job;
 import com.setu.career.domain.JobSkill;
@@ -13,6 +14,7 @@ import com.setu.shared.authorization.AuthorizationContext;
 import com.setu.shared.career.StudentStandings;
 import com.setu.shared.authorization.ResourceRef;
 import com.setu.shared.governance.AuditLogWriter;
+import com.setu.shared.governance.OutboxEventWriter;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -68,12 +70,15 @@ public class ApplicationService {
     private final AuthorizationContext authorizationContext;
     private final AuditLogWriter auditLogWriter;
     private final StudentStandings studentStandings;
+    private final OutboxEventWriter outboxEventWriter;
 
     public ApplicationService(ApplicationRepository applicationRepository, ApplicationInsertGuard applicationInsertGuard,
                                JobService jobService, JobSkillService jobSkillService, StudentSkillService studentSkillService,
                                StudentProfileService studentProfileService, CareerAccessSupport accessSupport,
-                               AuthorizationContext authorizationContext, AuditLogWriter auditLogWriter, StudentStandings studentStandings) {
+                               AuthorizationContext authorizationContext, AuditLogWriter auditLogWriter, StudentStandings studentStandings,
+                               OutboxEventWriter outboxEventWriter) {
         this.studentStandings = studentStandings;
+        this.outboxEventWriter = outboxEventWriter;
         this.applicationRepository = applicationRepository;
         this.applicationInsertGuard = applicationInsertGuard;
         this.jobService = jobService;
@@ -218,21 +223,42 @@ public class ApplicationService {
 
         record InvalidTransition() implements TransitionResult {
         }
+
+        /** A rejection must say why: the student is shown the reason. */
+        record ReasonRequired() implements TransitionResult {
+        }
+
+        record ReasonTooLong() implements TransitionResult {
+        }
     }
+
+    /** The longest reason an officer can give a student. */
+    public static final int MAX_REASON_LENGTH = 500;
 
     @Transactional
     public TransitionResult shortlist(UUID applicationId) {
-        return adminTransition(applicationId, ApplicationStatus.SHORTLISTED, "APPLICATION_SHORTLISTED");
+        return shortlist(applicationId, null);
     }
 
     @Transactional
-    public TransitionResult reject(UUID applicationId) {
-        return adminTransition(applicationId, ApplicationStatus.REJECTED, "APPLICATION_REJECTED");
+    public TransitionResult shortlist(UUID applicationId, String reason) {
+        return decide(applicationId, ApplicationStatus.SHORTLISTED, reason, "APPLICATION_SHORTLISTED");
+    }
+
+    /** A rejection needs a reason, which the student is shown. */
+    @Transactional
+    public TransitionResult reject(UUID applicationId, String reason) {
+        return decide(applicationId, ApplicationStatus.REJECTED, reason, "APPLICATION_REJECTED");
     }
 
     @Transactional
     public TransitionResult select(UUID applicationId) {
-        return adminTransition(applicationId, ApplicationStatus.SELECTED, "APPLICATION_SELECTED");
+        return select(applicationId, null);
+    }
+
+    @Transactional
+    public TransitionResult select(UUID applicationId, String reason) {
+        return decide(applicationId, ApplicationStatus.SELECTED, reason, "APPLICATION_SELECTED");
     }
 
     @Transactional
@@ -246,14 +272,43 @@ public class ApplicationService {
         return doTransition(application, ApplicationStatus.WITHDRAWN, "APPLICATION_WITHDRAWN");
     }
 
-    private TransitionResult adminTransition(UUID applicationId, ApplicationStatus target, String auditAction) {
+    /**
+     * An officer's decision: authorised first (so someone with no right to the application learns nothing from the reason's validity), then the reason is checked, then the
+     * status moves only from the expected one, and the student is told through the outbox in the same transaction (so a decision is never announced and then rolled back, nor made unannounced).
+     */
+    private TransitionResult decide(UUID applicationId, ApplicationStatus target, String rawReason, String auditAction) {
         Optional<Application> maybeApplication = applicationRepository.findById(applicationId);
         if (maybeApplication.isEmpty()) {
             return new TransitionResult.NotFound();
         }
         Application application = maybeApplication.get();
         authorizationContext.assertCan(MANAGE_PERMISSION, ResourceRef.of("application", application.id(), application.tenantId()));
-        return doTransition(application, target, auditAction);
+        String reason = rawReason == null || rawReason.isBlank() ? null : rawReason.strip();
+        if (reason != null && reason.length() > MAX_REASON_LENGTH) {
+            return new TransitionResult.ReasonTooLong();
+        }
+        if (target == ApplicationStatus.REJECTED && reason == null) {
+            return new TransitionResult.ReasonRequired();
+        }
+        if (!application.canTransitionTo(target)) {
+            return new TransitionResult.InvalidTransition();
+        }
+        Instant now = Instant.now();
+        if (applicationRepository.decideIfStatus(application.id(), application.status(), target, reason, now) == 0) {
+            return new TransitionResult.InvalidTransition();
+        }
+        Job job = jobService.findById(application.jobId()).orElseThrow();
+        UUID correlationId = UUID.randomUUID();
+        var event = new ApplicationDecidedEvent(UUID.randomUUID(), now, application.tenantId(), application.id(), correlationId, null,
+            application.id(), application.studentId(), job.id(), job.title(), job.employer(), target.name(), reason);
+        outboxEventWriter.write("applications", application.studentId(), event.eventType(), event.eventVersion(), event, application.tenantId(), correlationId, null);
+        Map<String, Object> details = new java.util.HashMap<>();
+        details.put("target", target.name());
+        if (reason != null) {
+            details.put("reason", reason);
+        }
+        auditLogWriter.write(application.tenantId(), authorizationContext.currentUserId(), auditAction, "career.applications", application.id(), details);
+        return new TransitionResult.Success();
     }
 
     private TransitionResult doTransition(Application application, ApplicationStatus target, String auditAction) {

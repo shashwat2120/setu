@@ -187,6 +187,39 @@ class NotificationEventProcessorTests {
     }
 
     @Test
+    void anApplicationDecisionTellsTheStudentWhatWasDecidedAndWhyInTheOfficersWords() {
+        var s = setUp("NP13");
+        for (String decision : List.of("SHORTLISTED", "SELECTED", "REJECTED")) {
+            UUID eventId = UUID.randomUUID();
+            processor.process("ApplicationDecided", eventId.toString(), null, json("eventId", eventId, "tenantId", s.tenant.tenantId(), "studentId", s.student.studentId(),
+                "applicationId", UUID.randomUUID(), "jobId", UUID.randomUUID(), "jobTitle", "Analyst", "employer", "Example Co", "decision", decision,
+                "reason", decision.equals("REJECTED") ? "Minimum attendance not met" : "Strong profile"));
+        }
+
+        assertThat(notificationTypes(s.student.userId())).containsExactly("APPLICATION_SHORTLISTED", "APPLICATION_SELECTED", "APPLICATION_REJECTED");
+        String rejected = jdbc.sql("SELECT payload_json ->> 'message' FROM notification.notifications WHERE user_id = :u AND type = 'APPLICATION_REJECTED'")
+            .param("u", s.student.userId()).query(String.class).single();
+        assertThat(rejected).isEqualTo("Your application for Analyst at Example Co was not taken forward. Reason given: Minimum attendance not met");
+        String link = jdbc.sql("SELECT payload_json ->> 'link' FROM notification.notifications WHERE user_id = :u AND type = 'APPLICATION_SELECTED'")
+            .param("u", s.student.userId()).query(String.class).single();
+        assertThat(link).isEqualTo("/app/student/career");
+    }
+
+    @Test
+    void aDecisionWithNoReasonSaysNothingAboutOneAndAnUnknownDecisionIsPoison() {
+        var s = setUp("NP14");
+        UUID eventId = UUID.randomUUID();
+        processor.process("ApplicationDecided", eventId.toString(), null, json("eventId", eventId, "tenantId", s.tenant.tenantId(), "studentId", s.student.studentId(),
+            "jobTitle", "Analyst", "employer", "Example Co", "decision", "SHORTLISTED"));
+        String message = jdbc.sql("SELECT payload_json ->> 'message' FROM notification.notifications WHERE user_id = :u").param("u", s.student.userId()).query(String.class).single();
+        assertThat(message).isEqualTo("Your application for Analyst at Example Co has been shortlisted.");
+
+        UUID bad = UUID.randomUUID();
+        assertThatThrownBy(() -> processor.process("ApplicationDecided", bad.toString(), null, json("eventId", bad, "tenantId", s.tenant.tenantId(),
+            "studentId", s.student.studentId(), "jobTitle", "Analyst", "employer", "Example Co", "decision", "WITHDRAWN"))).isInstanceOf(PoisonEventException.class);
+    }
+
+    @Test
     void aWaitlistedStudentAndAPromotedStudentAreEachTold() {
         var s = setUp("NP12");
         UUID waitlistedEvent = UUID.randomUUID();
