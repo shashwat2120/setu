@@ -195,6 +195,22 @@ The automated tests (`StaffCheckInLocationTests`, 12) also cover: a college with
 
 What it found, each now fixed: the attendance tool gave only an overall figure, so "each course" was answered "the system only gives an overall figure" (it now lists each course); a slow Gemini (a 9-token request measured at 18 to 40 s on its own) made every question wait out its budget before the fallback answered (after a primary failure it is now skipped for `app.ai.primary-cooldown-seconds`, 60); and the fallback was cut off at the primary's budget. **Limits:** 16 questions on one student's attendance, deadlines and policy, not grades or skills; string checks on the answers (a number present, a phrase absent), so a rewording could fail a correct answer and a clever wrong one could pass; times depend on the providers that day. The 60 s default cooldown means one slow Gemini request moves the next minute of questions to the fallback.
 
+## Placement eligibility, run live (2026-10-21)
+
+A placement officer can set rules per job (minimum CGPA, minimum attendance, programs it is open to, an application deadline) and details (package in LPA, location, openings, type). Every rule is optional; a student's real attendance, grades and program are checked at the moment they apply, and every unmet rule is reported, not just the first. Unknown figures (no grades yet, no sessions held) do not meet a rule. Run through the gateway on the containers as the placement officer and as the demo student Priya Nair (attendance 33.33%, CGPA 2.25), with example jobs titled `[live-test ...]`:
+
+| Check | Result |
+|---|---|
+| Job with no rules | eligible; apply gives 201 |
+| Job needing 75% attendance | not eligible: "Needs attendance of at least 75%; yours is 33.33%."; apply gives 409 with the same reason |
+| Job needing CGPA 9.9 | not eligible: "Needs a CGPA of at least 9.9; yours is 2.25." |
+| CGPA 15, or a deadline in the past | refused, 400, with the reason |
+| Another student reads Priya's skills or previews her eligibility | 403 (a gap found and closed: students held the view permission, so any student could) |
+| Placement officer previews a student's eligibility | allowed (managing implies viewing) |
+| Job form in the browser, posted with a real click on a program | stored with the rules, details and the program id; the student page shows what the job asks and why Apply is off |
+
+Found by running it live, not by the tests: the officer could not list programs (403), so the "open to these programs" rule could not be set; fixed with a narrow `VIEW_PROGRAMS` permission, copied to every service's role read model in the same change (the parity tests would have failed otherwise). **Limits:** one college, example data; openings are shown to students but not yet enforced; there is no decision reason, notification, or exception path for an officer yet (see the roadmap); the deadline is checked when a student applies and does not close the job by itself.
+
 ## Not validated
 
 - Kafka consumer lag **under load**. (The dead-letter path **was** run with a real poison event on the real stack, see below.)
