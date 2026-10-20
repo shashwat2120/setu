@@ -41,6 +41,7 @@ public class ProgramService {
 
     private static final String MANAGE_PERMISSION = "MANAGE_PROGRAMS";
     private static final String VIEW_PERMISSION = "VIEW_TENANT_DATA";
+    private static final String LIST_PERMISSION = "VIEW_PROGRAMS";
 
     private final ProgramRepository programRepository;
     private final ProgramInsertGuard programInsertGuard;
@@ -109,7 +110,11 @@ public class ProgramService {
 
     @Transactional(readOnly = true)
     public List<Program> listForTenant(UUID tenantId) {
-        authorizationContext.assertCan(VIEW_PERMISSION, ResourceRef.of("program", UUID.randomUUID(), tenantId));
+        var resource = ResourceRef.of("program", UUID.randomUUID(), tenantId);
+        // the list alone (name and code, nothing about any student) is readable with the narrow VIEW_PROGRAMS, e.g. by a placement officer choosing which programs a job is open to
+        if (!authorizationContext.can(LIST_PERMISSION, resource).isAllowed()) {
+            authorizationContext.assertCan(VIEW_PERMISSION, resource);
+        }
         return programRepository.findByTenantId(tenantId);
     }
 

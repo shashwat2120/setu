@@ -140,7 +140,7 @@ function JobCard({ job, studentId }: { job: JobResponse; studentId: string }) {
               <p>You cannot apply yet:</p>
               <ul style={{ margin: '4px 0 0', paddingLeft: 18 }}>
                 {unmet.map((r) => <li key={r.code}>{r.message}</li>)}
-                {missingSkills > 0 && <li>Missing {missingSkills} required skill{missingSkills === 1 ? '' : 's'}: add them to your profile above.</li>}
+                {missingSkills > 0 && <li>Missing {missingSkills} required skill{missingSkills === 1 ? '' : 's'}: add {missingSkills === 1 ? 'it' : 'them'} to your profile above.</li>}
               </ul>
             </>
           )}
