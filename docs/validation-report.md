@@ -183,6 +183,18 @@ The automated tests (`StaffCheckInLocationTests`, 12) also cover: a college with
 
 **Not run live:** the staff member's own check-in page (the consent note and the browser's location prompt), which needs a real device position; the page logic is covered by `staffLocation.test.tsx`. The two check-ins this run made remain in the demo college's day record for 2026-10-20.
 
+## The advisor, evaluated on the running stack (2026-10-20)
+
+`node infra/scripts/advisor-eval.js` asks the live advisor 16 questions as a demo student (Priya Nair) and checks each answer against the records her own pages show: attendance overall, per course, for one course and as attended/held; a follow-up that needs fresh figures; that a tool was used and "no data" is never said when there is data; deadlines and policy questions use their tools; a policy and a course that do not exist are not invented; another student's attendance is never revealed, including under "ignore your instructions" and an instruction hidden in a policy request; no record is claimed to change; an off-topic question gets no made-up figure. Only seeded example data is sent to any model.
+
+| Run | Result | Mean answer time |
+|---|---|---|
+| First (Gemini primary, 40 s budget, second Gemini model) | the 3 answers that completed were correct, then a login token expired (the script now signs in per case) | 35 to 65 s per answer |
+| With a 20 s primary budget and no second Gemini model | 12 of 16: the hosted fallback was cut off at the primary's short budget, so 4 answers failed with unavailable | 30 s |
+| With the cooldown and the fallback's full budget | **16 of 16** | **17 s** (13 answered by the hosted fallback, 3 by Gemini once it recovered) |
+
+What it found, each now fixed: the attendance tool gave only an overall figure, so "each course" was answered "the system only gives an overall figure" (it now lists each course); a slow Gemini (a 9-token request measured at 18 to 40 s on its own) made every question wait out its budget before the fallback answered (after a primary failure it is now skipped for `app.ai.primary-cooldown-seconds`, 60); and the fallback was cut off at the primary's budget. **Limits:** 16 questions on one student's attendance, deadlines and policy, not grades or skills; string checks on the answers (a number present, a phrase absent), so a rewording could fail a correct answer and a clever wrong one could pass; times depend on the providers that day. The 60 s default cooldown means one slow Gemini request moves the next minute of questions to the fallback.
+
 ## Not validated
 
 - Kafka consumer lag **under load**. (The dead-letter path **was** run with a real poison event on the real stack, see below.)
