@@ -12,7 +12,7 @@ import { RequestsList } from '../../components/staff/RequestsList';
 import { WeekStrip } from '../../components/staff/WeekStrip';
 import { addDays, mondayOf, monthStart } from '../../lib/staffCalendar';
 import { formatHm, formatMinutes, formatShiftTime, useServerNow } from '../../lib/staffTime';
-import { getDevicePosition } from '../../lib/devicePosition';
+import { positionHint, requestDevicePosition } from '../../lib/devicePosition';
 
 const time = (iso: string | null) => (iso ? new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '—');
 
@@ -57,7 +57,8 @@ export default function FacultyMyAttendancePage() {
     setMessage(null);
     try {
       // location is a signal for the administrator, never a requirement: declining, or a device without it, checks in the same
-      const position = locationOn && path.endsWith('/check-in') ? await getDevicePosition() : null;
+      const found = locationOn && path.endsWith('/check-in') ? await requestDevicePosition() : null;
+      const position = found?.ok ? found.position : null;
       const saved = await apiFetch<StaffAttendanceResponse>(path, {
         method: 'POST',
         ...(position ? { body: { latitude: position.latitude, longitude: position.longitude, accuracyMeters: position.accuracyMeters } } : {}),
@@ -65,7 +66,7 @@ export default function FacultyMyAttendancePage() {
       if (path.endsWith('/check-in') && locationOn) {
         setMessage(saved.locationStatus === 'NEAR' ? 'Checked in. Your location matches the campus.'
           : saved.locationStatus === 'FAR' ? 'Checked in. Your location looks far from the campus; your administrator will see that.'
-          : saved.locationStatus === 'NO_LOCATION' ? 'Checked in. Your location was not shared, so your administrator sees none.' : null);
+          : saved.locationStatus === 'NO_LOCATION' ? `Checked in. Your location was not shared, so your administrator sees none.${found && !found.ok ? ` ${positionHint(found.problem)}` : ''}` : null);
       }
       today.refetch();
     } catch (e) {

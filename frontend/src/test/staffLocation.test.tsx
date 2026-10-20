@@ -163,3 +163,42 @@ describe('the words for where a check-in came from', () => {
     expect(locationLabel(null, null, 'campus')).toBe('—');
   });
 });
+
+describe('why a position could not be had', () => {
+  afterEach(() => geolocation('absent'));
+
+  const withError = (code: number) =>
+    Object.defineProperty(navigator, 'geolocation', {
+      configurable: true,
+      value: { getCurrentPosition: (_ok: unknown, fail: (e: { code: number }) => void) => fail({ code }) },
+    });
+
+  it('names the reason for each way it can fail', async () => {
+    const { requestDevicePosition, positionHint } = await import('../lib/devicePosition');
+    withError(1);
+    expect(await requestDevicePosition()).toEqual({ ok: false, problem: 'denied' });
+    withError(2);
+    expect(await requestDevicePosition()).toEqual({ ok: false, problem: 'unavailable' });
+    withError(3);
+    expect(await requestDevicePosition()).toEqual({ ok: false, problem: 'timeout' });
+    geolocation('absent');
+    expect(await requestDevicePosition()).toEqual({ ok: false, problem: 'unsupported' });
+    geolocation('ok');
+    expect(await requestDevicePosition()).toEqual({ ok: true, position: { latitude: 12.9716, longitude: 77.5946, accuracyMeters: 15 } });
+    expect(positionHint('denied')).toContain('Click the pin icon in the address bar');
+  });
+
+  it('tells a staff member whose browser blocked location what to do, and still checks them in', async () => {
+    signedInAs('FACULTY');
+    withError(1);
+    facultyApi(true, () => savedRecord('NO_LOCATION'));
+    const user = userEvent.setup();
+    renderPage(<FacultyMyAttendancePage />);
+
+    await user.click(await screen.findByRole('button', { name: 'Check in' }));
+
+    const message = await screen.findByText(/Your location was not shared/);
+    expect(message.textContent).toContain('Your browser has blocked location for this site');
+    expect(message.textContent).toContain('pin icon in the address bar');
+  });
+});

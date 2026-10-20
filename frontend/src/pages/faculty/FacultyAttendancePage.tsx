@@ -11,7 +11,7 @@ import type {
 import { PageHeader } from '../../components/ui/PageHeader';
 import { Skeleton, EmptyState } from '../../components/ui/EmptyState';
 import { StatusBadge } from '../../components/ui/StatusBadge';
-import { getDevicePosition, locationLabel } from '../../lib/devicePosition';
+import { locationLabel, positionHint, requestDevicePosition } from '../../lib/devicePosition';
 
 interface SectionOption {
   assignment: FacultyAssignmentResponse;
@@ -39,6 +39,7 @@ export default function FacultyAttendancePage() {
   const [busy, setBusy] = useState(false);
   /** Whether this device's position was sent as the classroom position when the session was opened (null: no session opened by this page yet). */
   const [classroomShared, setClassroomShared] = useState<boolean | null>(null);
+  const [classroomHint, setClassroomHint] = useState<string | null>(null);
 
   useEffect(() => {
     const active = assignments?.filter((a) => a.active) ?? [];
@@ -79,12 +80,14 @@ export default function FacultyAttendancePage() {
     try {
       const endsAt = new Date(Date.now() + 30 * 60 * 1000).toISOString();
       // this device's position becomes the classroom position students are compared with; optional, so a refusal opens the session all the same
-      const position = await getDevicePosition(6000);
+      const found = await requestDevicePosition(6000);
+      const position = found.ok ? found.position : null;
       const result = await apiFetch<AttendanceOpenResponse>('/attendance/sessions', {
         method: 'POST',
         body: { sectionId: selectedSectionId, meetingId: selectedMeetingId, endsAt, ...(position ? { latitude: position.latitude, longitude: position.longitude } : {}) },
       });
       setClassroomShared(position !== null);
+      setClassroomHint(found.ok ? null : positionHint(found.problem));
       setSession(result);
       setClosedCount(null);
     } catch (e) {
@@ -251,7 +254,7 @@ export default function FacultyAttendancePage() {
                   <p style={{ fontSize: 12, color: 'var(--ink-soft)', marginBottom: 6 }}>
                     {classroomShared
                       ? 'Classroom position: taken from this device, so each check-in shows how close the student was.'
-                      : 'Classroom position: not shared from this device, so check-ins show no distance. Allow location and open a new session to enable it.'}
+                      : `Classroom position: not shared from this device, so check-ins show no distance. ${classroomHint ?? 'Allow location and open a new session to enable it.'}`}
                   </p>
                 )}
                 <p style={{ fontSize: 12, color: liveConnected ? 'var(--sage, #4a7c59)' : 'var(--ink-soft)' }}>

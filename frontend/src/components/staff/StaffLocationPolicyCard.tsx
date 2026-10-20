@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { apiFetch, ApiError } from '../../api/client';
 import { useApiQuery } from '../../api/useApiQuery';
 import type { StaffLocationPolicy } from '../../api/types';
-import { getDevicePosition } from '../../lib/devicePosition';
+import { positionHint, requestDevicePosition } from '../../lib/devicePosition';
 
 interface Draft {
   enabled: boolean;
@@ -37,12 +37,13 @@ export function StaffLocationPolicyCard() {
   const useThisDevice = async () => {
     setLocating(true);
     setMessage(null);
-    const position = await getDevicePosition();
+    const found = await requestDevicePosition();
     setLocating(false);
-    if (!position) {
-      setMessage({ ok: false, text: 'This device did not share its position. Type the campus latitude and longitude instead.' });
+    if (!found.ok) {
+      setMessage({ ok: false, text: `This device did not share its position. ${positionHint(found.problem)} Or type the campus latitude and longitude instead.` });
       return;
     }
+    const position = found.position;
     setDraft((d) => (d ? { ...d, latitude: position.latitude.toFixed(6), longitude: position.longitude.toFixed(6) } : d));
   };
 

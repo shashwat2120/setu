@@ -7,7 +7,7 @@ import { PageHeader } from '../../components/ui/PageHeader';
 import { DataTable, type Column } from '../../components/ui/DataTable';
 import { StatusBadge } from '../../components/ui/StatusBadge';
 import { Skeleton, ErrorState } from '../../components/ui/EmptyState';
-import { getDevicePosition, locationLabel } from '../../lib/devicePosition';
+import { locationLabel, positionHint, requestDevicePosition } from '../../lib/devicePosition';
 
 interface Row {
   enrollment: EnrollmentResponse;
@@ -45,7 +45,8 @@ export default function StudentAttendancePage() {
     event.preventDefault(); setCheckingIn(true); setCheckInMessage('Asking your device for your location… you can decline and still check in.');
     try {
       // location is a signal for the instructor, never a requirement: declining, or a device without it, checks in the same
-      const position = await getDevicePosition();
+      const found = await requestDevicePosition();
+      const position = found.ok ? found.position : null;
       setCheckInMessage('Checking in…');
       const result = await apiFetch<{ status: string; locationStatus?: string | null }>('/attendance/scan', {
         method: 'POST',
@@ -53,7 +54,7 @@ export default function StudentAttendancePage() {
       });
       const where = result.locationStatus === 'NEAR' ? ' Your location matches the classroom.'
         : result.locationStatus === 'FAR' ? ' Your location looks far from the classroom; your instructor will see that.'
-        : result.locationStatus === 'NO_LOCATION' ? ' Your location was not shared, so your instructor sees none.' : '';
+        : result.locationStatus === 'NO_LOCATION' ? ` Your location was not shared, so your instructor sees none.${found.ok ? '' : ` ${positionHint(found.problem)}`}` : '';
       setCheckInMessage(`Check-in recorded.${where}`); setSessionId(''); setQrToken('');
       enrollments.refetch();
     } catch (e) { setCheckInMessage(e instanceof Error ? e.message : 'Check-in failed.'); }
