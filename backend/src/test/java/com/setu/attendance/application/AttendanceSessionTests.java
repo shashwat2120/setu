@@ -76,6 +76,18 @@ class AttendanceSessionTests {
     }
 
     @Test
+    void aScanTokenLivesAboutAMinuteByDefault() {
+        var s = setUp("ATT1Q");
+        TestAuthentication.authenticateAs(s.faculty.userId());
+        Instant before = Instant.now();
+
+        var result = (AttendanceSessionService.OpenResult.Success) attendanceSessionService.open(s.sectionId, s.meetingId, Instant.now().plus(1, ChronoUnit.HOURS));
+
+        // from application.yml (app.attendance.qr-ttl-seconds, 60): long enough to copy a token across by hand, short enough that a photo of it is useless
+        assertThat(result.qrExpiresAt()).isBetween(before.plusSeconds(58), Instant.now().plusSeconds(62));
+    }
+
+    @Test
     void unassignedFacultyIsDenied() {
         var s = setUp("ATT2");
         UUID otherFacultyUserId = fixtures.provisionUserWithRole(s.tenant.tenantId(), RoleCode.FACULTY, "ATT2-OTHER");

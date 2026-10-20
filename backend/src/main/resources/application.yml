@@ -260,6 +260,10 @@ app:
     batch-size: ${OUTBOX_BATCH_SIZE:100}
     topic-prefix: ${OUTBOX_TOPIC_PREFIX:setu.}
     send-timeout-seconds: ${OUTBOX_SEND_TIMEOUT_SECONDS:5}
+  attendance:
+    # How long a scan token for a class attendance session stays valid, in seconds. 60 gives a person time to copy the session id and token across, or to scan
+    # and submit on a slow connection, while a photo of the code is still useless after a minute. The instructor can rotate it at any time.
+    qr-ttl-seconds: ${ATTENDANCE_QR_TTL_SECONDS:60}
   finance:
     razorpay:
       # Razorpay (https://razorpay.com). With no key id and secret, online payment is simply off: checkout answers 503 "not enabled" and the rest of

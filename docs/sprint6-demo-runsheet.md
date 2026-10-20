@@ -65,7 +65,7 @@ all `PUBLISHED`) and the message count per topic. Ctrl+C to stop it.
    location: **Allow** (it becomes the classroom position). The page says **Live**, and "Classroom position: taken from this device".
    *Say:* that is a WebSocket through the gateway, relayed to the Attendance service; the service, not the gateway, decides who may subscribe.
 2. **Student scan.** Window 2: sign in as `student.average`. **Attendance** → **Check in to a session**: paste the **Session ID** and the **Check-in token** shown
-   on the faculty page (the token rotates every 30 seconds, so be quick or press **Rotate token** and copy the new one), **Check in**. The browser asks for the student's location: **Allow**, and the message says "Your location matches the classroom."
+   on the faculty page (the token is valid for one minute, so be quick or press **Rotate token** and copy the new one), **Check in**. The browser asks for the student's location: **Allow**, and the message says "Your location matches the classroom."
    Window 1: the student's row appears **PRESENT** without a refresh, with **Checked in from: In the room (N m)**.
    *Say:* location is a signal, not a gate. A student who declines, or checks in from far away, is still marked present, and the instructor sees the flag
    (**Away from the room (1.2 km)** or **Location not shared**). Only the outcome is stored, never the student's coordinates.
@@ -123,7 +123,7 @@ docker start setu-assessment-1
 | A service is `unhealthy` or restarting | `docker logs --tail 50 setu-<name>-1`; `docker restart setu-<name>-1` (under a minute; the core skips seeding on restart) |
 | Login works but pages are empty / 401 | the frontend must be on port 5180, started with `npm run dev:stack` |
 | The board does not say **Live** | reload the page; `LIVE=ws://localhost:8086/ws node infra/scripts/smoke-websocket.js` tells a gateway problem from a service problem |
-| The scan is refused | the token expired (30 s): press **Rotate token** and paste the new one |
+| The scan is refused | the token expired (60 s): press **Rotate token** and paste the new one |
 | The advisor is slow | the first call after start-up can take about 5 to 20 seconds; Gemini is primary, a local model is the last-resort fallback |
 | Everything is wrong | `pwsh infra/scripts/reset-demo.ps1 -Yes`, wait for "Done", then `docker compose ... up -d` (about 5 minutes) |
 

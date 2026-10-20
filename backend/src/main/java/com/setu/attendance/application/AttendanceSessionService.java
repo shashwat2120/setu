@@ -68,8 +68,12 @@ public class AttendanceSessionService {
      * (V63) is granted only to SUPER_ADMIN/COLLEGE_ADMIN.
      */
     private static final String MANAGE_PERMISSION = "MANAGE_ATTENDANCE_ALL_SECTIONS";
-    /** No documented QR rotation interval exists anywhere in the canonical spec ("short-lived" is qualitative only) — disclosed interim default, not an arbitrary invention: short enough that a screenshot/photo of the QR is useless within seconds, long enough for a real scan-and-submit round trip. */
-    private static final long QR_TTL_SECONDS = 30;
+    /**
+     * How long a scan token lives, from {@code app.attendance.qr-ttl-seconds} (default 60). The canonical spec only says "short-lived", so this is a disclosed default:
+     * short enough that a photo of the code is useless within a minute, long enough for a person to copy the session id and token across, or scan and submit on a slow connection.
+     * It was 30 seconds, which people copying by hand could not meet.
+     */
+    private final long qrTtlSeconds;
 
     private final AttendanceSessionRepository attendanceSessionRepository;
     private final AttendanceQrSessionRepository attendanceQrSessionRepository;
@@ -90,7 +94,9 @@ public class AttendanceSessionService {
                                      AttendanceSessionInsertGuard attendanceSessionInsertGuard, QrTokenHasher qrTokenHasher,
                                      CourseSectionDirectory courseSectionDirectory, AcademicDirectory academic,
                                      AuthorizationContext authorizationContext,
-                                     AuditLogWriter auditLogWriter, OutboxEventWriter outboxEventWriter) {
+                                     AuditLogWriter auditLogWriter, OutboxEventWriter outboxEventWriter,
+                                     @org.springframework.beans.factory.annotation.Value("${app.attendance.qr-ttl-seconds:60}") long qrTtlSeconds) {
+        this.qrTtlSeconds = qrTtlSeconds;
         this.outboxEventWriter = outboxEventWriter;
         this.attendanceSessionRepository = attendanceSessionRepository;
         this.attendanceQrSessionRepository = attendanceQrSessionRepository;
@@ -193,7 +199,7 @@ public class AttendanceSessionService {
         } catch (DataIntegrityViolationException e) {
             return new OpenResult.SessionAlreadyOpenForMeeting();
         }
-        Instant qrExpiresAt = now.plusSeconds(QR_TTL_SECONDS);
+        Instant qrExpiresAt = now.plusSeconds(qrTtlSeconds);
         attendanceQrSessionRepository.save(new com.setu.attendance.domain.AttendanceQrSession(
             UUID.randomUUID(), session.id(), qrTokenHasher.generateNonce(), qrExpiresAt, 0));
 
@@ -235,7 +241,7 @@ public class AttendanceSessionService {
         attendanceSessionRepository.save(session);
 
         Instant now = Instant.now();
-        Instant qrExpiresAt = now.plusSeconds(QR_TTL_SECONDS);
+        Instant qrExpiresAt = now.plusSeconds(qrTtlSeconds);
         int nextRotation = attendanceQrSessionRepository.findMaxRotationNo(sessionId) + 1;
         attendanceQrSessionRepository.save(new com.setu.attendance.domain.AttendanceQrSession(
             UUID.randomUUID(), sessionId, qrTokenHasher.generateNonce(), qrExpiresAt, nextRotation));
