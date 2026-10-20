@@ -67,8 +67,12 @@ public class StudentResume {
         return content;
     }
 
-    public int version() {
-        return version;
+    /**
+     * The revision a person sees: 0 for a resume never saved, then 1 for the first save, 2 for the next, and so on. (The row's own version counter starts at 0 for a saved
+     * resume, which would be indistinguishable from "never saved" and let two windows both open on an empty resume overwrite each other.)
+     */
+    public int revision() {
+        return version + 1;
     }
 
     public Instant updatedAt() {

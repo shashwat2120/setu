@@ -38,7 +38,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 class FacultyRegularisationServiceTests {
 
     private static final ZoneId KOLKATA = ZoneId.of("Asia/Kolkata"); // every fixture college is created in Asia/Kolkata
-
+    
     @Autowired
     Day13TestFixtures day13Fixtures;
     @Autowired

@@ -95,12 +95,12 @@ public class ResumeService {
         }
         assertOwn(info.get().tenantId(), studentId);
         Optional<StudentResume> stored = resumeRepository.findByStudentId(studentId);
-        return Optional.of(new View(studentId, stored.map(StudentResume::version).orElse(0), stored.map(r -> read(r.content())).orElse(ResumeContent.EMPTY),
+        return Optional.of(new View(studentId, stored.map(StudentResume::revision).orElse(0), stored.map(r -> read(r.content())).orElse(ResumeContent.EMPTY),
             stored.map(StudentResume::updatedAt).orElse(null), record(studentId), skills(studentId)));
     }
 
     /**
-     * Saves the student's own resume. {@code expectedVersion} is the version they were editing (0 or null before the first save): a resume changed in the meantime, say from
+     * Saves the student's own resume. {@code expectedVersion} is the revision they were editing (0 or null before the first save): a resume changed in the meantime, say from
      * another window, is a conflict rather than being overwritten.
      */
     @Transactional
@@ -125,14 +125,14 @@ public class ResumeService {
                 if (expected != 0) {
                     return new SaveResult.Conflict();
                 }
-                newVersion = resumeRepository.saveAndFlush(new StudentResume(UUID.randomUUID(), tenantId, studentId, write(c), Instant.now())).version();
+                newVersion = resumeRepository.saveAndFlush(new StudentResume(UUID.randomUUID(), tenantId, studentId, write(c), Instant.now())).revision();
             } else {
                 StudentResume resume = existing.get();
-                if (resume.version() != expected) {
+                if (resume.revision() != expected) {
                     return new SaveResult.Conflict();
                 }
                 resume.replaceContent(write(c), Instant.now());
-                newVersion = resumeRepository.saveAndFlush(resume).version();
+                newVersion = resumeRepository.saveAndFlush(resume).revision();
             }
         } catch (OptimisticLockingFailureException e) {
             return new SaveResult.Conflict();
@@ -151,7 +151,7 @@ public class ResumeService {
     @Transactional(readOnly = true)
     Optional<SnapshotJson> snapshotJson(UUID studentId) {
         return resumeRepository.findByStudentId(studentId).filter(r -> read(r.content()).complete()).map(r ->
-            new SnapshotJson(write(new Snapshot(Instant.now(), r.version(), read(r.content()), record(studentId), skills(studentId))), r.version()));
+            new SnapshotJson(write(new Snapshot(Instant.now(), r.revision(), read(r.content()), record(studentId), skills(studentId))), r.revision()));
     }
 
     /** Reads a stored snapshot back. */

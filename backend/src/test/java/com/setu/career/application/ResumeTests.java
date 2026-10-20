@@ -132,15 +132,17 @@ class ResumeTests {
     void aStudentSavesAndReadsTheirOwnResumeAndAStaleSaveIsAConflict() {
         var s = setUp("RS1", false);
 
-        assertThat(saveAs(s, resume("Aspiring analyst"), null)).isEqualTo(new ResumeService.SaveResult.Saved(0));
+        assertThat(saveAs(s, resume("Aspiring analyst"), null)).isEqualTo(new ResumeService.SaveResult.Saved(1));
         TestAuthentication.authenticateAs(s.student.userId());
         var view = resumeService.viewOwn(s.student.studentId()).orElseThrow();
         assertThat(view.content().headline()).isEqualTo("Aspiring analyst");
-        assertThat(view.version()).isEqualTo(0);
+        assertThat(view.version()).isEqualTo(1);
         TestAuthentication.clear();
 
-        assertThat(saveAs(s, resume("Data analyst"), 0)).isEqualTo(new ResumeService.SaveResult.Saved(1));
-        assertThat(saveAs(s, resume("Overwrites a change it never saw"), 0)).isEqualTo(new ResumeService.SaveResult.Conflict());
+        assertThat(saveAs(s, resume("Data analyst"), 1)).isEqualTo(new ResumeService.SaveResult.Saved(2));
+        assertThat(saveAs(s, resume("Overwrites a change it never saw"), 1)).isEqualTo(new ResumeService.SaveResult.Conflict());
+        // two windows both opened on an empty resume: the second to save is told, not allowed to overwrite the first
+        assertThat(saveAs(s, resume("A second window that opened on an empty resume"), 0)).isEqualTo(new ResumeService.SaveResult.Conflict());
         assertThat(saveAs(s, resume("A first save claiming an old version"), 5)).isEqualTo(new ResumeService.SaveResult.Conflict());
         TestAuthentication.authenticateAs(s.student.userId());
         assertThat(resumeService.viewOwn(s.student.studentId()).orElseThrow().content().headline()).isEqualTo("Data analyst");
@@ -192,17 +194,17 @@ class ResumeTests {
         var s = setUp("RS5", false);
         saveAs(s, resume("Aspiring analyst"), null);
         UUID applicationId = ((ApplicationService.ApplyResult.Success) applyAs(s)).applicationId();
-        saveAs(s, resume("Rewritten after applying"), 0);
+        saveAs(s, resume("Rewritten after applying"), 1);
 
         TestAuthentication.authenticateAs(s.officer);
         var found = (ApplicationService.ResumeResult.Found) applicationService.resumeOf(applicationId);
 
         assertThat(found.snapshot().content().headline()).isEqualTo("Aspiring analyst");
-        assertThat(found.snapshot().resumeVersion()).isEqualTo(0);
+        assertThat(found.snapshot().resumeVersion()).isEqualTo(1);
         assertThat(found.snapshot().content().items()).singleElement().satisfies(i -> assertThat(i.title()).isEqualTo("Attendance dashboard"));
         assertThat(found.snapshot().capturedAt()).isNotNull();
         assertThat(found.snapshot().record().expectedGraduationYear()).isEqualTo(2028);
-        assertThat(jdbc.queryForObject("SELECT resume_version FROM career.applications WHERE id = ?", Integer.class, applicationId)).isEqualTo(0);
+        assertThat(jdbc.queryForObject("SELECT resume_version FROM career.applications WHERE id = ?", Integer.class, applicationId)).isEqualTo(1);
     }
 
     @Test
@@ -231,7 +233,7 @@ class ResumeTests {
         saveAs(s, new ResumeContent(null, "Only a summary", null, null, null, null), null);
         assertThat(applyAs(s)).isInstanceOf(ApplicationService.ApplyResult.NotEligible.class);
 
-        saveAs(s, resume("Aspiring analyst"), 0);
+        saveAs(s, resume("Aspiring analyst"), 1);
         assertThat(applyAs(s)).isInstanceOf(ApplicationService.ApplyResult.Success.class);
     }
 
