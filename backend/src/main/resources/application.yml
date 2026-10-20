@@ -289,7 +289,7 @@ app:
     # never committed (git-ignored backend/.env.local and infra/docker/.env). Use a model that supports tool calling.
     nvidia:
       api-key: ${NVIDIA_API_KEY:}
-      model: ${NVIDIA_MODEL:meta/llama-3.3-70b-instruct}
+      model: ${NVIDIA_MODEL:nvidia/nemotron-3-ultra-550b-a55b}
       base-url: ${NVIDIA_BASE_URL:https://integrate.api.nvidia.com/v1}
       timeout-seconds: ${NVIDIA_TIMEOUT_SECONDS:40}
     embedding:

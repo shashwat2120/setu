@@ -2,7 +2,7 @@
 # neither it nor anything derived from it beyond the first few characters of the model name.
 #
 #   pwsh infra/scripts/set-nvidia-key.ps1
-#   pwsh infra/scripts/set-nvidia-key.ps1 -Model meta/llama-3.3-70b-instruct
+#   pwsh infra/scripts/set-nvidia-key.ps1 -Model nvidia/nemotron-3-ultra-550b-a55b
 #
 # Writes NVIDIA_API_KEY and NVIDIA_MODEL to infra/docker/.env and backend/.env.local; existing NVIDIA_* lines are replaced. Both files are git-ignored.
 param([string]$Model = '')
@@ -12,8 +12,8 @@ $secure = Read-Host -Prompt 'NVIDIA API key (starts with nvapi-; typing is hidde
 $key = [System.Net.NetworkCredential]::new('', $secure).Password.Trim()
 if (-not $key) { Write-Error 'No key entered. Nothing written.'; exit 1 }
 if ($key -notlike 'nvapi-*') { Write-Error 'That does not look like an NVIDIA key (they start with nvapi-). Nothing written.'; exit 1 }
-if (-not $Model) { $Model = (Read-Host -Prompt 'Model name [meta/llama-3.3-70b-instruct]').Trim() }
-if (-not $Model) { $Model = 'meta/llama-3.3-70b-instruct' }
+if (-not $Model) { $Model = (Read-Host -Prompt 'Model name [nvidia/nemotron-3-ultra-550b-a55b]').Trim() }
+if (-not $Model) { $Model = 'nvidia/nemotron-3-ultra-550b-a55b' }
 
 foreach ($target in @("$repo\infra\docker\.env", "$repo\backend\.env.local")) {
     $lines = @()

@@ -92,7 +92,7 @@ services:
       GEMINI_MODEL: ${GEMINI_MODEL:-gemini-3.5-flash-lite}
       # A hosted NVIDIA model tried after the second Gemini model and before the local one. Empty key means off. Set in the git-ignored infra/docker/.env.
       NVIDIA_API_KEY: ${NVIDIA_API_KEY:-}
-      NVIDIA_MODEL: ${NVIDIA_MODEL:-meta/llama-3.3-70b-instruct}
+      NVIDIA_MODEL: ${NVIDIA_MODEL:-nvidia/nemotron-3-ultra-550b-a55b}
       # Online fee payment (Razorpay). Empty means off: checkout answers 503 and the rest of Finance works as before. Set them in the git-ignored
       # infra/docker/.env, never in this file.
       RAZORPAY_KEY_ID: ${RAZORPAY_KEY_ID:-}
@@ -214,7 +214,7 @@ services:
       GEMINI_MODEL: ${GEMINI_MODEL:-gemini-3.5-flash-lite}
       # A hosted NVIDIA model tried after the second Gemini model and before the local one. Empty key means off. Set in the git-ignored infra/docker/.env.
       NVIDIA_API_KEY: ${NVIDIA_API_KEY:-}
-      NVIDIA_MODEL: ${NVIDIA_MODEL:-meta/llama-3.3-70b-instruct}
+      NVIDIA_MODEL: ${NVIDIA_MODEL:-nvidia/nemotron-3-ultra-550b-a55b}
     healthcheck: *health
 
   # The one public address of the platform. No database, no business code.

@@ -175,7 +175,7 @@ public class AiChatConfig {
     public ChatClient nvidiaChatClient(ToolCallingManager toolCallingManager,
                                        @Value("${app.ai.nvidia.api-key}") String apiKey,
                                        @Value("${app.ai.nvidia.base-url:https://integrate.api.nvidia.com/v1}") String baseUrl,
-                                       @Value("${app.ai.nvidia.model:meta/llama-3.3-70b-instruct}") String model,
+                                       @Value("${app.ai.nvidia.model:nvidia/nemotron-3-ultra-550b-a55b}") String model,
                                        @Value("${app.ai.nvidia.timeout-seconds:40}") long timeoutSeconds) {
         OpenAiChatModel nvidiaModel = OpenAiChatModel.builder()
             .options(OpenAiChatOptions.builder()
