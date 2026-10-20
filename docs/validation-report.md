@@ -253,6 +253,19 @@ A job is reported closed, with the reason, as soon as an officer closes it (`CLO
 
 The student's job card says why a job is closed and offers no Apply; the officer's table shows each job's "x of N openings filled" and the reason a still-open job has closed. Unit and integration tests cover each state to the instant, a rejected applicant not using up an opening, a job with no stated openings, and the last-opening race. **Limits:** nobody is told when a job they applied to closes before a decision (a notification on the roadmap); a job is not marked CLOSED in the database at its deadline, it is only reported so, which matters to anything that reads the status column directly; a withdrawn student's selected application is not possible (withdrawing is only from submitted or shortlisted), so openings cannot be freed by withdrawal.
 
+## Placement: selecting a student records the offer and the placement, run live (2026-10-21)
+
+Selecting a student takes the package offered (the job's own when left alone) and an optional joining date, and records the placement in the same transaction: the employer and role are the job's, the package is stored as rupees a year (lakhs per annum times 100,000), the placement is dated the day it is made and the student joins on the date given. The officer no longer records the placement as a separate step (the manual "record a placement" page remains, for placements made outside the portal). Run through the gateway on the containers with an example job titled `[live-test ...]`:
+
+| Check | Result |
+|---|---|
+| Select with a joining date in the past | 400 "the joining date cannot be in the past"; nothing changes |
+| Select with a package of 5000 lakhs | 400 "the package must be between 0 and 1000 lakhs per annum" |
+| Select with a package of 9.25 lakhs and a joining date three months ahead | 204; the student had 0 placements before and 1 after: the job's employer and role, CTC 925000, the joining date as asked |
+| The student's notifications | "You have been selected ... Reason given: Strong interview" and "Your placement with Example Co has been recorded." (the second from the existing PlacementRecorded event) |
+
+Unit and integration tests cover the job's own package as the default, no CTC (not zero) when neither the job nor the offer gives one, no joining date invented, a refused offer leaving the application shortlisted with no placement, and shortlisting or rejecting recording nothing. The student's career page shows the package as "₹9.25 LPA" with the joining date. **Limits:** the placement is dated by the server's clock (UTC in the containers), so around midnight in India it can carry the previous day's date; a student gets two notifications for one selection; the package is for the officer to state, nothing checks it against the job's advertised one beyond the 0 to 1000 range.
+
 ## Not validated
 
 - Kafka consumer lag **under load**. (The dead-letter path **was** run with a real poison event on the real stack, see below.)
