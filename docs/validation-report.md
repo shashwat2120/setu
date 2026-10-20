@@ -211,6 +211,21 @@ A placement officer can set rules per job (minimum CGPA, minimum attendance, pro
 
 Found by running it live, not by the tests: the officer could not list programs (403), so the "open to these programs" rule could not be set; fixed with a narrow `VIEW_PROGRAMS` permission, copied to every service's role read model in the same change (the parity tests would have failed otherwise). **Limits:** one college, example data; openings are shown to students but not yet enforced; there is no decision reason, notification, or exception path for an officer yet (see the roadmap); the deadline is checked when a student applies and does not close the job by itself.
 
+## Placement decisions with a reason, and the student told, run live (2026-10-21)
+
+A placement officer's shortlist, rejection or selection carries a reason the student is shown: required to reject (refused by the service and by a database constraint), optional otherwise, at most 500 characters. The decision and its time are stored, an `ApplicationDecided` event goes to the outbox in the same transaction, and Notification turns it into a message for the student. Run through the gateway on the containers as the placement officer and the demo account `student.strong`, with example jobs titled `[live-test ...]`:
+
+| Check | Result |
+|---|---|
+| Reject with no reason | 400, "a rejection needs a reason, which the student is shown"; nothing changes |
+| The student tries to select their own application | 403 |
+| Shortlist with a note, reject with a reason | 204 each; the student's own list shows the status, the reason and that it was decided |
+| Decide again after a rejection | 409 |
+| The student's notifications | two new ones within seconds, through the outbox, Kafka (`setu.applications`) and the notification consumer: "...has been shortlisted. Reason given: Good fit for the role" and "...was not taken forward. Reason given: Position filled internally" |
+| The officer's applications panel in the browser | a "Reason given" column; requests all 200 |
+
+Tests added with the change: the officer's decisions (reason required, trimmed, bounded, not changeable after a decision, student and other-college officer refused, the database constraint itself, the event's content), the notification wording, and the officer's and student's pages. **Limits:** one college, example data; the officer's reason is shown to the student exactly as written, so the officer is responsible for what it says; no notification when a student withdraws; the notification says "Reason given" even for an optional note on a shortlist.
+
 ## Not validated
 
 - Kafka consumer lag **under load**. (The dead-letter path **was** run with a real poison event on the real stack, see below.)
