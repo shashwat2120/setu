@@ -9,6 +9,7 @@ import { DataTable, type Column } from '../../components/ui/DataTable';
 import { StatusBadge } from '../../components/ui/StatusBadge';
 import { ConfirmActionButton } from '../../components/ui/ConfirmActionButton';
 import { Skeleton } from '../../components/ui/EmptyState';
+import { jobFacts, jobRequirements } from '../../lib/jobTerms';
 
 function MySkills({ studentId, tenantId }: { studentId: string; tenantId: string }) {
   const mySkills = useApiQuery<StudentSkillResponse[]>(`/career/student-skills?studentId=${studentId}`);
@@ -89,6 +90,12 @@ function JobCard({ job, studentId }: { job: JobResponse; studentId: string }) {
   const [error, setError] = useState<string | null>(null);
 
   const myApplication = applications.data?.find((a) => a.jobId === job.id);
+  const facts = jobFacts(job);
+  const requirements = jobRequirements(job);
+  const unmet = eligibility.data?.unmetRules ?? [];
+  const missingSkills = eligibility.data?.missingOrInsufficientSkillIds.length ?? 0;
+  /** Until the check has answered, apply is not offered: a student is never invited to try what the server is about to refuse. */
+  const canApply = eligibility.data?.eligible === true;
 
   const apply = async () => {
     setApplying(true);
@@ -118,10 +125,26 @@ function JobCard({ job, studentId }: { job: JobResponse; studentId: string }) {
         </div>
         <StatusBadge value={job.status} />
       </div>
+      {facts.length > 0 && <p style={{ fontSize: 13, marginTop: 6 }}>{facts.join(' · ')}</p>}
+      {requirements.length > 0 && (
+        <div style={{ fontSize: 12, color: 'var(--ink-soft)', marginTop: 6 }}>
+          <span style={{ fontWeight: 600 }}>What this job asks: </span>{requirements.join(' · ')}
+        </div>
+      )}
       {eligibility.loading ? <Skeleton height={16} width={120} /> : eligibility.data && (
-        <p style={{ fontSize: 13, marginTop: 8, color: eligibility.data.eligible ? 'var(--ink)' : 'var(--flag)' }}>
-          {eligibility.data.eligible ? 'You meet the skill requirements for this role.' : `Missing ${eligibility.data.missingOrInsufficientSkillIds.length} required skill(s).`}
-        </p>
+        <div id={`why-${job.id}`} style={{ fontSize: 13, marginTop: 8, color: eligibility.data.eligible ? 'var(--ink)' : 'var(--flag)' }}>
+          {eligibility.data.eligible ? (
+            <p>You meet the requirements for this role.</p>
+          ) : (
+            <>
+              <p>You cannot apply yet:</p>
+              <ul style={{ margin: '4px 0 0', paddingLeft: 18 }}>
+                {unmet.map((r) => <li key={r.code}>{r.message}</li>)}
+                {missingSkills > 0 && <li>Missing {missingSkills} required skill{missingSkills === 1 ? '' : 's'}: add them to your profile above.</li>}
+              </ul>
+            </>
+          )}
+        </div>
       )}
       <div style={{ marginTop: 10 }}>
         {myApplication ? (
@@ -132,7 +155,8 @@ function JobCard({ job, studentId }: { job: JobResponse; studentId: string }) {
             )}
           </div>
         ) : job.status === 'OPEN' && (
-          <button type="button" className="btn btn-primary" style={{ padding: '8px 14px', fontSize: 13 }} disabled={applying} onClick={apply}>
+          <button type="button" className="btn btn-primary" style={{ padding: '8px 14px', fontSize: 13 }} disabled={applying || !canApply} onClick={apply}
+            aria-describedby={canApply ? undefined : `why-${job.id}`}>
             {applying ? 'Applying…' : 'Apply'}
           </button>
         )}

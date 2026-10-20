@@ -410,6 +410,16 @@ export interface JobResponse {
   description: string;
   status: string;
   version: number;
+  /** Who may apply: the college's grade-point scale for the CGPA, 0 to 100 for attendance, an instant for the deadline, program ids (null or empty: any program). */
+  minCgpa?: number | null;
+  minAttendancePct?: number | null;
+  applicationDeadline?: string | null;
+  allowedProgramIds?: string[] | null;
+  /** About the job: package in lakhs per annum, a place, the number of openings, FULL_TIME / INTERNSHIP / CONTRACT. Information only, not enforced. */
+  packageLpa?: number | null;
+  location?: string | null;
+  openings?: number | null;
+  jobType?: string | null;
 }
 
 export interface ApplicationResponse {
@@ -620,9 +630,16 @@ export interface AttendancePercentageResponse {
   percentage: number;
 }
 
+/** One rule a student does not meet: a stable code (DEADLINE_PASSED, MIN_CGPA, MIN_ATTENDANCE, PROGRAM_NOT_ALLOWED) and a sentence for the student. */
+export interface UnmetRule {
+  code: string;
+  message: string;
+}
+
 export interface JobEligibilityResponse {
   eligible: boolean;
   missingOrInsufficientSkillIds: string[];
+  unmetRules?: UnmetRule[];
 }
 
 export interface StudentSkillResponse {

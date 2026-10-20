@@ -4,8 +4,9 @@ import { tenantForRole } from '../../auth/types';
 import { apiFetch } from '../../api/client';
 import { useApiQuery } from '../../api/useApiQuery';
 import type {
-  JobResponse, ApplicationResponse, SkillResponse, JobSkillResponse, StudentResponse, PageResponse,
+  JobResponse, ApplicationResponse, SkillResponse, JobSkillResponse, StudentResponse, PageResponse, ProgramResponse,
 } from '../../api/types';
+import { JOB_TYPE_LABELS, fromLocalInput, toLocalInput } from '../../lib/jobTerms';
 import { PageHeader } from '../../components/ui/PageHeader';
 import { DataTable, type Column } from '../../components/ui/DataTable';
 import { StatusBadge } from '../../components/ui/StatusBadge';
@@ -19,7 +20,18 @@ const labelStyle: React.CSSProperties = { display: 'block', fontSize: 13, fontWe
 
 const PROFICIENCY_LEVELS = ['BEGINNER', 'INTERMEDIATE', 'ADVANCED', 'EXPERT'] as const;
 
+const smallInput: React.CSSProperties = { ...inputStyle, width: 150 };
+
 function CreateJobForm({ tenantId, onCreated, job, onCancel }: { tenantId: string; onCreated: () => void; job?: JobResponse; onCancel?: () => void }) {
+  const programs = useApiQuery<ProgramResponse[]>(`/catalog/programs?tenantId=${tenantId}`);
+  const [minCgpa, setMinCgpa] = useState(job?.minCgpa != null ? String(job.minCgpa) : '');
+  const [minAttendance, setMinAttendance] = useState(job?.minAttendancePct != null ? String(job.minAttendancePct) : '');
+  const [deadline, setDeadline] = useState(toLocalInput(job?.applicationDeadline));
+  const [allowedPrograms, setAllowedPrograms] = useState<string[]>(job?.allowedProgramIds ?? []);
+  const [packageLpa, setPackageLpa] = useState(job?.packageLpa != null ? String(job.packageLpa) : '');
+  const [location, setLocation] = useState(job?.location ?? '');
+  const [openings, setOpenings] = useState(job?.openings != null ? String(job.openings) : '');
+  const [jobType, setJobType] = useState(job?.jobType ?? '');
   const [title, setTitle] = useState(job?.title ?? '');
   const [employer, setEmployer] = useState(job?.employer ?? '');
   const [description, setDescription] = useState(job?.description ?? '');
@@ -33,10 +45,24 @@ function CreateJobForm({ tenantId, onCreated, job, onCancel }: { tenantId: strin
     setError(null);
     setSuccess(false);
     try {
+      // an empty box means no such rule: a number box left blank is sent as null, never as 0
+      const terms = {
+        minCgpa: minCgpa.trim() === '' ? null : Number(minCgpa),
+        minAttendancePct: minAttendance.trim() === '' ? null : Number(minAttendance),
+        applicationDeadline: fromLocalInput(deadline),
+        packageLpa: packageLpa.trim() === '' ? null : Number(packageLpa),
+        location: location.trim() === '' ? null : location.trim(),
+        openings: openings.trim() === '' ? null : Number(openings),
+        jobType: jobType === '' ? null : jobType,
+        allowedProgramIds: allowedPrograms.length > 0 ? allowedPrograms : null,
+      };
       await apiFetch(job ? `/career/jobs/${job.id}` : '/career/jobs', {
         method: job ? 'PUT' : 'POST',
-        body: job ? { title, employer, description, expectedVersion: job.version } : { tenantId, title, employer, description },
+        body: job ? { title, employer, description, expectedVersion: job.version, terms } : { tenantId, title, employer, description, ...terms },
       });
+      if (!job) {
+        setMinCgpa(''); setMinAttendance(''); setDeadline(''); setAllowedPrograms([]); setPackageLpa(''); setLocation(''); setOpenings(''); setJobType('');
+      }
       setTitle(''); setEmployer(''); setDescription('');
       setSuccess(true);
       onCreated();
@@ -48,7 +74,7 @@ function CreateJobForm({ tenantId, onCreated, job, onCancel }: { tenantId: strin
   };
 
   return (
-    <form onSubmit={submit} className="card" style={{ marginBottom: 24, maxWidth: 480 }}>
+    <form onSubmit={submit} className="card" style={{ marginBottom: 24, maxWidth: 620 }}>
       <h2 style={{ fontSize: 16, marginBottom: 14 }}>{job ? 'Edit job listing' : 'Post a job'}</h2>
       <div style={{ marginBottom: 12 }}>
         <label htmlFor="job-title" style={labelStyle}>Title</label>
@@ -63,8 +89,68 @@ function CreateJobForm({ tenantId, onCreated, job, onCancel }: { tenantId: strin
         <textarea id="job-desc" required value={description} onChange={(e) => setDescription(e.target.value)}
           style={{ ...inputStyle, minHeight: 80, fontFamily: 'var(--font-body)' }} placeholder="Role description" />
       </div>
-      {error && <p style={{ color: 'var(--flag)', fontSize: 13, marginBottom: 12 }}>{error}</p>}
-      {success && <p style={{ color: 'var(--ink-soft)', fontSize: 13, marginBottom: 12 }}>Job posted.</p>}
+      <fieldset style={{ border: '1px solid var(--rule)', borderRadius: 4, padding: '10px 12px', marginBottom: 16 }}>
+        <legend style={{ fontSize: 13, fontWeight: 600, padding: '0 6px' }}>Who can apply (leave a box empty for no rule)</legend>
+        <p style={{ fontSize: 12, color: 'var(--ink-soft)', marginBottom: 10 }}>
+          Students are checked automatically against their real attendance, grades and program, and told which rule they miss. The CGPA is on your college&apos;s grade-point scale.
+        </p>
+        <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 12 }}>
+          <div>
+            <label htmlFor="job-min-cgpa" style={labelStyle}>Minimum CGPA</label>
+            <input id="job-min-cgpa" type="number" min={0} max={10} step="0.01" value={minCgpa} onChange={(e) => setMinCgpa(e.target.value)} style={smallInput} />
+          </div>
+          <div>
+            <label htmlFor="job-min-att" style={labelStyle}>Minimum attendance (%)</label>
+            <input id="job-min-att" type="number" min={0} max={100} step="0.1" value={minAttendance} onChange={(e) => setMinAttendance(e.target.value)} style={smallInput} />
+          </div>
+          <div>
+            <label htmlFor="job-deadline" style={labelStyle}>Apply by</label>
+            <input id="job-deadline" type="datetime-local" value={deadline} onChange={(e) => setDeadline(e.target.value)} style={{ ...inputStyle, width: 220 }} />
+          </div>
+        </div>
+        <div role="group" aria-labelledby="job-programs-label">
+          <div id="job-programs-label" style={labelStyle}>Open to these programs (none ticked: any program)</div>
+          {programs.data && programs.data.length > 0 ? (
+            <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap' }}>
+              {programs.data.map((p) => (
+                <label key={p.id} style={{ fontSize: 13, display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <input type="checkbox" checked={allowedPrograms.includes(p.id)}
+                    onChange={(e) => setAllowedPrograms((cur) => (e.target.checked ? [...cur, p.id] : cur.filter((id) => id !== p.id)))} />
+                  {p.name}
+                </label>
+              ))}
+            </div>
+          ) : (
+            <p style={{ fontSize: 12, color: 'var(--ink-soft)' }}>{programs.loading ? 'Loading programs…' : 'No programs found for your college.'}</p>
+          )}
+        </div>
+      </fieldset>
+      <fieldset style={{ border: '1px solid var(--rule)', borderRadius: 4, padding: '10px 12px', marginBottom: 16 }}>
+        <legend style={{ fontSize: 13, fontWeight: 600, padding: '0 6px' }}>About the job (shown to students, not enforced)</legend>
+        <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+          <div>
+            <label htmlFor="job-package" style={labelStyle}>Package (LPA)</label>
+            <input id="job-package" type="number" min={0} step="0.01" value={packageLpa} onChange={(e) => setPackageLpa(e.target.value)} style={smallInput} />
+          </div>
+          <div>
+            <label htmlFor="job-location" style={labelStyle}>Location</label>
+            <input id="job-location" value={location} onChange={(e) => setLocation(e.target.value)} style={{ ...inputStyle, width: 180 }} />
+          </div>
+          <div>
+            <label htmlFor="job-openings" style={labelStyle}>Openings</label>
+            <input id="job-openings" type="number" min={1} step={1} value={openings} onChange={(e) => setOpenings(e.target.value)} style={{ ...inputStyle, width: 100 }} />
+          </div>
+          <div>
+            <label htmlFor="job-type" style={labelStyle}>Type</label>
+            <select id="job-type" value={jobType} onChange={(e) => setJobType(e.target.value)} style={{ ...inputStyle, width: 150 }}>
+              <option value="">Not stated</option>
+              {Object.entries(JOB_TYPE_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+            </select>
+          </div>
+        </div>
+      </fieldset>
+      {error && <p role="alert" style={{ color: 'var(--flag)', fontSize: 13, marginBottom: 12 }}>{error}</p>}
+      {success && <p role="status" style={{ color: 'var(--ink-soft)', fontSize: 13, marginBottom: 12 }}>Job posted.</p>}
       <div style={{ display: 'flex', gap: 8 }}>
         <button type="submit" className="btn btn-primary" disabled={submitting}>{submitting ? 'Saving…' : job ? 'Save changes' : 'Post job'}</button>
         {job && <button type="button" className="btn btn-ghost" onClick={onCancel}>Cancel</button>}
