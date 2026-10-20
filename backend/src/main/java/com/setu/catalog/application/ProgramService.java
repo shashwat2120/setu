@@ -108,6 +108,12 @@ public class ProgramService {
         return program;
     }
 
+    /** The length of the program in terms, or empty if none is set; no authorization of its own (the caller has authorized its own operation, as for the other Unchecked reads). */
+    @Transactional(readOnly = true)
+    public Optional<Integer> durationTermsUnchecked(UUID programId) {
+        return programRepository.findById(programId).map(Program::durationTerms);
+    }
+
     @Transactional(readOnly = true)
     public List<Program> listForTenant(UUID tenantId) {
         var resource = ResourceRef.of("program", UUID.randomUUID(), tenantId);

@@ -28,8 +28,45 @@ class EligibilityRulesTests {
         return new Standing(cgpa == null ? null : new BigDecimal(cgpa), attendance, program);
     }
 
+    private static JobTerms forBatch(Integer year) {
+        return new JobTerms(null, null, null, null, null, null, null, null, year);
+    }
+
+    private static Standing graduating(Integer year) {
+        return new Standing(null, null, null, year);
+    }
+
     private static List<String> codes(JobTerms t, Standing s) {
         return EligibilityRules.unmet(t, NOW, s).stream().map(EligibilityRules.Unmet::code).toList();
+    }
+
+    @Test
+    void aJobForOneBatchIsMetOnlyByThatBatchAndTheOthersAreToldTheirs() {
+        var t = forBatch(2027);
+
+        assertThat(codes(t, graduating(2027))).isEmpty();
+        assertThat(codes(t, graduating(2028))).containsExactly(EligibilityRules.GRADUATING_YEAR);
+        assertThat(codes(t, graduating(2026))).containsExactly(EligibilityRules.GRADUATING_YEAR);
+        assertThat(EligibilityRules.unmet(t, NOW, graduating(2028)).get(0).message()).isEqualTo("This job is for the batch of 2027; yours is 2028.");
+    }
+
+    @Test
+    void aStudentWhoseRecordDoesNotSayWhenTheyGraduateCannotMeetABatchRule() {
+        var t = forBatch(2027);
+
+        assertThat(EligibilityRules.unmet(t, NOW, graduating(null))).singleElement().satisfies(u -> {
+            assertThat(u.code()).isEqualTo(EligibilityRules.GRADUATING_YEAR);
+            assertThat(u.message()).contains("does not show when you are expected to graduate");
+        });
+        assertThat(codes(t, null)).containsExactly(EligibilityRules.GRADUATING_YEAR);
+    }
+
+    @Test
+    void aBatchRuleCountsAsAnEligibilityRuleAndMustBeAPlausibleYear() {
+        assertThat(forBatch(2027).hasAcademicRules()).isTrue();
+        assertThatThrownBy(() -> forBatch(1999).validate()).isInstanceOf(IllegalArgumentException.class).hasMessageContaining("batch");
+        assertThatThrownBy(() -> forBatch(2101).validate()).isInstanceOf(IllegalArgumentException.class);
+        forBatch(2027).validate();
     }
 
     @Test

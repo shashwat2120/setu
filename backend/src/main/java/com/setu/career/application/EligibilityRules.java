@@ -28,6 +28,7 @@ final class EligibilityRules {
     static final String MIN_CGPA = "MIN_CGPA";
     static final String MIN_ATTENDANCE = "MIN_ATTENDANCE";
     static final String PROGRAM_NOT_ALLOWED = "PROGRAM_NOT_ALLOWED";
+    static final String GRADUATING_YEAR = "GRADUATING_YEAR";
 
     private static final DateTimeFormatter DATE = DateTimeFormatter.ofPattern("d MMM yyyy, h:mm a", Locale.ENGLISH);
 
@@ -61,6 +62,14 @@ final class EligibilityRules {
         if (terms.allowedProgramIds() != null) {
             if (standing == null || standing.programId() == null || !terms.allowedProgramIds().contains(standing.programId())) {
                 out.add(new Unmet(PROGRAM_NOT_ALLOWED, "This job is open only to students of certain programs, and yours is not one of them."));
+            }
+        }
+        if (terms.graduatingYear() != null) {
+            Integer year = standing == null ? null : standing.expectedGraduationYear();
+            if (year == null) {
+                out.add(new Unmet(GRADUATING_YEAR, "This job is for the batch of " + terms.graduatingYear() + "; your record does not show when you are expected to graduate."));
+            } else if (!year.equals(terms.graduatingYear())) {
+                out.add(new Unmet(GRADUATING_YEAR, "This job is for the batch of " + terms.graduatingYear() + "; yours is " + year + "."));
             }
         }
         return out;

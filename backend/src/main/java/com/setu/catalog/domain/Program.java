@@ -98,6 +98,11 @@ public class Program {
         return departmentId;
     }
 
+    /** The length of the program in terms, or null if it was never set. */
+    public Integer durationTerms() {
+        return durationTerms;
+    }
+
     public String code() {
         return code;
     }

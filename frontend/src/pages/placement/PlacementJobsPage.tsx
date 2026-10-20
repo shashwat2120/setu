@@ -6,7 +6,7 @@ import { useApiQuery } from '../../api/useApiQuery';
 import type {
   JobResponse, ApplicationResponse, SkillResponse, JobSkillResponse, StudentResponse, PageResponse, ProgramResponse,
 } from '../../api/types';
-import { JOB_TYPE_LABELS, fromLocalInput, toLocalInput } from '../../lib/jobTerms';
+import { JOB_TYPE_LABELS, batchYears, fromLocalInput, toLocalInput } from '../../lib/jobTerms';
 import { PageHeader } from '../../components/ui/PageHeader';
 import { DataTable, type Column } from '../../components/ui/DataTable';
 import { StatusBadge } from '../../components/ui/StatusBadge';
@@ -28,6 +28,7 @@ function CreateJobForm({ tenantId, onCreated, job, onCancel }: { tenantId: strin
   const [minAttendance, setMinAttendance] = useState(job?.minAttendancePct != null ? String(job.minAttendancePct) : '');
   const [deadline, setDeadline] = useState(toLocalInput(job?.applicationDeadline));
   const [allowedPrograms, setAllowedPrograms] = useState<string[]>(job?.allowedProgramIds ?? []);
+  const [graduatingYear, setGraduatingYear] = useState(job?.graduatingYear != null ? String(job.graduatingYear) : '');
   const [packageLpa, setPackageLpa] = useState(job?.packageLpa != null ? String(job.packageLpa) : '');
   const [location, setLocation] = useState(job?.location ?? '');
   const [openings, setOpenings] = useState(job?.openings != null ? String(job.openings) : '');
@@ -55,13 +56,14 @@ function CreateJobForm({ tenantId, onCreated, job, onCancel }: { tenantId: strin
         openings: openings.trim() === '' ? null : Number(openings),
         jobType: jobType === '' ? null : jobType,
         allowedProgramIds: allowedPrograms.length > 0 ? allowedPrograms : null,
+        graduatingYear: graduatingYear === '' ? null : Number(graduatingYear),
       };
       await apiFetch(job ? `/career/jobs/${job.id}` : '/career/jobs', {
         method: job ? 'PUT' : 'POST',
         body: job ? { title, employer, description, expectedVersion: job.version, terms } : { tenantId, title, employer, description, ...terms },
       });
       if (!job) {
-        setMinCgpa(''); setMinAttendance(''); setDeadline(''); setAllowedPrograms([]); setPackageLpa(''); setLocation(''); setOpenings(''); setJobType('');
+        setMinCgpa(''); setMinAttendance(''); setDeadline(''); setAllowedPrograms([]); setGraduatingYear(''); setPackageLpa(''); setLocation(''); setOpenings(''); setJobType('');
       }
       setTitle(''); setEmployer(''); setDescription('');
       setSuccess(true);
@@ -92,7 +94,7 @@ function CreateJobForm({ tenantId, onCreated, job, onCancel }: { tenantId: strin
       <fieldset style={{ border: '1px solid var(--rule)', borderRadius: 4, padding: '10px 12px', marginBottom: 16 }}>
         <legend style={{ fontSize: 13, fontWeight: 600, padding: '0 6px' }}>Who can apply (leave a box empty for no rule)</legend>
         <p style={{ fontSize: 12, color: 'var(--ink-soft)', marginBottom: 10 }}>
-          Students are checked automatically against their real attendance, grades and program, and told which rule they miss. The CGPA is on your college&apos;s grade-point scale.
+          Students are checked automatically against their real attendance, grades, program and graduating batch (the year they are expected to graduate, from their admission year and program length), and told which rule they miss. The CGPA is on your college&apos;s grade-point scale.
         </p>
         <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 12 }}>
           <div>
@@ -102,6 +104,13 @@ function CreateJobForm({ tenantId, onCreated, job, onCancel }: { tenantId: strin
           <div>
             <label htmlFor="job-min-att" style={labelStyle}>Minimum attendance (%)</label>
             <input id="job-min-att" type="number" min={0} max={100} step="0.1" value={minAttendance} onChange={(e) => setMinAttendance(e.target.value)} style={smallInput} />
+          </div>
+          <div>
+            <label htmlFor="job-batch" style={labelStyle}>Graduating batch</label>
+            <select id="job-batch" value={graduatingYear} onChange={(e) => setGraduatingYear(e.target.value)} style={{ ...inputStyle, width: 170 }}>
+              <option value="">Any batch</option>
+              {batchYears(job?.graduatingYear).map((y) => <option key={y} value={String(y)}>Batch of {y}</option>)}
+            </select>
           </div>
           <div>
             <label htmlFor="job-deadline" style={labelStyle}>Apply by</label>

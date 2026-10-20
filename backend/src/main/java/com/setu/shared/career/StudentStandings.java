@@ -18,8 +18,12 @@ public interface StudentStandings {
      * @param cgpa                 the credit-weighted grade-point average to date, on the college's scale; null if nothing is graded yet
      * @param attendancePercentage present or late over sessions held, across the sections the student is enrolled in, 0 to 100; null if no session has been held
      * @param programId            the student's active program, or null if they have none
+     * @param expectedGraduationYear the year they are expected to graduate (admission year plus the length of their program), or null if their record does not say
      */
-    record Standing(BigDecimal cgpa, Double attendancePercentage, UUID programId) {
+    record Standing(BigDecimal cgpa, Double attendancePercentage, UUID programId, Integer expectedGraduationYear) {
+        public Standing(BigDecimal cgpa, Double attendancePercentage, UUID programId) {
+            this(cgpa, attendancePercentage, programId, null);
+        }
     }
 
     Optional<Standing> of(UUID studentId);

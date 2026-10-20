@@ -43,6 +43,7 @@ class StudentStandingsAdapter implements StudentStandings {
             total += pct.total();
         }
         Double attendance = total == 0 ? null : Math.round((presentOrLate * 10000.0) / total) / 100.0;
-        return Optional.of(new Standing(recordService.gpaUnchecked(studentId), attendance, studentProgramService.activeProgramIdUnchecked(studentId).orElse(null)));
+        return Optional.of(new Standing(recordService.gpaUnchecked(studentId), attendance, studentProgramService.activeProgramIdUnchecked(studentId).orElse(null),
+            studentProgramService.expectedGraduationYearUnchecked(studentId).orElse(null)));
     }
 }

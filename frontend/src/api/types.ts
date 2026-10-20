@@ -415,6 +415,8 @@ export interface JobResponse {
   minAttendancePct?: number | null;
   applicationDeadline?: string | null;
   allowedProgramIds?: string[] | null;
+  /** The graduating batch the job is for (the year students are expected to graduate); null or absent: any batch. */
+  graduatingYear?: number | null;
   /** About the job: package in lakhs per annum, a place, the number of openings, FULL_TIME / INTERNSHIP / CONTRACT. Information only, not enforced. */
   packageLpa?: number | null;
   location?: string | null;

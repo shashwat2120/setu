@@ -7,16 +7,22 @@ import java.util.UUID;
 
 /**
  * What a placement officer says about a job beyond its title, employer and description: who may apply (a minimum CGPA, a minimum attendance, the programs
- * it is open to, a deadline) and what it is (package in lakhs per annum, a place, the number of openings, a type). Every field is optional and a job with none
+ * it is open to, the graduating batch it is for, a deadline) and what it is (package in lakhs per annum, a place, the number of openings, a type). Every field is optional and a job with none
  * ({@link #NONE}) behaves as it always did. {@code minCgpa} is on the college's own grade-point scale; {@code minAttendancePct} is 0 to 100.
  *
  * <p>The eligibility fields are only ever checked by {@code ApplicationService}, which says which of them a student does not meet; {@code packageLpa},
  * {@code location}, {@code openings} and {@code jobType} are information for the student and the officer and are not enforced.
  */
 public record JobTerms(BigDecimal minCgpa, BigDecimal minAttendancePct, Instant applicationDeadline, BigDecimal packageLpa, String location,
-                       Integer openings, JobType jobType, List<UUID> allowedProgramIds) {
+                       Integer openings, JobType jobType, List<UUID> allowedProgramIds, Integer graduatingYear) {
 
-    public static final JobTerms NONE = new JobTerms(null, null, null, null, null, null, null, null);
+    public static final JobTerms NONE = new JobTerms(null, null, null, null, null, null, null, null, null);
+
+    /** A job open to every batch. */
+    public JobTerms(BigDecimal minCgpa, BigDecimal minAttendancePct, Instant applicationDeadline, BigDecimal packageLpa, String location,
+                    Integer openings, JobType jobType, List<UUID> allowedProgramIds) {
+        this(minCgpa, minAttendancePct, applicationDeadline, packageLpa, location, openings, jobType, allowedProgramIds, null);
+    }
 
     public JobTerms {
         location = location == null || location.isBlank() ? null : location.trim();
@@ -34,6 +40,9 @@ public record JobTerms(BigDecimal minCgpa, BigDecimal minAttendancePct, Instant 
         if (packageLpa != null && packageLpa.signum() < 0) {
             throw new IllegalArgumentException("the package cannot be negative");
         }
+        if (graduatingYear != null && (graduatingYear < 2000 || graduatingYear > 2100)) {
+            throw new IllegalArgumentException("the graduating batch must be a year between 2000 and 2100");
+        }
         if (openings != null && openings < 1) {
             throw new IllegalArgumentException("a job needs at least one opening");
         }
@@ -41,6 +50,6 @@ public record JobTerms(BigDecimal minCgpa, BigDecimal minAttendancePct, Instant 
 
     /** Whether any rule that decides who may apply is set (the information-only fields do not count). */
     public boolean hasAcademicRules() {
-        return minCgpa != null || minAttendancePct != null || allowedProgramIds != null;
+        return minCgpa != null || minAttendancePct != null || allowedProgramIds != null || graduatingYear != null;
     }
 }

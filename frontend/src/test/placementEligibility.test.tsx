@@ -2,7 +2,7 @@ import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { apiFetch } from '../api/client';
-import { fromLocalInput, jobFacts, jobRequirements, plainNumber, toLocalInput } from '../lib/jobTerms';
+import { batchYears, fromLocalInput, jobFacts, jobRequirements, plainNumber, toLocalInput } from '../lib/jobTerms';
 import PlacementJobsPage from '../pages/placement/PlacementJobsPage';
 import StudentCareerPage from '../pages/student/StudentCareerPage';
 import { expectAccessible, mockApi, renderPage, signedInAs, TENANT } from './helpers';
@@ -13,7 +13,7 @@ const PROGRAM_ARTS = 'aaaaaaaa-0000-4000-8000-000000000002';
 
 const baseJob = {
   id: 'job-1', tenantId: TENANT, postedBy: 'p', title: 'Software Engineer', employer: 'Acme', description: 'Build things', status: 'OPEN', version: 3,
-  minCgpa: null, minAttendancePct: null, applicationDeadline: null, allowedProgramIds: null, packageLpa: null, location: null, openings: null, jobType: null,
+  minCgpa: null, minAttendancePct: null, applicationDeadline: null, allowedProgramIds: null, graduatingYear: null, packageLpa: null, location: null, openings: null, jobType: null,
 };
 
 describe('how a job\'s terms are written for people', () => {
@@ -31,6 +31,17 @@ describe('how a job\'s terms are written for people', () => {
     expect(rules[3]).toMatch(/^Apply by /);
     expect(jobRequirements({ minCgpa: null, minAttendancePct: null, applicationDeadline: '2026-10-20T08:00:00Z', allowedProgramIds: [] }, now)[0]).toMatch(/^Deadline passed/);
     expect(jobRequirements({ minCgpa: null, minAttendancePct: null, applicationDeadline: null, allowedProgramIds: null })).toEqual([]);
+  });
+
+  it('says which batch a job is for, and offers a sensible range of batches', () => {
+    const rules = jobRequirements({ minCgpa: null, minAttendancePct: null, applicationDeadline: null, allowedProgramIds: null, graduatingYear: 2027 });
+    expect(rules).toEqual(['Batch of 2027 only']);
+    expect(jobRequirements({ minCgpa: null, minAttendancePct: null, applicationDeadline: null, allowedProgramIds: null, graduatingYear: null })).toEqual([]);
+
+    const now = new Date('2026-10-21T08:00:00Z');
+    expect(batchYears(null, now)).toEqual([2025, 2026, 2027, 2028, 2029, 2030, 2031]);
+    expect(batchYears(2040, now)).toContain(2040);
+    expect(batchYears(2027, now).filter((y) => y === 2027)).toHaveLength(1);
   });
 
   it('turns a deadline into a form value and back without losing the instant', () => {
@@ -57,12 +68,13 @@ describe('the student\'s job card says why they cannot apply, and does not offer
   it('lists each unmet rule, shows what the job asks and offers, and disables Apply with the reasons attached', async () => {
     signedInAs('STUDENT', { studentId: STUDENT });
     careerApi(
-      { ...baseJob, minCgpa: 7.5, minAttendancePct: 80, packageLpa: 12.5, location: 'Pune', openings: 3, jobType: 'FULL_TIME', allowedProgramIds: [PROGRAM_CS] },
+      { ...baseJob, minCgpa: 7.5, minAttendancePct: 80, packageLpa: 12.5, location: 'Pune', openings: 3, jobType: 'FULL_TIME', allowedProgramIds: [PROGRAM_CS], graduatingYear: 2027 },
       {
         eligible: false, missingOrInsufficientSkillIds: ['s1', 's2'],
         unmetRules: [
           { code: 'MIN_CGPA', message: 'Needs a CGPA of at least 7.5; yours is 6.4.' },
           { code: 'MIN_ATTENDANCE', message: 'Needs attendance of at least 80%; yours is 33.3%.' },
+          { code: 'GRADUATING_YEAR', message: 'This job is for the batch of 2027; yours is 2028.' },
         ],
       },
     );
@@ -72,9 +84,10 @@ describe('the student\'s job card says why they cannot apply, and does not offer
     const list = why.parentElement as HTMLElement;
     expect(within(list).getByText('Needs a CGPA of at least 7.5; yours is 6.4.')).toBeTruthy();
     expect(within(list).getByText('Needs attendance of at least 80%; yours is 33.3%.')).toBeTruthy();
+    expect(within(list).getByText('This job is for the batch of 2027; yours is 2028.')).toBeTruthy();
     expect(within(list).getByText(/Missing 2 required skills/)).toBeTruthy();
     expect(screen.getByText('Full time · ₹12.5 LPA · Pune · 3 openings')).toBeTruthy();
-    expect(screen.getByText(/CGPA of at least 7\.5 · Attendance of at least 80% · Open to certain programs only/)).toBeTruthy();
+    expect(screen.getByText(/CGPA of at least 7\.5 · Attendance of at least 80% · Open to certain programs only · Batch of 2027 only/)).toBeTruthy();
     const apply = screen.getByRole('button', { name: 'Apply' }) as HTMLButtonElement;
     expect(apply.disabled).toBe(true);
     expect(apply.getAttribute('aria-describedby')).toBe(why.parentElement!.id);
@@ -163,6 +176,24 @@ describe('the officer\'s form for a job', () => {
     expect(await screen.findByText('Job posted.')).toBeTruthy();
   });
 
+  it('posts the graduating batch the officer picks, and none when left on any batch', async () => {
+    signedInAs('PLACEMENT_OFFICER');
+    officerApi(() => ({ ...baseJob }));
+    const user = userEvent.setup();
+    renderPage(<PlacementJobsPage />);
+
+    await user.type(await screen.findByLabelText('Title'), 'Graduate Trainee');
+    await user.type(screen.getByLabelText('Employer'), 'Globex');
+    await user.type(screen.getByLabelText('Description'), 'For the final year');
+    const batch = screen.getByLabelText('Graduating batch') as HTMLSelectElement;
+    expect(batch.value).toBe('');
+    await user.selectOptions(batch, `Batch of ${new Date().getFullYear() + 1}`);
+    await user.click(screen.getByRole('button', { name: 'Post job' }));
+
+    await waitFor(() => expect(saveBody()).toBeTruthy());
+    expect(saveBody()).toMatchObject({ graduatingYear: new Date().getFullYear() + 1 });
+  });
+
   it('sends nothing for a rule left blank, so a blank box is never a zero', async () => {
     signedInAs('PLACEMENT_OFFICER');
     officerApi(() => ({ ...baseJob }));
@@ -175,7 +206,7 @@ describe('the officer\'s form for a job', () => {
     await user.click(screen.getByRole('button', { name: 'Post job' }));
 
     await waitFor(() => expect(saveBody()).toBeTruthy());
-    expect(saveBody()).toMatchObject({ minCgpa: null, minAttendancePct: null, packageLpa: null, openings: null, jobType: null, allowedProgramIds: null, applicationDeadline: null });
+    expect(saveBody()).toMatchObject({ minCgpa: null, minAttendancePct: null, packageLpa: null, openings: null, jobType: null, allowedProgramIds: null, applicationDeadline: null, graduatingYear: null });
   });
 
   it('shows the server\'s reason, as an alert, when it refuses the terms', async () => {

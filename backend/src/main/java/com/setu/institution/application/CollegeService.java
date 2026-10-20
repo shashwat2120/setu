@@ -214,6 +214,25 @@ public class CollegeService {
         return SettingsUpdateResult.SUCCESS;
     }
 
+    /**
+     * How many terms the college's academic year has (its {@code terms_per_year} setting), 2 when it does not say. Used to turn a program's length in terms into years;
+     * a college with trimesters or quarters sets it, so no semester model is hard-coded.
+     */
+    @Transactional(readOnly = true)
+    public int termsPerYear(UUID collegeId) {
+        return collegeRepository.findById(collegeId)
+            .map(College::settingsJson)
+            .map(json -> {
+                try {
+                    int n = objectMapper.readTree(json).path("terms_per_year").asInt(2);
+                    return n >= 1 && n <= 12 ? n : 2;
+                } catch (Exception e) {
+                    return 2;
+                }
+            })
+            .orElse(2);
+    }
+
     /** See this class's javadoc for the full Day 6 §13 cross-module justification. */
     @Transactional(readOnly = true)
     public boolean isDualProgramAllowed(UUID collegeId) {

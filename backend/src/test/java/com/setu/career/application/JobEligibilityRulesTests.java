@@ -78,6 +78,44 @@ class JobEligibilityRulesTests {
         return ((ApplicationService.ApplyResult.NotEligible) result).unmetRules().stream().map(ApplicationService.UnmetRule::code).toList();
     }
 
+    private static JobTerms forBatch(int year) {
+        return new JobTerms(null, null, null, null, null, null, null, null, year);
+    }
+
+    /** The fixture admits students in 2024 to an 8-term program; with the college's default of two terms a year that is the batch of 2028. */
+    @Test
+    void aJobForTheStudentsOwnBatchAcceptsThemAndOneForAnotherBatchRefusesWithTheirs() {
+        var setup = setUp("JER20");
+
+        assertThat(applyAs(setup, postJob(setup, forBatch(2028)))).isInstanceOf(ApplicationService.ApplyResult.Success.class);
+        var refused = applyAs(setup, postJob(setup, forBatch(2027)));
+
+        assertThat(codesOf(refused)).containsExactly(EligibilityRules.GRADUATING_YEAR);
+        assertThat(((ApplicationService.ApplyResult.NotEligible) refused).unmetRules().get(0).message()).isEqualTo("This job is for the batch of 2027; yours is 2028.");
+    }
+
+    @Test
+    void aCollegeWithThreeTermsAYearGraduatesTheSameStudentAYearEarlier() {
+        var setup = setUp("JER21");
+        jdbc.update("UPDATE institution.colleges SET settings_json = jsonb_set(settings_json, '{terms_per_year}', '3') WHERE id = ?", setup.scenario().tenant().tenantId());
+
+        // 8 terms at 3 a year is 3 years (rounded up): admitted 2024, so the batch of 2027
+        assertThat(applyAs(setup, postJob(setup, forBatch(2027)))).isInstanceOf(ApplicationService.ApplyResult.Success.class);
+        assertThat(codesOf(applyAs(setup, postJob(setup, forBatch(2028))))).containsExactly(EligibilityRules.GRADUATING_YEAR);
+    }
+
+    @Test
+    void theBatchIsStoredWithTheJobAndNothingIsStoredWhenNoneIsSet() {
+        var setup = setUp("JER22");
+
+        UUID forBatch = postJob(setup, forBatch(2028));
+        UUID open = postJob(setup, JobTerms.NONE);
+
+        assertThat(jdbc.queryForObject("SELECT graduating_year FROM career.jobs WHERE id = ?", Integer.class, forBatch)).isEqualTo(2028);
+        assertThat(jdbc.queryForObject("SELECT graduating_year FROM career.jobs WHERE id = ?", Integer.class, open)).isNull();
+        assertThatThrownBy(() -> jdbc.update("UPDATE career.jobs SET graduating_year = 1999 WHERE id = ?", open)).isInstanceOf(DataIntegrityViolationException.class);
+    }
+
     @Test
     void aJobWithoutRulesAcceptsAStudentWithNoGradesAndNoAttendance() {
         var setup = setUp("JER1");

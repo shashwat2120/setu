@@ -172,6 +172,22 @@ public class StudentProgramService {
             .findFirst();
     }
 
+    /**
+     * The year this student is expected to graduate: the admission year of their ACTIVE program plus the program's length in years (its terms divided by the college's
+     * terms per year, rounded up). Empty if they have no active program or the program has no length. No authorization of its own: same precedent and callers' obligations
+     * as {@link #activeProgramIdUnchecked}.
+     */
+    @Transactional(readOnly = true)
+    public Optional<Integer> expectedGraduationYearUnchecked(UUID studentId) {
+        return studentProgramRepository.findByStudentId(studentId).stream()
+            .filter(p -> p.status() == StudentProgramStatus.ACTIVE)
+            .findFirst()
+            .flatMap(p -> programService.durationTermsUnchecked(p.programId()).map(terms -> {
+                int perYear = collegeService.termsPerYear(p.tenantId());
+                return p.admissionYear() + (terms + perYear - 1) / perYear;
+            }));
+    }
+
     public enum StatusChangeResult {SUCCESS, NOT_FOUND, INVALID_TRANSITION}
 
     @Transactional

@@ -64,6 +64,10 @@ public class Job {
     @Column(name = "allowed_program_ids", columnDefinition = "uuid[]")
     private List<UUID> allowedProgramIds;
 
+    /** The graduating batch this job is for (the year students are expected to graduate), or null for any. */
+    @Column(name = "graduating_year")
+    private Integer graduatingYear;
+
     @Version
     private int version;
 
@@ -117,7 +121,7 @@ public class Job {
 
     /** What the officer said about who may apply and what the job is (see {@link JobTerms}); {@link JobTerms#NONE} when nothing was said. */
     public JobTerms terms() {
-        return new JobTerms(minCgpa, minAttendancePct, applicationDeadline, packageLpa, location, openings, jobType, allowedProgramIds);
+        return new JobTerms(minCgpa, minAttendancePct, applicationDeadline, packageLpa, location, openings, jobType, allowedProgramIds, graduatingYear);
     }
 
     /**
@@ -138,6 +142,7 @@ public class Job {
         this.openings = t.openings();
         this.jobType = t.jobType();
         this.allowedProgramIds = t.allowedProgramIds();
+        this.graduatingYear = t.graduatingYear();
     }
 
     public void update(String title, String employer, String description) {

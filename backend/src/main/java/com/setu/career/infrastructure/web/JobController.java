@@ -32,13 +32,13 @@ public class JobController {
 
     /**
      * Everything after {@code description} is optional. {@code minCgpa} is on the college's grade-point scale, {@code minAttendancePct} is 0 to 100,
-     * {@code allowedProgramIds} limits the job to those programs (omit for any), {@code applicationDeadline} is an instant, {@code packageLpa} is lakhs per annum.
+     * {@code allowedProgramIds} limits the job to those programs (omit for any), {@code graduatingYear} to the batch expected to graduate that year (omit for any), {@code applicationDeadline} is an instant, {@code packageLpa} is lakhs per annum.
      */
     public record CreateRequest(UUID tenantId, String title, String employer, String description, BigDecimal minCgpa, BigDecimal minAttendancePct,
                                 Instant applicationDeadline, BigDecimal packageLpa, String location, Integer openings, JobType jobType,
-                                List<UUID> allowedProgramIds) {
+                                List<UUID> allowedProgramIds, Integer graduatingYear) {
         JobTerms terms() {
-            return new JobTerms(minCgpa, minAttendancePct, applicationDeadline, packageLpa, location, openings, jobType, allowedProgramIds);
+            return new JobTerms(minCgpa, minAttendancePct, applicationDeadline, packageLpa, location, openings, jobType, allowedProgramIds, graduatingYear);
         }
     }
 
@@ -47,22 +47,22 @@ public class JobController {
     }
 
     public record TermsRequest(BigDecimal minCgpa, BigDecimal minAttendancePct, Instant applicationDeadline, BigDecimal packageLpa, String location,
-                               Integer openings, JobType jobType, List<UUID> allowedProgramIds) {
+                               Integer openings, JobType jobType, List<UUID> allowedProgramIds, Integer graduatingYear) {
         JobTerms toTerms() {
-            return new JobTerms(minCgpa, minAttendancePct, applicationDeadline, packageLpa, location, openings, jobType, allowedProgramIds);
+            return new JobTerms(minCgpa, minAttendancePct, applicationDeadline, packageLpa, location, openings, jobType, allowedProgramIds, graduatingYear);
         }
     }
 
     public record JobResponse(UUID id, UUID tenantId, UUID postedBy, String title, String employer, String description, String status, int version,
                               BigDecimal minCgpa, BigDecimal minAttendancePct, Instant applicationDeadline, BigDecimal packageLpa, String location,
-                              Integer openings, String jobType, List<UUID> allowedProgramIds) {
+                              Integer openings, String jobType, List<UUID> allowedProgramIds, Integer graduatingYear) {
     }
 
     private static JobResponse toResponse(Job j) {
         JobTerms t = j.terms();
         return new JobResponse(j.id(), j.tenantId(), j.postedBy(), j.title(), j.employer(), j.description(), j.status().name(), j.version(),
             t.minCgpa(), t.minAttendancePct(), t.applicationDeadline(), t.packageLpa(), t.location(), t.openings(),
-            t.jobType() == null ? null : t.jobType().name(), t.allowedProgramIds());
+            t.jobType() == null ? null : t.jobType().name(), t.allowedProgramIds(), t.graduatingYear());
     }
 
     @PostMapping

@@ -9,6 +9,14 @@ export function plainNumber(value: number | string): string {
   return Number.isFinite(n) ? String(Math.round(n * 100) / 100) : String(value);
 }
 
+/** The graduating batches an officer can pick for a job: from last year to five years ahead, plus the job's own batch if it is outside that range. */
+export function batchYears(current?: number | null, now: Date = new Date()): number[] {
+  const year = now.getFullYear();
+  const years = Array.from({ length: 7 }, (_, i) => year - 1 + i);
+  if (current != null && !years.includes(current)) years.push(current);
+  return years.sort((a, b) => a - b);
+}
+
 /** An instant for an `<input type="datetime-local">`, in the viewer's own time zone ('' when there is none). */
 export function toLocalInput(iso: string | null | undefined): string {
   if (!iso) return '';
@@ -36,11 +44,12 @@ export function jobFacts(job: Pick<JobResponse, 'packageLpa' | 'location' | 'ope
 }
 
 /** The rules a student must meet, one sentence each, so a student can read what a job asks before anything is checked. */
-export function jobRequirements(job: Pick<JobResponse, 'minCgpa' | 'minAttendancePct' | 'applicationDeadline' | 'allowedProgramIds'>, now: Date = new Date()): string[] {
+export function jobRequirements(job: Pick<JobResponse, 'minCgpa' | 'minAttendancePct' | 'applicationDeadline' | 'allowedProgramIds' | 'graduatingYear'>, now: Date = new Date()): string[] {
   const rules: string[] = [];
   if (job.minCgpa != null) rules.push(`CGPA of at least ${plainNumber(job.minCgpa)}`);
   if (job.minAttendancePct != null) rules.push(`Attendance of at least ${plainNumber(job.minAttendancePct)}%`);
   if (job.allowedProgramIds && job.allowedProgramIds.length > 0) rules.push('Open to certain programs only');
+  if (job.graduatingYear != null) rules.push(`Batch of ${job.graduatingYear} only`);
   if (job.applicationDeadline) {
     const when = new Date(job.applicationDeadline);
     const text = when.toLocaleString([], { day: 'numeric', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit' });

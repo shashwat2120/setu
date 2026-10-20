@@ -92,6 +92,10 @@ public class StudentProgram {
         return studentId;
     }
 
+    public int admissionYear() {
+        return admissionYear;
+    }
+
     public UUID programId() {
         return programId;
     }
