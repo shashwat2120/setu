@@ -50,23 +50,24 @@ public class ApplicationController {
             case ApplicationService.ApplyResult.StudentNotFound ignored ->
                 ResponseEntity.status(HttpStatus.BAD_REQUEST).body(new ErrorResponse("student not found"));
             case ApplicationService.ApplyResult.NotEligible r ->
-                ResponseEntity.status(HttpStatus.CONFLICT).body(new NotEligibleResponse(r.missingOrInsufficientSkillIds()));
+                ResponseEntity.status(HttpStatus.CONFLICT).body(new NotEligibleResponse(r.missingOrInsufficientSkillIds(), r.unmetRules()));
             case ApplicationService.ApplyResult.AlreadyApplied ignored ->
                 ResponseEntity.status(HttpStatus.CONFLICT).body(new ErrorResponse("already applied to this job"));
         };
     }
 
-    public record NotEligibleResponse(List<UUID> missingOrInsufficientSkillIds) {
+    /** Why the application was refused: the required skills the student lacks, and the deadline or academic rules they do not meet (each with a sentence for the student). */
+    public record NotEligibleResponse(List<UUID> missingOrInsufficientSkillIds, List<ApplicationService.UnmetRule> unmetRules) {
     }
 
     @GetMapping("/eligibility")
     public ResponseEntity<?> previewEligibility(@RequestParam UUID jobId, @RequestParam UUID studentId) {
         return applicationService.previewEligibility(jobId, studentId)
-            .map(r -> ResponseEntity.ok(new EligibilityResponse(r.eligible(), r.missingOrInsufficientSkillIds())))
+            .map(r -> ResponseEntity.ok(new EligibilityResponse(r.eligible(), r.missingOrInsufficientSkillIds(), r.unmetRules())))
             .orElse(ResponseEntity.status(HttpStatus.NOT_FOUND).build());
     }
 
-    public record EligibilityResponse(boolean eligible, List<UUID> missingOrInsufficientSkillIds) {
+    public record EligibilityResponse(boolean eligible, List<UUID> missingOrInsufficientSkillIds, List<ApplicationService.UnmetRule> unmetRules) {
     }
 
     @GetMapping

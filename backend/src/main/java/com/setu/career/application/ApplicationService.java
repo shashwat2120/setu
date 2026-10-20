@@ -10,6 +10,7 @@ import com.setu.career.infrastructure.ApplicationInsertGuard;
 import com.setu.career.infrastructure.ApplicationRepository;
 import com.setu.directory.application.StudentProfileService;
 import com.setu.shared.authorization.AuthorizationContext;
+import com.setu.shared.career.StudentStandings;
 import com.setu.shared.authorization.ResourceRef;
 import com.setu.shared.governance.AuditLogWriter;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -66,11 +67,13 @@ public class ApplicationService {
     private final CareerAccessSupport accessSupport;
     private final AuthorizationContext authorizationContext;
     private final AuditLogWriter auditLogWriter;
+    private final StudentStandings studentStandings;
 
     public ApplicationService(ApplicationRepository applicationRepository, ApplicationInsertGuard applicationInsertGuard,
                                JobService jobService, JobSkillService jobSkillService, StudentSkillService studentSkillService,
                                StudentProfileService studentProfileService, CareerAccessSupport accessSupport,
-                               AuthorizationContext authorizationContext, AuditLogWriter auditLogWriter) {
+                               AuthorizationContext authorizationContext, AuditLogWriter auditLogWriter, StudentStandings studentStandings) {
+        this.studentStandings = studentStandings;
         this.applicationRepository = applicationRepository;
         this.applicationInsertGuard = applicationInsertGuard;
         this.jobService = jobService;
@@ -82,7 +85,18 @@ public class ApplicationService {
         this.auditLogWriter = auditLogWriter;
     }
 
-    public record EligibilityResult(boolean eligible, List<UUID> missingOrInsufficientSkillIds) {
+    /**
+     * {@code eligible} is true exactly when no required skill is missing and no academic rule (deadline, CGPA, attendance, program) is unmet. A student who is not eligible
+     * is told which skills and which rules, never just "no".
+     */
+    public record EligibilityResult(boolean eligible, List<UUID> missingOrInsufficientSkillIds, List<UnmetRule> unmetRules) {
+        public EligibilityResult(boolean eligible, List<UUID> missingOrInsufficientSkillIds) {
+            this(eligible, missingOrInsufficientSkillIds, List.of());
+        }
+    }
+
+    /** One academic rule a student does not meet: a stable {@code code} (DEADLINE_PASSED, MIN_CGPA, MIN_ATTENDANCE, PROGRAM_NOT_ALLOWED) and a sentence for the student. */
+    public record UnmetRule(String code, String message) {
     }
 
     /** Public, authorization-checked entry point for a student (or admin/placement officer) to preview eligibility before applying. */
@@ -98,8 +112,16 @@ public class ApplicationService {
         }
         UUID tenantId = maybeJob.get().tenantId();
         Optional<UUID> ownStudentId = accessSupport.currentStudentId(tenantId);
-        if (ownStudentId.isEmpty() || !ownStudentId.get().equals(studentId)) {
-            authorizationContext.assertCan(VIEW_PERMISSION, ResourceRef.of("application", studentId, tenantId));
+        if (ownStudentId.isPresent() && !ownStudentId.get().equals(studentId)) {
+            // a student previews their own eligibility and no one else's, whatever else their role may let them view
+            throw new org.springframework.security.access.AccessDeniedException("permission_denied");
+        }
+        if (ownStudentId.isEmpty()) {
+            // someone else's eligibility: a placement officer manages these jobs and their applicants, so managing implies viewing (as it does for the jobs themselves)
+            var resource = ResourceRef.of("application", studentId, tenantId);
+            if (!authorizationContext.can(VIEW_PERMISSION, resource).isAllowed()) {
+                authorizationContext.assertCan(MANAGE_PERMISSION, resource);
+            }
         }
         return Optional.of(checkEligibility(jobId, studentId));
     }
@@ -119,7 +141,20 @@ public class ApplicationService {
                 missing.add(requirement.skillId());
             }
         }
-        return new EligibilityResult(missing.isEmpty(), missing);
+        List<UnmetRule> unmet = academicRulesUnmet(jobId, studentId);
+        return new EligibilityResult(missing.isEmpty() && unmet.isEmpty(), missing, unmet);
+    }
+
+    /** The job's deadline and academic rules the student does not meet; the student's standing is only looked up when the job has a rule that needs it. */
+    private List<UnmetRule> academicRulesUnmet(UUID jobId, UUID studentId) {
+        Optional<Job> job = jobService.findById(jobId);
+        if (job.isEmpty()) {
+            return List.of();
+        }
+        var terms = job.get().terms();
+        StudentStandings.Standing standing = terms.hasAcademicRules() ? studentStandings.of(studentId).orElse(null) : null;
+        return EligibilityRules.unmet(terms, java.time.Instant.now(), standing).stream()
+            .map(u -> new UnmetRule(u.code(), u.message())).toList();
     }
 
     public sealed interface ApplyResult {
@@ -135,7 +170,7 @@ public class ApplicationService {
         record StudentNotFound() implements ApplyResult {
         }
 
-        record NotEligible(List<UUID> missingOrInsufficientSkillIds) implements ApplyResult {
+        record NotEligible(List<UUID> missingOrInsufficientSkillIds, List<UnmetRule> unmetRules) implements ApplyResult {
         }
 
         record AlreadyApplied() implements ApplyResult {
@@ -160,7 +195,7 @@ public class ApplicationService {
 
         EligibilityResult eligibility = checkEligibility(jobId, studentId);
         if (!eligibility.eligible()) {
-            return new ApplyResult.NotEligible(eligibility.missingOrInsufficientSkillIds());
+            return new ApplyResult.NotEligible(eligibility.missingOrInsufficientSkillIds(), eligibility.unmetRules());
         }
 
         Application application = new Application(UUID.randomUUID(), job.tenantId(), jobId, studentId, Instant.now());

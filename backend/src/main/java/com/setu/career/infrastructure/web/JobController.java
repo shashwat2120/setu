@@ -2,6 +2,8 @@ package com.setu.career.infrastructure.web;
 
 import com.setu.career.application.JobService;
 import com.setu.career.domain.Job;
+import com.setu.career.domain.JobTerms;
+import com.setu.career.domain.JobType;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -13,6 +15,8 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.math.BigDecimal;
+import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 
@@ -26,21 +30,44 @@ public class JobController {
         this.jobService = jobService;
     }
 
-    public record CreateRequest(UUID tenantId, String title, String employer, String description) {
+    /**
+     * Everything after {@code description} is optional. {@code minCgpa} is on the college's grade-point scale, {@code minAttendancePct} is 0 to 100,
+     * {@code allowedProgramIds} limits the job to those programs (omit for any), {@code applicationDeadline} is an instant, {@code packageLpa} is lakhs per annum.
+     */
+    public record CreateRequest(UUID tenantId, String title, String employer, String description, BigDecimal minCgpa, BigDecimal minAttendancePct,
+                                Instant applicationDeadline, BigDecimal packageLpa, String location, Integer openings, JobType jobType,
+                                List<UUID> allowedProgramIds) {
+        JobTerms terms() {
+            return new JobTerms(minCgpa, minAttendancePct, applicationDeadline, packageLpa, location, openings, jobType, allowedProgramIds);
+        }
     }
 
-    public record UpdateRequest(String title, String employer, String description, int expectedVersion) {}
+    /** {@code terms} is omitted to leave the terms as they are; when present it replaces them (an empty object clears every rule). */
+    public record UpdateRequest(String title, String employer, String description, int expectedVersion, TermsRequest terms) {
+    }
 
-    public record JobResponse(UUID id, UUID tenantId, UUID postedBy, String title, String employer, String description, String status, int version) {
+    public record TermsRequest(BigDecimal minCgpa, BigDecimal minAttendancePct, Instant applicationDeadline, BigDecimal packageLpa, String location,
+                               Integer openings, JobType jobType, List<UUID> allowedProgramIds) {
+        JobTerms toTerms() {
+            return new JobTerms(minCgpa, minAttendancePct, applicationDeadline, packageLpa, location, openings, jobType, allowedProgramIds);
+        }
+    }
+
+    public record JobResponse(UUID id, UUID tenantId, UUID postedBy, String title, String employer, String description, String status, int version,
+                              BigDecimal minCgpa, BigDecimal minAttendancePct, Instant applicationDeadline, BigDecimal packageLpa, String location,
+                              Integer openings, String jobType, List<UUID> allowedProgramIds) {
     }
 
     private static JobResponse toResponse(Job j) {
-        return new JobResponse(j.id(), j.tenantId(), j.postedBy(), j.title(), j.employer(), j.description(), j.status().name(), j.version());
+        JobTerms t = j.terms();
+        return new JobResponse(j.id(), j.tenantId(), j.postedBy(), j.title(), j.employer(), j.description(), j.status().name(), j.version(),
+            t.minCgpa(), t.minAttendancePct(), t.applicationDeadline(), t.packageLpa(), t.location(), t.openings(),
+            t.jobType() == null ? null : t.jobType().name(), t.allowedProgramIds());
     }
 
     @PostMapping
     public ResponseEntity<?> create(@RequestBody CreateRequest request) {
-        var result = jobService.create(request.tenantId(), request.title(), request.employer(), request.description());
+        var result = jobService.create(request.tenantId(), request.title(), request.employer(), request.description(), request.terms());
         return switch (result) {
             case JobService.CreateResult.Success r -> ResponseEntity.status(HttpStatus.CREATED)
                 .body(jobService.get(r.jobId()).map(JobController::toResponse).orElseThrow());
@@ -74,7 +101,7 @@ public class JobController {
 
     @PutMapping("/{jobId}")
     public ResponseEntity<?> update(@PathVariable UUID jobId, @RequestBody UpdateRequest request) {
-        return switch (jobService.update(jobId, request.title(), request.employer(), request.description(), request.expectedVersion())) {
+        return switch (jobService.update(jobId, request.title(), request.employer(), request.description(), request.terms() == null ? null : request.terms().toTerms(), request.expectedVersion())) {
             case JobService.UpdateResult.Success ignored -> jobService.get(jobId).map(j -> ResponseEntity.ok(toResponse(j))).orElseGet(() -> ResponseEntity.notFound().build());
             case JobService.UpdateResult.NotFound ignored -> ResponseEntity.notFound().build();
             case JobService.UpdateResult.InvalidData invalid -> ResponseEntity.badRequest().body(new ErrorResponse(invalid.message()));

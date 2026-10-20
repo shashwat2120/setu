@@ -7,7 +7,12 @@ import jakarta.persistence.Enumerated;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import jakarta.persistence.Version;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
+import java.math.BigDecimal;
+import java.time.Instant;
+import java.util.List;
 import java.util.UUID;
 
 /** Maps career.jobs (V46) — a placement opportunity posted by a placement officer, scoped to one tenant/college. Not a general public job marketplace: visible only within the owning tenant, per Day 12's explicit scope rule. */
@@ -34,6 +39,30 @@ public class Job {
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private JobStatus status;
+
+    @Column(name = "min_cgpa")
+    private BigDecimal minCgpa;
+
+    @Column(name = "min_attendance_pct")
+    private BigDecimal minAttendancePct;
+
+    @Column(name = "application_deadline")
+    private Instant applicationDeadline;
+
+    @Column(name = "package_lpa")
+    private BigDecimal packageLpa;
+
+    private String location;
+
+    private Integer openings;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "job_type")
+    private JobType jobType;
+
+    @JdbcTypeCode(SqlTypes.ARRAY)
+    @Column(name = "allowed_program_ids", columnDefinition = "uuid[]")
+    private List<UUID> allowedProgramIds;
 
     @Version
     private int version;
@@ -84,6 +113,31 @@ public class Job {
 
     public int version() {
         return version;
+    }
+
+    /** What the officer said about who may apply and what the job is (see {@link JobTerms}); {@link JobTerms#NONE} when nothing was said. */
+    public JobTerms terms() {
+        return new JobTerms(minCgpa, minAttendancePct, applicationDeadline, packageLpa, location, openings, jobType, allowedProgramIds);
+    }
+
+    /**
+     * Sets the terms. A deadline must be in the future when it is set or changed (a deadline already passed that is simply left as it is, on a job
+     * being edited for another reason, is not refused). Throws {@link IllegalArgumentException} for a value that makes no sense.
+     */
+    public void applyTerms(JobTerms terms, Instant now) {
+        JobTerms t = terms == null ? JobTerms.NONE : terms;
+        t.validate();
+        if (t.applicationDeadline() != null && !t.applicationDeadline().equals(this.applicationDeadline) && !t.applicationDeadline().isAfter(now)) {
+            throw new IllegalArgumentException("the application deadline must be in the future");
+        }
+        this.minCgpa = t.minCgpa();
+        this.minAttendancePct = t.minAttendancePct();
+        this.applicationDeadline = t.applicationDeadline();
+        this.packageLpa = t.packageLpa();
+        this.location = t.location();
+        this.openings = t.openings();
+        this.jobType = t.jobType();
+        this.allowedProgramIds = t.allowedProgramIds();
     }
 
     public void update(String title, String employer, String description) {

@@ -24,6 +24,8 @@ import java.util.UUID;
 public class StudentSkillService {
 
     private static final String MANAGE_PERMISSION = "MANAGE_OWN_SKILLS";
+    /** What a placement officer holds: it lets them read the skills of the students who apply to their jobs. */
+    private static final String MANAGE_LISTINGS_PERMISSION = "MANAGE_CAREER_LISTINGS";
     private static final String VIEW_PERMISSION = "VIEW_CAREER_LISTINGS";
 
     private final StudentSkillRepository studentSkillRepository;
@@ -111,8 +113,16 @@ public class StudentSkillService {
         }
         UUID tenantId = studentInfo.get().tenantId();
         Optional<UUID> ownStudentId = accessSupport.currentStudentId(tenantId);
-        if (ownStudentId.isEmpty() || !ownStudentId.get().equals(studentId)) {
-            authorizationContext.assertCan(VIEW_PERMISSION, ResourceRef.of("student_skill", studentId, tenantId));
+        if (ownStudentId.isPresent() && !ownStudentId.get().equals(studentId)) {
+            // a student reads their own profile and no one else's, whatever else their role may let them view
+            throw new org.springframework.security.access.AccessDeniedException("permission_denied");
+        }
+        if (ownStudentId.isEmpty()) {
+            // a placement officer manages the jobs and shortlists their applicants, so they must be able to read the skills those decisions rest on: managing implies viewing
+            var resource = ResourceRef.of("student_skill", studentId, tenantId);
+            if (!authorizationContext.can(VIEW_PERMISSION, resource).isAllowed()) {
+                authorizationContext.assertCan(MANAGE_LISTINGS_PERMISSION, resource);
+            }
         }
         return studentSkillRepository.findByStudentId(studentId);
     }

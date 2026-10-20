@@ -163,6 +163,15 @@ public class StudentProgramService {
             .findFirst();
     }
 
+    /** The ACTIVE program of this student, with no authorization check of its own: same precedent and same callers' obligations as {@link #activeCurriculumIdUnchecked}. */
+    @Transactional(readOnly = true)
+    public Optional<UUID> activeProgramIdUnchecked(UUID studentId) {
+        return studentProgramRepository.findByStudentId(studentId).stream()
+            .filter(p -> p.status() == StudentProgramStatus.ACTIVE)
+            .map(StudentProgram::programId)
+            .findFirst();
+    }
+
     public enum StatusChangeResult {SUCCESS, NOT_FOUND, INVALID_TRANSITION}
 
     @Transactional

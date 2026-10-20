@@ -76,6 +76,20 @@ public class AcademicRecordService {
     @Transactional(readOnly = true)
     public Transcript transcript(UUID studentId, UUID tenantId) {
         assertRead(studentId, tenantId);
+        return buildTranscript(studentId);
+    }
+
+    /**
+     * The credit-weighted GPA to date (null if nothing is graded), with NO authorization of its own: for {@code shared.career.StudentStandings}, whose caller (a
+     * student applying for themselves, an officer previewing eligibility) has already authorized its own operation, and for whom the checked {@link #transcript}
+     * would wrongly refuse a placement officer.
+     */
+    @Transactional(readOnly = true)
+    public BigDecimal gpaUnchecked(UUID studentId) {
+        return buildTranscript(studentId).gpa();
+    }
+
+    private Transcript buildTranscript(UUID studentId) {
         List<TranscriptLine> lines = new java.util.ArrayList<>();
         for (RecordDirectory.CourseEnrollment e : recordDirectory.enrollmentsOf(studentId)) {
             List<Grade> grades = gradeService.findCurrentForEnrollment(e.enrollmentId());

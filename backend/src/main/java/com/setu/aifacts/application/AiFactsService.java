@@ -282,7 +282,7 @@ public class AiFactsService {
 
     // ---- 5. getSkillGap -----------------------------------------------------------------------
 
-    public record SkillGapResult(boolean eligible, List<UUID> missingOrInsufficientSkillIds) {
+    public record SkillGapResult(boolean eligible, List<UUID> missingOrInsufficientSkillIds, List<String> unmetRules) {
     }
 
     public Object getSkillGap(
@@ -303,7 +303,8 @@ public class AiFactsService {
             if (result.isEmpty()) {
                 return new ToolError("job not found");
             }
-            return new SkillGapResult(result.get().eligible(), result.get().missingOrInsufficientSkillIds());
+            return new SkillGapResult(result.get().eligible(), result.get().missingOrInsufficientSkillIds(),
+                result.get().unmetRules().stream().map(r -> r.message()).toList());
         } catch (AccessDeniedException e) {
             return new ToolError("not authorized to view this student's skill profile");
         }

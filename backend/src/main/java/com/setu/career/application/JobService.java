@@ -47,8 +47,12 @@ public class JobService {
         }
     }
 
-    @Transactional
     public CreateResult create(UUID tenantId, String title, String employer, String description) {
+        return create(tenantId, title, employer, description, com.setu.career.domain.JobTerms.NONE);
+    }
+
+    @Transactional
+    public CreateResult create(UUID tenantId, String title, String employer, String description, com.setu.career.domain.JobTerms terms) {
         authorizationContext.assertCan(MANAGE_PERMISSION, ResourceRef.of("job", UUID.randomUUID(), tenantId));
         if (!collegeService.existsById(tenantId)) {
             return new CreateResult.TenantNotFound();
@@ -57,6 +61,7 @@ public class JobService {
         Job job;
         try {
             job = new Job(UUID.randomUUID(), tenantId, actor, title, employer, description);
+            job.applyTerms(terms, java.time.Instant.now());
         } catch (IllegalArgumentException e) {
             return new CreateResult.InvalidData(e.getMessage());
         }
@@ -113,8 +118,13 @@ public class JobService {
         record VersionConflict() implements UpdateResult {}
     }
 
-    @Transactional
     public UpdateResult update(UUID jobId, String title, String employer, String description, int expectedVersion) {
+        return update(jobId, title, employer, description, null, expectedVersion);
+    }
+
+    /** {@code terms} null leaves the job's terms as they are (an edit of the wording only); otherwise they are replaced as given. */
+    @Transactional
+    public UpdateResult update(UUID jobId, String title, String employer, String description, com.setu.career.domain.JobTerms terms, int expectedVersion) {
         Optional<Job> found = jobRepository.findById(jobId);
         if (found.isEmpty()) return new UpdateResult.NotFound();
         Job job = found.get();
@@ -122,6 +132,9 @@ public class JobService {
         if (job.version() != expectedVersion) return new UpdateResult.VersionConflict();
         try {
             job.update(title, employer, description);
+            if (terms != null) {
+                job.applyTerms(terms, java.time.Instant.now());
+            }
         } catch (IllegalArgumentException e) {
             return new UpdateResult.InvalidData(e.getMessage());
         } catch (IllegalStateException e) {
