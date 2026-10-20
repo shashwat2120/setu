@@ -202,3 +202,40 @@ describe('why a position could not be had', () => {
     expect(message.textContent).toContain('pin icon in the address bar');
   });
 });
+
+describe('the accuracy of the position the administrator fills in', () => {
+  afterEach(() => geolocation('absent'));
+
+  const fixWithAccuracy = (accuracy: number) =>
+    Object.defineProperty(navigator, 'geolocation', {
+      configurable: true,
+      value: { getCurrentPosition: (ok: (p: unknown) => void) => ok({ coords: { latitude: 18.5516, longitude: 73.8224, accuracy } }) },
+    });
+  const policy = { enabled: false, campusConfigured: false, radiusMeters: 300, campusLatitude: null, campusLongitude: null };
+
+  it('says how accurate a good fix is', async () => {
+    signedInAs('COLLEGE_ADMIN');
+    fixWithAccuracy(40);
+    mockApi({ '/staff-attendance/location-policy': policy });
+    const user = userEvent.setup();
+    renderPage(<StaffLocationPolicyCard />);
+
+    await user.click(await screen.findByRole('button', { name: "Use this device's position" }));
+
+    expect(await screen.findByText(/accurate to about 40 m\. Check it, then Save/)).toBeTruthy();
+  });
+
+  it('warns, as an alert, that a rough fix should be replaced by coordinates from a map', async () => {
+    signedInAs('COLLEGE_ADMIN');
+    fixWithAccuracy(1500);
+    mockApi({ '/staff-attendance/location-policy': policy });
+    const user = userEvent.setup();
+    renderPage(<StaffLocationPolicyCard />);
+
+    await user.click(await screen.findByRole('button', { name: "Use this device's position" }));
+
+    const warning = await screen.findByRole('alert');
+    expect(warning.textContent).toContain('only accurate to about 1500 m');
+    expect(warning.textContent).toContain('type the latitude and longitude from a map');
+  });
+});

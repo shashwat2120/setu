@@ -45,6 +45,11 @@ export function StaffLocationPolicyCard() {
     }
     const position = found.position;
     setDraft((d) => (d ? { ...d, latitude: position.latitude.toFixed(6), longitude: position.longitude.toFixed(6) } : d));
+    const accurate = Math.round(position.accuracyMeters);
+    // a laptop often has only a rough fix (from Wi-Fi or the internet connection) that can be kilometres off, and every staff check-in is compared with this
+    setMessage(accurate <= 200
+      ? { ok: true, text: `Filled from this device's position, accurate to about ${accurate} m. Check it, then Save.` }
+      : { ok: false, text: `Filled from this device, but its position is only accurate to about ${accurate} m, which is rough: a laptop often estimates from Wi-Fi or the internet connection and can be kilometres off. For the real campus, type the latitude and longitude from a map instead (in Google Maps, right-click the campus and click the numbers shown).` });
   };
 
   const save = async () => {
