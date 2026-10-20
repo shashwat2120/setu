@@ -35,6 +35,7 @@ attendance.rm_role_permissions  Attendance
 attendance.rm_sections  Attendance
 attendance.rm_students  Attendance
 attendance.staff_attendance_policies  Attendance
+attendance.staff_location_policies  Attendance
 career.applications  Career
 career.job_skills  Career
 career.jobs  Career

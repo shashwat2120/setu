@@ -42,6 +42,11 @@ final class CheckInGeo {
      * @param accuracyMeters  how accurate the device says it is; null or negative is taken as unknown (0)
      */
     static Outcome assess(Double anchorLatitude, Double anchorLongitude, Double latitude, Double longitude, Double accuracyMeters) {
+        return assess(anchorLatitude, anchorLongitude, latitude, longitude, accuracyMeters, RADIUS_METERS);
+    }
+
+    /** As above, with the radius the caller's own rules set (a college campus is larger than a classroom). */
+    static Outcome assess(Double anchorLatitude, Double anchorLongitude, Double latitude, Double longitude, Double accuracyMeters, double radiusMeters) {
         if (!isValidPosition(latitude, longitude)) {
             return new Outcome(CheckInLocation.NO_LOCATION, null, null);
         }
@@ -54,7 +59,7 @@ final class CheckInGeo {
             return new Outcome(CheckInLocation.NO_REFERENCE, null, reportedAccuracy);
         }
         double distance = distanceMeters(anchorLatitude, anchorLongitude, latitude, longitude);
-        CheckInLocation status = distance - accuracy <= RADIUS_METERS ? CheckInLocation.NEAR : CheckInLocation.FAR;
+        CheckInLocation status = distance - accuracy <= radiusMeters ? CheckInLocation.NEAR : CheckInLocation.FAR;
         return new Outcome(status, (int) Math.round(distance), reportedAccuracy);
     }
 }

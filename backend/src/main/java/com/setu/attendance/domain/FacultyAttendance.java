@@ -66,6 +66,17 @@ public class FacultyAttendance {
     @Column(name = "short_hours", nullable = false)
     private boolean shortHours;
 
+    /** Where the check-in was made from compared with the campus (NEAR, FAR, NO_LOCATION, NO_REFERENCE); null when the college does not record it. Never coordinates. */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "location_status")
+    private CheckInLocation locationStatus;
+
+    @Column(name = "location_distance_meters")
+    private Integer locationDistanceMeters;
+
+    @Column(name = "location_accuracy_meters")
+    private Integer locationAccuracyMeters;
+
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 
@@ -117,6 +128,25 @@ public class FacultyAttendance {
             FacultyAttendanceSource.ADMIN, adminUserId, reason.trim(), now);
         row.checkOutAt = status.hasWorkTimes() ? checkOutAt : null;
         return row;
+    }
+
+    /** Records the outcome of the check-in's position comparison. Information for the administrator; it changes nothing else about the day. */
+    public void recordCheckInLocation(CheckInLocation status, Integer distanceMeters, Integer accuracyMeters) {
+        this.locationStatus = status;
+        this.locationDistanceMeters = distanceMeters;
+        this.locationAccuracyMeters = accuracyMeters;
+    }
+
+    public CheckInLocation locationStatus() {
+        return locationStatus;
+    }
+
+    public Integer locationDistanceMeters() {
+        return locationDistanceMeters;
+    }
+
+    public Integer locationAccuracyMeters() {
+        return locationAccuracyMeters;
     }
 
     public boolean isCheckedIn() {

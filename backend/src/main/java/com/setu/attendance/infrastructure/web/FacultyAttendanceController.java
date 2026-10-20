@@ -2,7 +2,9 @@ package com.setu.attendance.infrastructure.web;
 
 import com.setu.attendance.application.FacultyAttendanceService;
 import com.setu.attendance.application.FacultyAttendanceService.RecordResult;
+import com.setu.attendance.application.AttendanceRecordService;
 import com.setu.attendance.application.StaffAttendancePolicyService;
+import com.setu.attendance.application.StaffLocationPolicyService;
 import com.setu.attendance.domain.FacultyAttendance;
 import com.setu.attendance.domain.FacultyAttendanceStatus;
 import org.springframework.http.HttpStatus;
@@ -32,16 +34,20 @@ public class FacultyAttendanceController {
 
     private final FacultyAttendanceService service;
     private final StaffAttendancePolicyService policyService;
+    private final StaffLocationPolicyService locationPolicyService;
 
-    public FacultyAttendanceController(FacultyAttendanceService service, StaffAttendancePolicyService policyService) {
+    public FacultyAttendanceController(FacultyAttendanceService service, StaffAttendancePolicyService policyService,
+                                       StaffLocationPolicyService locationPolicyService) {
         this.service = service;
         this.policyService = policyService;
+        this.locationPolicyService = locationPolicyService;
     }
 
     public record AttendanceResponse(UUID id, UUID tenantId, UUID facultyId, LocalDate attendanceDate, String status,
                                       Instant checkInAt, Instant checkOutAt, String source, UUID correctedBy,
                                       String correctionReason, Integer lateMinutes, Integer workedMinutes,
-                                      Integer policyVersion, boolean shortHours) {
+                                      Integer policyVersion, boolean shortHours,
+                                      String locationStatus, Integer locationDistanceMeters, Integer locationAccuracyMeters) {
     }
 
     /** {@code date} is today in the college's timezone (so the UI never guesses it); {@code record} is null if nothing is recorded yet. */
@@ -64,7 +70,8 @@ public class FacultyAttendanceController {
     private static AttendanceResponse toResponse(FacultyAttendance r) {
         return new AttendanceResponse(r.id(), r.tenantId(), r.facultyId(), r.attendanceDate(), r.status().name(),
             r.checkInAt(), r.checkOutAt(), r.source().name(), r.correctedBy(), r.correctionReason(), r.lateMinutes(),
-            r.workedMinutes(), r.policyVersion(), r.shortHours());
+            r.workedMinutes(), r.policyVersion(), r.shortHours(),
+            r.locationStatus() == null ? null : r.locationStatus().name(), r.locationDistanceMeters(), r.locationAccuracyMeters());
     }
 
     // ---- self ----
@@ -77,9 +84,46 @@ public class FacultyAttendanceController {
             service.myToday().map(FacultyAttendanceController::toResponse).orElse(null)));
     }
 
+    /** The position is optional and used only if the college switched staff location on: see {@link FacultyAttendanceService#checkInFrom(AttendanceRecordService.LocationReport)}. */
+    public record CheckInRequest(Double latitude, Double longitude, Double accuracyMeters) {
+    }
+
     @PostMapping("/me/check-in")
-    public ResponseEntity<?> checkIn() {
-        return respond(service.checkIn(), HttpStatus.CREATED);
+    public ResponseEntity<?> checkIn(@RequestBody(required = false) CheckInRequest request) {
+        var location = request == null ? null
+            : new AttendanceRecordService.LocationReport(request.latitude(), request.longitude(), request.accuracyMeters());
+        return respond(service.checkInFrom(location), HttpStatus.CREATED);
+    }
+
+    // ---- where staff check in from (off unless the college turns it on) ----
+
+    /** Coordinates are null unless the caller is an administrator. */
+    public record LocationPolicyResponse(boolean enabled, boolean campusConfigured, int radiusMeters, Double campusLatitude, Double campusLongitude) {
+    }
+
+    public record LocationPolicyRequest(Boolean enabled, Double campusLatitude, Double campusLongitude, Integer radiusMeters) {
+    }
+
+    @GetMapping("/location-policy")
+    public ResponseEntity<?> locationPolicy() {
+        return locationPolicyService.currentForCaller()
+            .<ResponseEntity<?>>map(v -> ResponseEntity.ok(new LocationPolicyResponse(v.enabled(), v.campusConfigured(), v.radiusMeters(),
+                v.campusLatitude(), v.campusLongitude())))
+            .orElse(ResponseEntity.status(HttpStatus.FORBIDDEN).body(new ErrorResponse("no college is associated with this account")));
+    }
+
+    @PutMapping("/location-policy")
+    public ResponseEntity<?> updateLocationPolicy(@RequestBody LocationPolicyRequest body) {
+        return switch (locationPolicyService.update(Boolean.TRUE.equals(body.enabled()), body.campusLatitude(), body.campusLongitude(), body.radiusMeters())) {
+            case StaffLocationPolicyService.UpdateResult.Success ok -> ResponseEntity.ok(new LocationPolicyResponse(ok.view().enabled(),
+                ok.view().campusConfigured(), ok.view().radiusMeters(), ok.view().campusLatitude(), ok.view().campusLongitude()));
+            case StaffLocationPolicyService.UpdateResult.InvalidRequest bad ->
+                ResponseEntity.status(HttpStatus.BAD_REQUEST).body(new ErrorResponse(bad.message()));
+            case StaffLocationPolicyService.UpdateResult.Conflict ignored ->
+                ResponseEntity.status(HttpStatus.CONFLICT).body(new ErrorResponse("another administrator changed this at the same moment; reload and try again"));
+            case StaffLocationPolicyService.UpdateResult.NoCollege ignored ->
+                ResponseEntity.status(HttpStatus.FORBIDDEN).body(new ErrorResponse("no college is associated with this account"));
+        };
     }
 
     @PostMapping("/me/check-out")

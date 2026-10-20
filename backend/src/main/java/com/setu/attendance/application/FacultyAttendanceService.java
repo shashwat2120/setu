@@ -54,12 +54,14 @@ public class FacultyAttendanceService {
     private final AuditLogWriter auditLogWriter;
     private final OutboxEventWriter outboxEventWriter;
     private final StaffAttendancePolicyService policyService;
+    private final StaffLocationPolicyService locationPolicyService;
 
     public FacultyAttendanceService(FacultyAttendanceRepository repository, FacultyAttendanceInsertGuard insertGuard,
                                      AcademicDirectory academic,
                                      TenantContext tenantContext, AuthorizationContext authorizationContext,
                                      AuditLogWriter auditLogWriter, OutboxEventWriter outboxEventWriter,
-                                     StaffAttendancePolicyService policyService) {
+                                     StaffAttendancePolicyService policyService, StaffLocationPolicyService locationPolicyService) {
+        this.locationPolicyService = locationPolicyService;
         this.outboxEventWriter = outboxEventWriter;
         this.policyService = policyService;
         this.repository = repository;
@@ -106,6 +108,16 @@ public class FacultyAttendanceService {
     /** Check in for today. First of the day wins; a second attempt (or a record an admin already made) is reported, not overwritten. */
     @Transactional
     public RecordResult checkIn() {
+        return checkInFrom(null);
+    }
+
+    /**
+     * Check in, optionally reporting where the device is. The position is used ONLY when the college has switched staff location on, and then only
+     * its outcome against the campus is stored (never the coordinates); a college that has not switched it on has the position ignored, so nothing
+     * about it is ever recorded. A check-in is never refused or altered because of where the device said it was.
+     */
+    @Transactional
+    public RecordResult checkInFrom(AttendanceRecordService.LocationReport location) {
         Optional<UUID> tenantId = tenantContext.tenantId();
         if (tenantId.isEmpty()) {
             return new RecordResult.NotAFaculty();
@@ -130,6 +142,14 @@ public class FacultyAttendanceService {
         }
         FacultyAttendance row = FacultyAttendance.checkIn(tenantId.get(), facultyId.get(), today, now);
         row.applyPolicy(policyService.currentRules(tenantId.get()), academic.timeZoneOf(tenantId.get()));
+        var campus = locationPolicyService.settingsFor(tenantId.get());
+        if (campus.enabled()) {
+            var outcome = location == null
+                ? new CheckInGeo.Outcome(com.setu.attendance.domain.CheckInLocation.NO_LOCATION, null, null)
+                : CheckInGeo.assess(campus.campusLatitude(), campus.campusLongitude(), location.latitude(), location.longitude(),
+                    location.accuracyMeters(), campus.radiusMeters());
+            row.recordCheckInLocation(outcome.status(), outcome.distanceMeters(), outcome.accuracyMeters());
+        }
         try {
             insertGuard.insert(row, () -> {
                 auditLogWriter.write(tenantId.get(), userId, "FACULTY_CHECKED_IN", "attendance.faculty_attendance", row.id(),
