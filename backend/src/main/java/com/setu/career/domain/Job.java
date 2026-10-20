@@ -68,6 +68,10 @@ public class Job {
     @Column(name = "graduating_year")
     private Integer graduatingYear;
 
+    /** Whether applying needs the student to have a resume. */
+    @Column(name = "requires_resume", nullable = false)
+    private boolean requiresResume;
+
     @Version
     private int version;
 
@@ -121,7 +125,7 @@ public class Job {
 
     /** What the officer said about who may apply and what the job is (see {@link JobTerms}); {@link JobTerms#NONE} when nothing was said. */
     public JobTerms terms() {
-        return new JobTerms(minCgpa, minAttendancePct, applicationDeadline, packageLpa, location, openings, jobType, allowedProgramIds, graduatingYear);
+        return new JobTerms(minCgpa, minAttendancePct, applicationDeadline, packageLpa, location, openings, jobType, allowedProgramIds, graduatingYear, requiresResume);
     }
 
     /**
@@ -143,6 +147,7 @@ public class Job {
         this.jobType = t.jobType();
         this.allowedProgramIds = t.allowedProgramIds();
         this.graduatingYear = t.graduatingYear();
+        this.requiresResume = t.requiresResume();
     }
 
     public void update(String title, String employer, String description) {

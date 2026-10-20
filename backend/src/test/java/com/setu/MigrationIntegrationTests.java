@@ -75,7 +75,8 @@ class MigrationIntegrationTests {
         // Updated for Sprint 6 (V80 to V93), which added the read-model copies each extracted service keeps of the facts it needs (52 `rm_*` tables
         // in all) and the per-consumer processed-event tables (8 in all), with no new schema. Counted on a clean database migrated to V94; V92, V93 and V94
         // add columns and indexes only.
-        assertThat(count).isEqualTo(148);
+        // V102 adds career.student_resumes (a student's resume), the first new table since V94: 149 in all.
+        assertThat(count).isEqualTo(149);
     }
 
     @Test

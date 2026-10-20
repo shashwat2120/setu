@@ -52,6 +52,7 @@ export const NAV_BY_ROLE: Record<RoleCode, NavItem[]> = {
     { to: '/app/student/success', label: 'Student Success' },
     { to: '/app/student/career', label: 'Career' },
     { to: '/app/student/applications', label: 'My Applications' },
+    { to: '/app/student/resume', label: 'Resume' },
     { to: '/app/student/finance', label: 'Finance' },
     { to: '/app/student/advisor', label: 'AI Advisor' },
   ],

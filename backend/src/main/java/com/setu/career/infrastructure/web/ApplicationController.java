@@ -30,11 +30,22 @@ public class ApplicationController {
     }
 
     public record ApplicationResponse(UUID id, UUID tenantId, UUID jobId, UUID studentId, String status, Instant appliedAt, String notes, String decisionReason,
-                                      Instant decidedAt) {
+                                      Instant decidedAt, boolean hasResume) {
     }
 
     private static ApplicationResponse toResponse(Application a) {
-        return new ApplicationResponse(a.id(), a.tenantId(), a.jobId(), a.studentId(), a.status().name(), a.appliedAt(), a.notes(), a.decisionReason(), a.decidedAt());
+        return new ApplicationResponse(a.id(), a.tenantId(), a.jobId(), a.studentId(), a.status().name(), a.appliedAt(), a.notes(), a.decisionReason(), a.decidedAt(),
+            a.resumeSnapshot() != null);
+    }
+
+    /** The resume this application was made with; 404 when it was made without one. */
+    @GetMapping("/{applicationId}/resume")
+    public ResponseEntity<?> resume(@PathVariable UUID applicationId) {
+        return switch (applicationService.resumeOf(applicationId)) {
+            case ApplicationService.ResumeResult.Found f -> ResponseEntity.ok(f.snapshot());
+            case ApplicationService.ResumeResult.None ignored -> ResponseEntity.status(HttpStatus.NOT_FOUND).body(new ErrorResponse("this application was made without a resume"));
+            case ApplicationService.ResumeResult.NotFound ignored -> ResponseEntity.status(HttpStatus.NOT_FOUND).build();
+        };
     }
 
     /** The reason is shown to the student; required to reject, optional otherwise. */

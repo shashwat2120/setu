@@ -43,6 +43,14 @@ public class Application {
     @Column(name = "decided_at")
     private Instant decidedAt;
 
+    /** The resume the application was made with (and the student's record then), as JSON; null if the student had none. */
+    @org.hibernate.annotations.JdbcTypeCode(org.hibernate.type.SqlTypes.JSON)
+    @Column(name = "resume_snapshot", columnDefinition = "jsonb")
+    private String resumeSnapshot;
+
+    @Column(name = "resume_version")
+    private Integer resumeVersion;
+
     protected Application() {
     }
 
@@ -89,6 +97,20 @@ public class Application {
 
     public Instant decidedAt() {
         return decidedAt;
+    }
+
+    public String resumeSnapshot() {
+        return resumeSnapshot;
+    }
+
+    public Integer resumeVersion() {
+        return resumeVersion;
+    }
+
+    /** Attaches the resume the student is applying with; only before the application is first saved. */
+    public void attachResume(String snapshotJson, int resumeVersion) {
+        this.resumeSnapshot = snapshotJson;
+        this.resumeVersion = resumeVersion;
     }
 
     public boolean canTransitionTo(ApplicationStatus target) {

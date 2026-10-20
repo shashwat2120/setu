@@ -3,7 +3,8 @@ import { useAuth } from '../../auth/AuthContext';
 import { tenantForRole } from '../../auth/types';
 import { apiFetch } from '../../api/client';
 import { useApiQuery } from '../../api/useApiQuery';
-import type { SkillResponse, JobResponse, ApplicationResponse, PlacementRecordResponse, JobEligibilityResponse, StudentSkillResponse } from '../../api/types';
+import { Link } from 'react-router-dom';
+import type { SkillResponse, JobResponse, ApplicationResponse, PlacementRecordResponse, JobEligibilityResponse, StudentSkillResponse, ResumeViewResponse } from '../../api/types';
 import { PageHeader } from '../../components/ui/PageHeader';
 import { DataTable, type Column } from '../../components/ui/DataTable';
 import { StatusBadge } from '../../components/ui/StatusBadge';
@@ -75,7 +76,8 @@ function MySkills({ studentId, tenantId }: { studentId: string; tenantId: string
 
 const SKILLS_CHANGED = 'setu:student-skills-changed';
 
-function JobCard({ job, studentId }: { job: JobResponse; studentId: string }) {
+/** @param resumeReady whether the student has a complete resume (a headline); null while that is still being looked up */
+function JobCard({ job, studentId, resumeReady }: { job: JobResponse; studentId: string; resumeReady: boolean | null }) {
   const eligibility = useApiQuery<JobEligibilityResponse>(
     `/career/applications/eligibility?jobId=${job.id}&studentId=${studentId}`,
   );
@@ -168,6 +170,13 @@ function JobCard({ job, studentId }: { job: JobResponse; studentId: string }) {
           </button>
         )}
       </div>
+      {!myApplication && job.status === 'OPEN' && !closedText && resumeReady !== null && (
+        <p style={{ fontSize: 12, color: 'var(--ink-soft)', marginTop: 6 }}>
+          {resumeReady
+            ? 'Your resume will be sent with your application.'
+            : <>You have no resume yet{job.requiresResume ? ', and this job needs one' : ', so the placement officer will have none to read'}: <Link to="/app/student/resume">add one</Link>.</>}
+        </p>
+      )}
       {error && <p style={{ fontSize: 12, color: 'var(--flag)', marginTop: 6 }}>{error}</p>}
     </div>
   );
@@ -180,6 +189,8 @@ export default function StudentCareerPage() {
 
   const jobs = useApiQuery<JobResponse[]>(tenantId ? `/career/jobs?tenantId=${tenantId}` : null);
   const placements = useApiQuery<PlacementRecordResponse[]>(studentId ? `/career/placement-records?studentId=${studentId}` : null);
+  const resume = useApiQuery<ResumeViewResponse>(studentId ? `/career/resumes?studentId=${studentId}` : null);
+  const resumeReady = resume.data ? Boolean(resume.data.content.headline) : resume.loading ? null : false;
 
   return (
     <div>
@@ -191,7 +202,7 @@ export default function StudentCareerPage() {
       <h2 style={{ fontSize: 18, margin: '24px 0 12px' }}>Job listings</h2>
       {jobs.loading && <Skeleton height={80} />}
       {jobs.data && jobs.data.length === 0 && <div className="card"><p style={{ color: 'var(--ink-soft)' }}>No jobs posted yet.</p></div>}
-      {jobs.data?.map((j) => studentId && <JobCard key={j.id} job={j} studentId={studentId} />)}
+      {jobs.data?.map((j) => studentId && <JobCard key={j.id} job={j} studentId={studentId} resumeReady={resumeReady} />)}
 
       {placements.data && placements.data.length > 0 && (
         <>

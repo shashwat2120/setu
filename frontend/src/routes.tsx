@@ -16,6 +16,7 @@ import StudentGradesPage from './pages/student/StudentGradesPage';
 import StudentRiskSuccessPage from './pages/student/StudentSuccessPage';
 import StudentCareerPage from './pages/student/StudentCareerPage';
 import StudentApplicationsPage from './pages/student/StudentApplicationsPage';
+import StudentResumePage from './pages/student/StudentResumePage';
 import PlacementStatisticsPage from './pages/placement/PlacementStatisticsPage';
 import StudentFinancePage from './pages/student/StudentFinancePage';
 import StudentAdvisorPage from './pages/student/StudentAdvisorPage';
@@ -126,6 +127,7 @@ export default function AppRoutes() {
             <Route path="student/success" element={<StudentRiskSuccessPage />} />
             <Route path="student/career" element={<StudentCareerPage />} />
             <Route path="student/applications" element={<StudentApplicationsPage />} />
+            <Route path="student/resume" element={<StudentResumePage />} />
             <Route path="student/finance" element={<StudentFinancePage />} />
             <Route path="student/advisor" element={<StudentAdvisorPage />} />
           </Route>

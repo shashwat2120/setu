@@ -42,6 +42,7 @@ career.jobs  Career
 career.placement_records  Career
 career.skill_categories  Career
 career.skills  Career
+career.student_resumes  Career
 career.student_skills  Career
 catalog.academic_periods  Academic
 catalog.academic_years  Academic

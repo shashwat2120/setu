@@ -75,12 +75,15 @@ public class ApplicationService {
     private final OutboxEventWriter outboxEventWriter;
     private final JobAvailability jobAvailability;
     private final PlacementRecordService placementRecordService;
+    private final ResumeService resumeService;
 
     public ApplicationService(ApplicationRepository applicationRepository, ApplicationInsertGuard applicationInsertGuard,
                                JobService jobService, JobSkillService jobSkillService, StudentSkillService studentSkillService,
                                StudentProfileService studentProfileService, CareerAccessSupport accessSupport,
                                AuthorizationContext authorizationContext, AuditLogWriter auditLogWriter, StudentStandings studentStandings,
-                               OutboxEventWriter outboxEventWriter, JobAvailability jobAvailability, PlacementRecordService placementRecordService) {
+                               OutboxEventWriter outboxEventWriter, JobAvailability jobAvailability, PlacementRecordService placementRecordService,
+                               ResumeService resumeService) {
+        this.resumeService = resumeService;
         this.placementRecordService = placementRecordService;
         this.jobAvailability = jobAvailability;
         this.studentStandings = studentStandings;
@@ -164,7 +167,8 @@ public class ApplicationService {
         }
         var terms = job.get().terms();
         StudentStandings.Standing standing = terms.hasAcademicRules() ? studentStandings.of(studentId).orElse(null) : null;
-        return EligibilityRules.unmet(terms, java.time.Instant.now(), standing).stream()
+        boolean hasResume = !terms.requiresResume() || resumeService.hasCompleteResume(studentId);
+        return EligibilityRules.unmet(terms, java.time.Instant.now(), standing, hasResume).stream()
             .map(u -> new UnmetRule(u.code(), u.message())).toList();
     }
 
@@ -217,6 +221,8 @@ public class ApplicationService {
         }
 
         Application application = new Application(UUID.randomUUID(), job.tenantId(), jobId, studentId, Instant.now());
+        // the application is made with the resume as it is now, and keeps it: the officer reviews what was submitted, not later edits
+        resumeService.snapshotJson(studentId).ifPresent(s -> application.attachResume(s.json(), s.resumeVersion()));
         try {
             applicationInsertGuard.insert(application);
         } catch (DataIntegrityViolationException e) {
@@ -225,6 +231,45 @@ public class ApplicationService {
         auditLogWriter.write(job.tenantId(), authorizationContext.currentUserId(), "APPLICATION_SUBMITTED",
             "career.applications", application.id(), Map.of("jobId", jobId, "studentId", studentId));
         return new ApplyResult.Success(application.id());
+    }
+
+    public sealed interface ResumeResult {
+        record Found(ResumeService.Snapshot snapshot) implements ResumeResult {
+        }
+
+        /** The application exists but was made without a resume. */
+        record None() implements ResumeResult {
+        }
+
+        record NotFound() implements ResumeResult {
+        }
+    }
+
+    /**
+     * The resume an application was made with: readable by the student whose application it is and by a placement officer of the college (an officer's reading is audited).
+     * Nobody else, and an officer reaches a student's resume only through an application, never by browsing.
+     */
+    @Transactional
+    public ResumeResult resumeOf(UUID applicationId) {
+        Optional<Application> maybe = applicationRepository.findById(applicationId);
+        if (maybe.isEmpty()) {
+            return new ResumeResult.NotFound();
+        }
+        Application application = maybe.get();
+        Optional<UUID> own = accessSupport.currentStudentId(application.tenantId());
+        boolean isOwn = own.isPresent() && own.get().equals(application.studentId());
+        if (own.isPresent() && !isOwn) {
+            throw new org.springframework.security.access.AccessDeniedException("permission_denied");
+        }
+        if (!isOwn) {
+            authorizationContext.assertCan(MANAGE_PERMISSION, ResourceRef.of("application", application.id(), application.tenantId()));
+            auditLogWriter.write(application.tenantId(), authorizationContext.currentUserId(), "RESUME_VIEWED", "career.applications", application.id(),
+                Map.of("studentId", application.studentId(), "jobId", application.jobId()));
+        }
+        if (application.resumeSnapshot() == null) {
+            return new ResumeResult.None();
+        }
+        return new ResumeResult.Found(resumeService.readSnapshot(application.resumeSnapshot()));
     }
 
     public sealed interface TransitionResult {

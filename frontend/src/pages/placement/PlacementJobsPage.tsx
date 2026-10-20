@@ -4,13 +4,15 @@ import { tenantForRole } from '../../auth/types';
 import { apiFetch } from '../../api/client';
 import { useApiQuery } from '../../api/useApiQuery';
 import type {
-  JobResponse, ApplicationResponse, SkillResponse, JobSkillResponse, StudentResponse, PageResponse, ProgramResponse,
+  ResumeSnapshotResponse, JobResponse, ApplicationResponse, SkillResponse, JobSkillResponse, StudentResponse, PageResponse, ProgramResponse,
 } from '../../api/types';
 import { JOB_TYPE_LABELS, batchYears, closedReasonText, fromLocalInput, openingsFilled, toLocalInput } from '../../lib/jobTerms';
 import { PageHeader } from '../../components/ui/PageHeader';
 import { DataTable, type Column } from '../../components/ui/DataTable';
 import { StatusBadge } from '../../components/ui/StatusBadge';
 import { ConfirmActionButton } from '../../components/ui/ConfirmActionButton';
+import { ResumeCard } from '../../components/career/ResumeCard';
+import { Skeleton } from '../../components/ui/EmptyState';
 
 const inputStyle: React.CSSProperties = {
   width: '100%', fontFamily: 'var(--font-body)', fontSize: 14, padding: '9px 12px',
@@ -29,6 +31,7 @@ function CreateJobForm({ tenantId, onCreated, job, onCancel }: { tenantId: strin
   const [deadline, setDeadline] = useState(toLocalInput(job?.applicationDeadline));
   const [allowedPrograms, setAllowedPrograms] = useState<string[]>(job?.allowedProgramIds ?? []);
   const [graduatingYear, setGraduatingYear] = useState(job?.graduatingYear != null ? String(job.graduatingYear) : '');
+  const [requiresResume, setRequiresResume] = useState(job?.requiresResume ?? false);
   const [packageLpa, setPackageLpa] = useState(job?.packageLpa != null ? String(job.packageLpa) : '');
   const [location, setLocation] = useState(job?.location ?? '');
   const [openings, setOpenings] = useState(job?.openings != null ? String(job.openings) : '');
@@ -57,13 +60,14 @@ function CreateJobForm({ tenantId, onCreated, job, onCancel }: { tenantId: strin
         jobType: jobType === '' ? null : jobType,
         allowedProgramIds: allowedPrograms.length > 0 ? allowedPrograms : null,
         graduatingYear: graduatingYear === '' ? null : Number(graduatingYear),
+        requiresResume,
       };
       await apiFetch(job ? `/career/jobs/${job.id}` : '/career/jobs', {
         method: job ? 'PUT' : 'POST',
         body: job ? { title, employer, description, expectedVersion: job.version, terms } : { tenantId, title, employer, description, ...terms },
       });
       if (!job) {
-        setMinCgpa(''); setMinAttendance(''); setDeadline(''); setAllowedPrograms([]); setGraduatingYear(''); setPackageLpa(''); setLocation(''); setOpenings(''); setJobType('');
+        setMinCgpa(''); setMinAttendance(''); setDeadline(''); setAllowedPrograms([]); setGraduatingYear(''); setRequiresResume(false); setPackageLpa(''); setLocation(''); setOpenings(''); setJobType('');
       }
       setTitle(''); setEmployer(''); setDescription('');
       setSuccess(true);
@@ -116,6 +120,12 @@ function CreateJobForm({ tenantId, onCreated, job, onCancel }: { tenantId: strin
             <label htmlFor="job-deadline" style={labelStyle}>Apply by</label>
             <input id="job-deadline" type="datetime-local" value={deadline} onChange={(e) => setDeadline(e.target.value)} style={{ ...inputStyle, width: 220 }} />
           </div>
+        </div>
+        <div style={{ marginBottom: 12 }}>
+          <label htmlFor="job-needs-resume" style={{ fontSize: 14 }}>
+            <input id="job-needs-resume" type="checkbox" checked={requiresResume} onChange={(e) => setRequiresResume(e.target.checked)} style={{ marginRight: 8 }} />
+            Applicants must have a resume
+          </label>
         </div>
         <div role="group" aria-labelledby="job-programs-label">
           <div id="job-programs-label" style={labelStyle}>Open to these programs (none ticked: any program)</div>
@@ -232,12 +242,29 @@ function RequiredSkills({ jobId, skills }: { jobId: string; skills: SkillRespons
 type DecisionAction = 'shortlist' | 'select' | 'reject';
 const DECISION_LABELS: Record<DecisionAction, string> = { shortlist: 'Shortlist', select: 'Select', reject: 'Reject' };
 
-function JobApplications({ jobId, jobPackageLpa, studentNameFor }: { jobId: string; jobPackageLpa: number | null; studentNameFor: (id: string) => string }) {
+/** The resume an application was made with, as the student submitted it. */
+function ApplicationResume({ applicationId, studentName, skillName, onClose }: { applicationId: string; studentName: string; skillName: (id: string) => string; onClose: () => void }) {
+  const snapshot = useApiQuery<ResumeSnapshotResponse>(`/career/applications/${applicationId}/resume`);
+  return (
+    <div style={{ margin: '12px 0' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+        <h4 style={{ fontSize: 15, margin: 0 }}>{studentName}&apos;s resume, as submitted{snapshot.data ? ` on ${new Date(snapshot.data.capturedAt).toLocaleDateString()}` : ''}</h4>
+        <button type="button" className="btn btn-ghost" style={{ padding: '6px 10px', fontSize: 12 }} onClick={onClose}>Close resume</button>
+      </div>
+      {snapshot.loading && <Skeleton height={80} />}
+      {snapshot.error && !snapshot.loading && <p role="alert" style={{ color: 'var(--flag)', fontSize: 13 }}>Could not load this resume.</p>}
+      {snapshot.data && <ResumeCard content={snapshot.data.content} record={snapshot.data.record} skills={snapshot.data.skills} skillName={skillName} />}
+    </div>
+  );
+}
+
+function JobApplications({ jobId, jobPackageLpa, studentNameFor, skillName }: { jobId: string; jobPackageLpa: number | null; studentNameFor: (id: string) => string; skillName: (id: string) => string }) {
   const applications = useApiQuery<ApplicationResponse[]>(`/career/applications/by-job?jobId=${jobId}`);
   const [actionError, setActionError] = useState<string | null>(null);
   const [deciding, setDeciding] = useState<{ id: string; action: DecisionAction } | null>(null);
   const [reason, setReason] = useState('');
   // selecting a student also records their offer: the package starts as the job's own, the joining date is optional
+  const [viewingResume, setViewingResume] = useState<string | null>(null);
   const [offerPackage, setOfferPackage] = useState('');
   const [joiningDate, setJoiningDate] = useState('');
 
@@ -270,6 +297,13 @@ function JobApplications({ jobId, jobPackageLpa, studentNameFor }: { jobId: stri
     { key: 'student', header: 'Student', render: (a) => studentNameFor(a.studentId) },
     { key: 'status', header: 'Status', render: (a) => <StatusBadge value={a.status} /> },
     { key: 'appliedAt', header: 'Applied', render: (a) => new Date(a.appliedAt).toLocaleDateString() },
+    {
+      key: 'resume',
+      header: 'Resume',
+      render: (a) => a.hasResume
+        ? <button type="button" className="btn btn-ghost" style={{ padding: '6px 10px', fontSize: 12 }} aria-expanded={viewingResume === a.id} onClick={() => setViewingResume(viewingResume === a.id ? null : a.id)}>View resume</button>
+        : 'None attached',
+    },
     { key: 'reason', header: 'Reason given', render: (a) => a.decisionReason ?? '' },
     {
       key: 'actions',
@@ -317,6 +351,10 @@ function JobApplications({ jobId, jobPackageLpa, studentNameFor }: { jobId: stri
       {actionError && <p style={{ color: 'var(--flag)', fontSize: 12, marginBottom: 8 }}>{actionError}</p>}
       <DataTable columns={columns} rows={applications.data} loading={applications.loading} error={applications.error}
         onRetry={applications.refetch} emptyTitle="No applications" emptyDescription="No students have applied to this job yet." rowKey={(a) => a.id} />
+      {viewingResume && applications.data?.some((a) => a.id === viewingResume) && (
+        <ApplicationResume applicationId={viewingResume} studentName={studentNameFor(applications.data.find((a) => a.id === viewingResume)!.studentId)} skillName={skillName}
+          onClose={() => setViewingResume(null)} />
+      )}
     </div>
   );
 }
@@ -405,7 +443,8 @@ export default function PlacementJobsPage() {
         rowKey={(j) => j.id}
       />
       {expandedJob?.panel === 'skills' && <RequiredSkills jobId={expandedJob.id} skills={skills.data} />}
-      {expandedJob?.panel === 'applications' && <JobApplications jobId={expandedJob.id} jobPackageLpa={jobs.data?.find((j) => j.id === expandedJob.id)?.packageLpa ?? null} studentNameFor={studentNameFor} />}
+      {expandedJob?.panel === 'applications' && <JobApplications jobId={expandedJob.id} jobPackageLpa={jobs.data?.find((j) => j.id === expandedJob.id)?.packageLpa ?? null} studentNameFor={studentNameFor}
+        skillName={(id) => skills.data?.find((s) => s.id === id)?.name ?? 'A skill'} />}
     </div>
   );
 }

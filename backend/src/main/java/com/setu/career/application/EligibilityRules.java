@@ -29,6 +29,7 @@ final class EligibilityRules {
     static final String MIN_ATTENDANCE = "MIN_ATTENDANCE";
     static final String PROGRAM_NOT_ALLOWED = "PROGRAM_NOT_ALLOWED";
     static final String GRADUATING_YEAR = "GRADUATING_YEAR";
+    static final String RESUME_REQUIRED = "RESUME_REQUIRED";
 
     private static final DateTimeFormatter DATE = DateTimeFormatter.ofPattern("d MMM yyyy, h:mm a", Locale.ENGLISH);
 
@@ -37,7 +38,15 @@ final class EligibilityRules {
 
     /** @param standing null if nothing could be learned about the student (they are then taken not to meet any rule that needs it) */
     static List<Unmet> unmet(JobTerms terms, Instant now, StudentStandings.Standing standing) {
+        return unmet(terms, now, standing, true);
+    }
+
+    /** @param hasResume whether the student has a complete resume; only asked about when the job needs one */
+    static List<Unmet> unmet(JobTerms terms, Instant now, StudentStandings.Standing standing, boolean hasResume) {
         List<Unmet> out = new ArrayList<>();
+        if (terms.requiresResume() && !hasResume) {
+            out.add(new Unmet(RESUME_REQUIRED, "This job needs a resume; add one under Resume (a headline is enough to begin)."));
+        }
         if (terms.applicationDeadline() != null && !now.isBefore(terms.applicationDeadline())) {
             out.add(new Unmet(DEADLINE_PASSED, "The application deadline passed on "
                 + DATE.format(terms.applicationDeadline().atZone(ZoneId.of("Asia/Kolkata"))) + " (IST)."));

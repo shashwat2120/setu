@@ -14,14 +14,20 @@ import java.util.UUID;
  * {@code location}, {@code openings} and {@code jobType} are information for the student and the officer and are not enforced.
  */
 public record JobTerms(BigDecimal minCgpa, BigDecimal minAttendancePct, Instant applicationDeadline, BigDecimal packageLpa, String location,
-                       Integer openings, JobType jobType, List<UUID> allowedProgramIds, Integer graduatingYear) {
+                       Integer openings, JobType jobType, List<UUID> allowedProgramIds, Integer graduatingYear, boolean requiresResume) {
 
-    public static final JobTerms NONE = new JobTerms(null, null, null, null, null, null, null, null, null);
+    public static final JobTerms NONE = new JobTerms(null, null, null, null, null, null, null, null, null, false);
+
+    /** A job that does not need a resume. */
+    public JobTerms(BigDecimal minCgpa, BigDecimal minAttendancePct, Instant applicationDeadline, BigDecimal packageLpa, String location,
+                    Integer openings, JobType jobType, List<UUID> allowedProgramIds, Integer graduatingYear) {
+        this(minCgpa, minAttendancePct, applicationDeadline, packageLpa, location, openings, jobType, allowedProgramIds, graduatingYear, false);
+    }
 
     /** A job open to every batch. */
     public JobTerms(BigDecimal minCgpa, BigDecimal minAttendancePct, Instant applicationDeadline, BigDecimal packageLpa, String location,
                     Integer openings, JobType jobType, List<UUID> allowedProgramIds) {
-        this(minCgpa, minAttendancePct, applicationDeadline, packageLpa, location, openings, jobType, allowedProgramIds, null);
+        this(minCgpa, minAttendancePct, applicationDeadline, packageLpa, location, openings, jobType, allowedProgramIds, null, false);
     }
 
     public JobTerms {

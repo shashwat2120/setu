@@ -65,12 +65,13 @@ export function jobFacts(job: Pick<JobResponse, 'packageLpa' | 'location' | 'ope
 }
 
 /** The rules a student must meet, one sentence each, so a student can read what a job asks before anything is checked. */
-export function jobRequirements(job: Pick<JobResponse, 'minCgpa' | 'minAttendancePct' | 'applicationDeadline' | 'allowedProgramIds' | 'graduatingYear'>, now: Date = new Date()): string[] {
+export function jobRequirements(job: Pick<JobResponse, 'minCgpa' | 'minAttendancePct' | 'applicationDeadline' | 'allowedProgramIds' | 'graduatingYear'> & { requiresResume?: boolean }, now: Date = new Date()): string[] {
   const rules: string[] = [];
   if (job.minCgpa != null) rules.push(`CGPA of at least ${plainNumber(job.minCgpa)}`);
   if (job.minAttendancePct != null) rules.push(`Attendance of at least ${plainNumber(job.minAttendancePct)}%`);
   if (job.allowedProgramIds && job.allowedProgramIds.length > 0) rules.push('Open to certain programs only');
   if (job.graduatingYear != null) rules.push(`Batch of ${job.graduatingYear} only`);
+  if (job.requiresResume) rules.push('Needs a resume');
   if (job.applicationDeadline) {
     const when = new Date(job.applicationDeadline);
     const text = when.toLocaleString([], { day: 'numeric', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit' });

@@ -415,6 +415,8 @@ export interface JobResponse {
   minAttendancePct?: number | null;
   applicationDeadline?: string | null;
   allowedProgramIds?: string[] | null;
+  /** Whether applying needs the student to have a resume. */
+  requiresResume?: boolean;
   /** How many students have been selected so far. */
   selectedCount?: number;
   /** Why the job takes no more applications: CLOSED (an officer closed it), DEADLINE_PASSED or FULL (every opening filled); null or absent while it does. */
@@ -439,6 +441,58 @@ export interface ApplicationResponse {
   /** What the placement officer told the student about the last decision; always present for a rejection. */
   decisionReason: string | null;
   decidedAt: string | null;
+  /** Whether the application was made with a resume. */
+  hasResume?: boolean;
+}
+
+export interface ResumeItem {
+  kind: string;
+  title: string;
+  organisation?: string | null;
+  description?: string | null;
+  startDate?: string | null;
+  endDate?: string | null;
+}
+
+export interface ResumeContent {
+  headline: string | null;
+  summary?: string | null;
+  linkedinUrl?: string | null;
+  githubUrl?: string | null;
+  portfolioUrl?: string | null;
+  items: ResumeItem[];
+}
+
+/** What the system itself holds about the student; any figure is null when it cannot be known yet. */
+export interface ResumeRecord {
+  cgpa: number | null;
+  attendancePercentage: number | null;
+  programId: string | null;
+  expectedGraduationYear: number | null;
+}
+
+export interface ResumeSkill {
+  skillId: string;
+  level: string | null;
+}
+
+/** GET /career/resumes: the student's own resume as it stands. */
+export interface ResumeViewResponse {
+  studentId: string;
+  version: number;
+  content: ResumeContent;
+  updatedAt: string | null;
+  record: ResumeRecord;
+  skills: ResumeSkill[];
+}
+
+/** GET /career/applications/{id}/resume: the resume the application was made with. */
+export interface ResumeSnapshotResponse {
+  capturedAt: string;
+  resumeVersion: number;
+  content: ResumeContent;
+  record: ResumeRecord;
+  skills: ResumeSkill[];
 }
 
 /** GET /career/placement-stats: the college's placement figures. Packages are in lakhs per annum; a percentage is null where there are no students to take it of. */
