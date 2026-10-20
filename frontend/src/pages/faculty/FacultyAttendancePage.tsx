@@ -80,7 +80,7 @@ export default function FacultyAttendancePage() {
     try {
       const endsAt = new Date(Date.now() + 30 * 60 * 1000).toISOString();
       // this device's position becomes the classroom position students are compared with; optional, so a refusal opens the session all the same
-      const found = await requestDevicePosition(6000);
+      const found = await requestDevicePosition(10000);
       const position = found.ok ? found.position : null;
       const result = await apiFetch<AttendanceOpenResponse>('/attendance/sessions', {
         method: 'POST',
