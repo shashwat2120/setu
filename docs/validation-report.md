@@ -226,6 +226,18 @@ A placement officer's shortlist, rejection or selection carries a reason the stu
 
 Tests added with the change: the officer's decisions (reason required, trimmed, bounded, not changeable after a decision, student and other-college officer refused, the database constraint itself, the event's content), the notification wording, and the officer's and student's pages. **Limits:** one college, example data; the officer's reason is shown to the student exactly as written, so the officer is responsible for what it says; no notification when a student withdraws; the notification says "Reason given" even for an optional note on a shortlist.
 
+## Placement: a job for one graduating batch, run live (2026-10-21)
+
+An officer can limit a job to the batch of a given year. A student's batch comes from their own record, never typed in: the admission year of their active program plus the program's length in years (its terms divided by the college's `terms_per_year` setting, 2 when unset, rounded up). A student of another batch, or whose record does not say, cannot apply and is told which batch the job is for and which theirs is. Run through the gateway on the containers with the demo seed's three batches (Ishaan admitted 2023, Priya 2024, Meera 2025; the seed now admits them in those years, and the running demo database was updated to match):
+
+| Student (batch) | Job for 2027 | Job for 2028 | Any batch |
+|---|---|---|---|
+| Ishaan (2027, final year) | can apply | "This job is for the batch of 2028; yours is 2027." | can apply |
+| Priya (2028) | "This job is for the batch of 2027; yours is 2028." | can apply; applying gives 201 | can apply |
+| Meera (2029) | refused, told hers is 2029 | refused, told hers is 2029 | can apply |
+
+A batch of 1999 is refused when the job is posted (400), and the database refuses it too. The form in the browser offers "Any batch" and the batches from last year to five years ahead. Unit tests cover the rule, the missing-record case, and a college with three terms a year (the same student graduates a year earlier). **Limits:** one batch per job (not "2026 or 2027"); the batch assumes terms are spread evenly across years and a student who takes longer or has a break keeps the batch their admission year gives; `terms_per_year` has no settings page yet, it is set in the college's settings.
+
 ## Not validated
 
 - Kafka consumer lag **under load**. (The dead-letter path **was** run with a real poison event on the real stack, see below.)

@@ -19,7 +19,8 @@ Run this after the main four-role script. Everything below was rehearsed on a fr
 2. **Skills** → *New skill*: Code `PYTHON`, Name `Python for Data Science`, Category `Software Engineering` → **Add skill**.
 3. **Jobs** → *Post a job*: Title `Machine Learning Engineer Trainee`, Employer `Nimbus AI Labs`, Description `Build and evaluate regression and classification models on real campus and industry datasets. Training provided.` → **Post job**.
 4. On that job → **Required skills**: Skill `Python for Data Science`, Level `INTERMEDIATE` → **Add**.
-5. `student.strong@demo.setu.local` → **Career**: the job says "Missing 1 required skill(s)". Skills → `Python for Data Science`, `INTERMEDIATE` → **Add skill** → it now says "You meet the skill requirements" → **Apply** (status SUBMITTED).
+5. (Optional, to show the graduating-batch rule: as the placement officer post a job with **Graduating batch: Batch of 2027**, then as `student.strong` (Ishaan, the final-year student, batch of 2027) Apply is offered, and as `student.average` (batch of 2028) it is refused with "yours is 2028".)
+   `student.strong@demo.setu.local` → **Career**: the job says "Missing 1 required skill(s)". Skills → `Python for Data Science`, `INTERMEDIATE` → **Add skill** → it now says "You meet the skill requirements" → **Apply** (status SUBMITTED).
 6. Back as the placement officer → **Jobs** → the job → **Applications** → **Shortlist** → **Select**.
 7. **Placements** → *Record a placement*: search `Ishaan`, pick the student, Job `Machine Learning Engineer Trainee`, Employer `Nimbus AI Labs`, Role `Machine Learning Engineer Trainee`, CTC `900000`, Placed on `2026-12-15` → **Record placement**.
 8. The student's **Career** page shows the new placement record.

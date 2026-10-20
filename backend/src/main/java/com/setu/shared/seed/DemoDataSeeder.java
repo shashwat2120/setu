@@ -645,7 +645,10 @@ public class DemoDataSeeder implements ApplicationRunner {
 
         userDirectoryService.authenticateForSeed(collegeAdmin.userId());
         for (SeededStudent s : all) {
-            studentProgramService.assign(s.studentId(), programId, curriculumId, 2024, true, LocalDate.of(2024, 6, 1));
+            // Three batches, so a job limited to one batch has someone to accept and someone to refuse: Ishaan is in his final year (the batch of 2027, admitted 2023),
+            // Meera in her second (2029, admitted 2025), the rest in their third (2028, admitted 2024). Only the admission year differs; every other record is the same.
+            int admissionYear = s == strong ? 2023 : s == intervention ? 2025 : 2024;
+            studentProgramService.assign(s.studentId(), programId, curriculumId, admissionYear, true, LocalDate.of(2024, 6, 1));
         }
         for (SeededStudent s : all) {
             userDirectoryService.authenticateForSeed(s.account().userId());

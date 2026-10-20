@@ -127,7 +127,7 @@ In the order that removes the most risk first.
    free-tier key, Gemini's included, and is worth checking against its terms before real students use the advisor.
 7. **Done** (item 6): the frontend test runner and its accessibility checks. **Next there:** data states for the remaining pages.
 8. **Analytics read models** when a consumer for them exists (item 9).
-9. **Placement, next phases** (phase 1, eligibility rules and job details, and the first part of phase 2, a reason with each decision and a notification to the student, are built: [validation-report](validation-report.md)). *Phase 2, still to do:* a college setting for whether a placed student may apply again, an eligibility exception an officer can
+9. **Placement, next phases** (the graduating-batch rule is built too; phase 1, eligibility rules and job details, and the first part of phase 2, a reason with each decision and a notification to the student, are built: [validation-report](validation-report.md)). *Phase 2, still to do:* a college setting for whether a placed student may apply again, an eligibility exception an officer can
    grant with a recorded reason, the job closing itself at its deadline, and openings enforced. *Phase 3:* placement statistics, an applicant export, résumés.
    Which of these a college wants first is a product decision, not a technical one.
 
