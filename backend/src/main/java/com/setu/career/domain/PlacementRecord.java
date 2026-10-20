@@ -48,6 +48,10 @@ public class PlacementRecord {
     @Column(name = "placed_at")
     private LocalDate placedAt;
 
+    /** When the student is to join the employer; null when it is not known yet. */
+    @Column(name = "joining_date")
+    private LocalDate joiningDate;
+
     protected PlacementRecord() {
     }
 
@@ -99,5 +103,14 @@ public class PlacementRecord {
 
     public LocalDate placedAt() {
         return placedAt;
+    }
+
+    public LocalDate joiningDate() {
+        return joiningDate;
+    }
+
+    /** Records when the student joins. */
+    public void joiningOn(LocalDate date) {
+        this.joiningDate = date;
     }
 }

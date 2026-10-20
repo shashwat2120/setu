@@ -38,7 +38,7 @@ public class ApplicationController {
     }
 
     /** The reason is shown to the student; required to reject, optional otherwise. */
-    public record DecisionRequest(String reason) {
+    public record DecisionRequest(String reason, java.math.BigDecimal packageLpa, java.time.LocalDate joiningDate) {
     }
 
     @PostMapping
@@ -95,6 +95,7 @@ public class ApplicationController {
                 ResponseEntity.status(HttpStatus.CONFLICT).body(new ErrorResponse("invalid status transition"));
             case ApplicationService.TransitionResult.ReasonRequired ignored ->
                 ResponseEntity.badRequest().body(new ErrorResponse("a rejection needs a reason, which the student is shown"));
+            case ApplicationService.TransitionResult.InvalidOffer r -> ResponseEntity.badRequest().body(new ErrorResponse(r.message()));
             case ApplicationService.TransitionResult.OpeningsFilled r ->
                 ResponseEntity.status(HttpStatus.CONFLICT).body(new ErrorResponse("all " + r.openings() + " opening" + (r.openings() == 1 ? " is" : "s are") + " already filled"));
             case ApplicationService.TransitionResult.ReasonTooLong ignored ->
@@ -114,7 +115,8 @@ public class ApplicationController {
 
     @PostMapping("/{applicationId}/select")
     public ResponseEntity<?> select(@PathVariable UUID applicationId, @RequestBody(required = false) DecisionRequest body) {
-        return handleTransition(applicationService.select(applicationId, body == null ? null : body.reason()));
+        return handleTransition(applicationService.select(applicationId, body == null ? null : body.reason(),
+            body == null ? null : new ApplicationService.Offer(body.packageLpa(), body.joiningDate())));
     }
 
     @PostMapping("/{applicationId}/withdraw")

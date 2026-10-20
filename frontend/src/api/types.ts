@@ -448,8 +448,11 @@ export interface PlacementRecordResponse {
   jobId: string;
   employer: string;
   role: string;
-  ctc: number;
+  /** Rupees a year. */
+  ctc: number | null;
   placedAt: string;
+  /** When the student joins the employer; null when not known yet. */
+  joiningDate?: string | null;
 }
 
 // --- Risk / Student Success ---

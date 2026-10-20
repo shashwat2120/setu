@@ -17,6 +17,11 @@ export function batchYears(current?: number | null, now: Date = new Date()): num
   return years.sort((a, b) => a - b);
 }
 
+/** A yearly pay in rupees as lakhs per annum, the way a package is written: 650000 is "₹6.5 LPA". */
+export function ctcAsLpa(ctc: number | null | undefined): string | null {
+  return ctc == null ? null : `₹${plainNumber(ctc / 100000)} LPA`;
+}
+
 /** Why a job takes no more applications, in a sentence; null while it does. */
 export function closedReasonText(reason: string | null | undefined): string | null {
   switch (reason) {

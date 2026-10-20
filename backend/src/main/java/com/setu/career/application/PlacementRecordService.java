@@ -72,13 +72,27 @@ public class PlacementRecordService {
         }
         UUID tenantId = studentInfo.get().tenantId();
         authorizationContext.assertCan(MANAGE_PERMISSION, ResourceRef.of("placement_record", UUID.randomUUID(), tenantId));
+        return create(tenantId, studentId, jobId, employer, role, ctc, placedAt, null);
+    }
 
+    /**
+     * The placement that follows from selecting a student for a job: the employer and role are the job's, the package is what the offer says, the placement is dated today and
+     * the student joins on {@code joiningDate} (null when not known). No authorization of its own: the officer has been authorized to make the decision this follows from, and
+     * this runs in that decision's transaction, so a selection and its placement are made together or not at all.
+     */
+    @Transactional
+    RecordResult recordFromSelection(UUID tenantId, UUID studentId, UUID jobId, String employer, String role, BigDecimal ctc, LocalDate joiningDate) {
+        return create(tenantId, studentId, jobId, employer, role, ctc, LocalDate.now(), joiningDate);
+    }
+
+    private RecordResult create(UUID tenantId, UUID studentId, UUID jobId, String employer, String role, BigDecimal ctc, LocalDate placedAt, LocalDate joiningDate) {
         PlacementRecord placement;
         try {
             placement = new PlacementRecord(UUID.randomUUID(), tenantId, studentId, jobId, employer, role, ctc, placedAt);
         } catch (IllegalArgumentException e) {
             return new RecordResult.InvalidData(e.getMessage());
         }
+        placement.joiningOn(joiningDate);
         placementRecordRepository.saveAndFlush(placement);
 
         UUID correlationId = UUID.randomUUID();

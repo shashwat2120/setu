@@ -9,7 +9,7 @@ import { DataTable, type Column } from '../../components/ui/DataTable';
 import { StatusBadge } from '../../components/ui/StatusBadge';
 import { ConfirmActionButton } from '../../components/ui/ConfirmActionButton';
 import { Skeleton } from '../../components/ui/EmptyState';
-import { closedReasonText, jobFacts, jobRequirements } from '../../lib/jobTerms';
+import { closedReasonText, ctcAsLpa, jobFacts, jobRequirements } from '../../lib/jobTerms';
 
 function MySkills({ studentId, tenantId }: { studentId: string; tenantId: string }) {
   const mySkills = useApiQuery<StudentSkillResponse[]>(`/career/student-skills?studentId=${studentId}`);
@@ -199,7 +199,7 @@ export default function StudentCareerPage() {
           {placements.data.map((p) => (
             <div key={p.id} className="card" style={{ marginBottom: 12 }}>
               <strong>{p.employer}</strong> — {p.role}
-              <div style={{ fontSize: 13, color: 'var(--ink-soft)', marginTop: 4 }}>CTC {p.ctc} · Placed {p.placedAt}</div>
+              <div style={{ fontSize: 13, color: 'var(--ink-soft)', marginTop: 4 }}>{[ctcAsLpa(p.ctc) && `Package ${ctcAsLpa(p.ctc)}`, `Placed ${p.placedAt}`, p.joiningDate ? `Joining ${p.joiningDate}` : null].filter(Boolean).join(' · ')}</div>
             </div>
           ))}
         </>

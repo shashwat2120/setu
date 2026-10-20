@@ -30,11 +30,11 @@ public class PlacementRecordController {
     }
 
     public record PlacementRecordResponse(UUID id, UUID tenantId, UUID studentId, UUID jobId, String employer, String role,
-                                           BigDecimal ctc, LocalDate placedAt) {
+                                           BigDecimal ctc, LocalDate placedAt, LocalDate joiningDate) {
     }
 
     private static PlacementRecordResponse toResponse(PlacementRecord p) {
-        return new PlacementRecordResponse(p.id(), p.tenantId(), p.studentId(), p.jobId(), p.employer(), p.role(), p.ctc(), p.placedAt());
+        return new PlacementRecordResponse(p.id(), p.tenantId(), p.studentId(), p.jobId(), p.employer(), p.role(), p.ctc(), p.placedAt(), p.joiningDate());
     }
 
     @PostMapping

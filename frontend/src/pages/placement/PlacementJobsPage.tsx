@@ -232,13 +232,18 @@ function RequiredSkills({ jobId, skills }: { jobId: string; skills: SkillRespons
 type DecisionAction = 'shortlist' | 'select' | 'reject';
 const DECISION_LABELS: Record<DecisionAction, string> = { shortlist: 'Shortlist', select: 'Select', reject: 'Reject' };
 
-function JobApplications({ jobId, studentNameFor }: { jobId: string; studentNameFor: (id: string) => string }) {
+function JobApplications({ jobId, jobPackageLpa, studentNameFor }: { jobId: string; jobPackageLpa: number | null; studentNameFor: (id: string) => string }) {
   const applications = useApiQuery<ApplicationResponse[]>(`/career/applications/by-job?jobId=${jobId}`);
   const [actionError, setActionError] = useState<string | null>(null);
   const [deciding, setDeciding] = useState<{ id: string; action: DecisionAction } | null>(null);
   const [reason, setReason] = useState('');
+  // selecting a student also records their offer: the package starts as the job's own, the joining date is optional
+  const [offerPackage, setOfferPackage] = useState('');
+  const [joiningDate, setJoiningDate] = useState('');
 
-  const open = (id: string, action: DecisionAction) => { setActionError(null); setReason(''); setDeciding({ id, action }); };
+  const open = (id: string, action: DecisionAction) => {
+    setActionError(null); setReason(''); setOfferPackage(jobPackageLpa != null ? String(jobPackageLpa) : ''); setJoiningDate(''); setDeciding({ id, action });
+  };
 
   /** The reason is what the student is shown, so it is part of the decision, and a rejection cannot be sent without one. */
   const decide = async () => {
@@ -250,7 +255,10 @@ function JobApplications({ jobId, studentNameFor }: { jobId: string; studentName
     }
     setActionError(null);
     try {
-      await apiFetch(`/career/applications/${deciding.id}/${deciding.action}`, { method: 'POST', body: { reason: text || null } });
+      const offer = deciding.action === 'select'
+        ? { packageLpa: offerPackage.trim() === '' ? null : Number(offerPackage), joiningDate: joiningDate || null }
+        : {};
+      await apiFetch(`/career/applications/${deciding.id}/${deciding.action}`, { method: 'POST', body: { reason: text || null, ...offer } });
       setDeciding(null);
       applications.refetch();
     } catch (err) {
@@ -275,6 +283,15 @@ function JobApplications({ jobId, studentNameFor }: { jobId: string; studentName
                 {rejecting ? 'Reason shown to the student (required)' : 'Note shown to the student (optional)'}
               </label>
               <textarea id={`reason-${a.id}`} value={reason} maxLength={500} rows={2} onChange={(e) => setReason(e.target.value)} style={inputStyle} />
+              {deciding.action === 'select' && (
+                <>
+                  <label htmlFor={`offer-package-${a.id}`} style={{ fontSize: 12, fontWeight: 600 }}>Package offered (LPA)</label>
+                  <input id={`offer-package-${a.id}`} type="number" min={0} max={1000} step="0.01" value={offerPackage} onChange={(e) => setOfferPackage(e.target.value)} style={inputStyle} />
+                  <label htmlFor={`offer-joining-${a.id}`} style={{ fontSize: 12, fontWeight: 600 }}>Joining date (optional)</label>
+                  <input id={`offer-joining-${a.id}`} type="date" value={joiningDate} onChange={(e) => setJoiningDate(e.target.value)} style={inputStyle} />
+                  <p style={{ fontSize: 12, color: 'var(--ink-soft)' }}>Selecting records this student&apos;s placement with this offer.</p>
+                </>
+              )}
               <div style={{ display: 'flex', gap: 8 }}>
                 <button type="button" className={`btn btn-${rejecting ? 'danger' : 'primary'}`} style={{ padding: '8px 14px', fontSize: 13 }} onClick={decide}>
                   {DECISION_LABELS[deciding.action]}
@@ -388,7 +405,7 @@ export default function PlacementJobsPage() {
         rowKey={(j) => j.id}
       />
       {expandedJob?.panel === 'skills' && <RequiredSkills jobId={expandedJob.id} skills={skills.data} />}
-      {expandedJob?.panel === 'applications' && <JobApplications jobId={expandedJob.id} studentNameFor={studentNameFor} />}
+      {expandedJob?.panel === 'applications' && <JobApplications jobId={expandedJob.id} jobPackageLpa={jobs.data?.find((j) => j.id === expandedJob.id)?.packageLpa ?? null} studentNameFor={studentNameFor} />}
     </div>
   );
 }

@@ -9,6 +9,8 @@ import com.setu.career.domain.ProficiencyLevel;
 import com.setu.career.domain.StudentSkill;
 import com.setu.career.infrastructure.ApplicationInsertGuard;
 import com.setu.career.infrastructure.ApplicationRepository;
+import java.math.BigDecimal;
+import java.time.LocalDate;
 import com.setu.directory.application.StudentProfileService;
 import com.setu.shared.authorization.AuthorizationContext;
 import com.setu.shared.career.StudentStandings;
@@ -72,12 +74,14 @@ public class ApplicationService {
     private final StudentStandings studentStandings;
     private final OutboxEventWriter outboxEventWriter;
     private final JobAvailability jobAvailability;
+    private final PlacementRecordService placementRecordService;
 
     public ApplicationService(ApplicationRepository applicationRepository, ApplicationInsertGuard applicationInsertGuard,
                                JobService jobService, JobSkillService jobSkillService, StudentSkillService studentSkillService,
                                StudentProfileService studentProfileService, CareerAccessSupport accessSupport,
                                AuthorizationContext authorizationContext, AuditLogWriter auditLogWriter, StudentStandings studentStandings,
-                               OutboxEventWriter outboxEventWriter, JobAvailability jobAvailability) {
+                               OutboxEventWriter outboxEventWriter, JobAvailability jobAvailability, PlacementRecordService placementRecordService) {
+        this.placementRecordService = placementRecordService;
         this.jobAvailability = jobAvailability;
         this.studentStandings = studentStandings;
         this.outboxEventWriter = outboxEventWriter;
@@ -240,6 +244,10 @@ public class ApplicationService {
         record ReasonTooLong() implements TransitionResult {
         }
 
+        /** The offer's package or joining date makes no sense; the message says which. */
+        record InvalidOffer(String message) implements TransitionResult {
+        }
+
         /** Selecting would go past the job's openings. */
         record OpeningsFilled(int openings) implements TransitionResult {
         }
@@ -266,12 +274,30 @@ public class ApplicationService {
 
     @Transactional
     public TransitionResult select(UUID applicationId) {
-        return select(applicationId, null);
+        return select(applicationId, null, null);
     }
 
     @Transactional
     public TransitionResult select(UUID applicationId, String reason) {
-        return decide(applicationId, ApplicationStatus.SELECTED, reason, "APPLICATION_SELECTED");
+        return select(applicationId, reason, null);
+    }
+
+    /** What the officer offers the student they select: the package in lakhs per annum (the job's own when none is given) and the date they join (optional). */
+    public record Offer(BigDecimal packageLpa, LocalDate joiningDate) {
+        static final Offer NONE = new Offer(null, null);
+    }
+
+    /** Selecting a student also records their placement, in the same transaction, from the job and this offer. */
+    @Transactional
+    public TransitionResult select(UUID applicationId, String reason, Offer offer) {
+        Offer o = offer == null ? Offer.NONE : offer;
+        if (o.packageLpa() != null && (o.packageLpa().signum() < 0 || o.packageLpa().compareTo(BigDecimal.valueOf(1000)) > 0)) {
+            return new TransitionResult.InvalidOffer("the package must be between 0 and 1000 lakhs per annum");
+        }
+        if (o.joiningDate() != null && o.joiningDate().isBefore(LocalDate.now())) {
+            return new TransitionResult.InvalidOffer("the joining date cannot be in the past");
+        }
+        return decide(applicationId, ApplicationStatus.SELECTED, reason, "APPLICATION_SELECTED", o);
     }
 
     @Transactional
@@ -290,6 +316,10 @@ public class ApplicationService {
      * status moves only from the expected one, and the student is told through the outbox in the same transaction (so a decision is never announced and then rolled back, nor made unannounced).
      */
     private TransitionResult decide(UUID applicationId, ApplicationStatus target, String rawReason, String auditAction) {
+        return decide(applicationId, target, rawReason, auditAction, Offer.NONE);
+    }
+
+    private TransitionResult decide(UUID applicationId, ApplicationStatus target, String rawReason, String auditAction, Offer offer) {
         Optional<Application> maybeApplication = applicationRepository.findById(applicationId);
         if (maybeApplication.isEmpty()) {
             return new TransitionResult.NotFound();
@@ -319,6 +349,15 @@ public class ApplicationService {
             return new TransitionResult.InvalidTransition();
         }
         Job job = jobService.findById(application.jobId()).orElseThrow();
+        if (target == ApplicationStatus.SELECTED) {
+            // the placement that follows from the selection, made in the same transaction: the package is the offer's, else the job's, in rupees a year
+            BigDecimal lpa = offer.packageLpa() != null ? offer.packageLpa() : job.terms().packageLpa();
+            BigDecimal ctc = lpa == null ? null : lpa.multiply(BigDecimal.valueOf(100000)).setScale(2, java.math.RoundingMode.HALF_UP);
+            var placed = placementRecordService.recordFromSelection(application.tenantId(), application.studentId(), job.id(), job.employer(), job.title(), ctc, offer.joiningDate());
+            if (placed instanceof PlacementRecordService.RecordResult.InvalidData invalid) {
+                throw new IllegalStateException("the placement for a selection could not be recorded: " + invalid.message());
+            }
+        }
         UUID correlationId = UUID.randomUUID();
         var event = new ApplicationDecidedEvent(UUID.randomUUID(), now, application.tenantId(), application.id(), correlationId, null,
             application.id(), application.studentId(), job.id(), job.title(), job.employer(), target.name(), reason);

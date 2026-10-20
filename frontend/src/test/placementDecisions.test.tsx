@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { apiFetch } from '../api/client';
 import PlacementJobsPage from '../pages/placement/PlacementJobsPage';
 import StudentCareerPage from '../pages/student/StudentCareerPage';
+import { ctcAsLpa } from '../lib/jobTerms';
 import { expectAccessible, mockApi, renderPage, signedInAs, TENANT } from './helpers';
 
 const STUDENT = '44444444-4444-4444-8444-444444444444';
@@ -79,6 +80,56 @@ describe('the officer decides an application and says why', () => {
     await user.click(within(screen.getByLabelText('Note shown to the student (optional)').parentElement as HTMLElement).getByRole('button', { name: 'Shortlist' }));
 
     await waitFor(() => expect(decisions).toEqual([{ path: '/career/applications/app-1/shortlist', body: { reason: null } }]));
+  });
+});
+
+describe('selecting a student records the offer', () => {
+  it('starts the package at the job\'s own, and sends the package and joining date with the selection', async () => {
+    signedInAs('PLACEMENT_OFFICER');
+    const decisions: Array<{ path: string; body: unknown }> = [];
+    mockApi({
+      '/career/jobs': [{ ...job, packageLpa: 8.5 }],
+      '/career/skills': [], '/catalog/programs': [],
+      '/directory/students': { content: [{ id: STUDENT, firstName: 'Priya', lastName: 'Nair' }], page: 0, size: 500, totalElements: 1, totalPages: 1 },
+      '/career/job-skills': [],
+      '/career/applications/by-job': [application({ status: 'SHORTLISTED' })],
+      '/career/applications/app-1': (path: string, init?: { method?: string; body?: unknown }) => { decisions.push({ path, body: init?.body }); return undefined; },
+    });
+    const user = userEvent.setup();
+    renderPage(<PlacementJobsPage />);
+
+    await user.click(await screen.findByRole('button', { name: 'Applications' }));
+    await user.click(await screen.findByRole('button', { name: 'Select' }));
+    const pkg = screen.getByLabelText('Package offered (LPA)') as HTMLInputElement;
+    expect(pkg.value).toBe('8.5');
+    await user.clear(pkg);
+    await user.type(pkg, '9.25');
+    await user.type(screen.getByLabelText('Joining date (optional)'), '2027-07-01');
+    await user.click(within(pkg.parentElement as HTMLElement).getByRole('button', { name: 'Select' }));
+
+    await waitFor(() => expect(decisions).toEqual([{ path: '/career/applications/app-1/select', body: { reason: null, packageLpa: 9.25, joiningDate: '2027-07-01' } }]));
+  });
+
+  it('shows no offer fields for a shortlist or a rejection', async () => {
+    signedInAs('PLACEMENT_OFFICER');
+    mockApi({
+      '/career/jobs': [job], '/career/skills': [], '/catalog/programs': [],
+      '/directory/students': { content: [], page: 0, size: 500, totalElements: 0, totalPages: 0 }, '/career/job-skills': [],
+      '/career/applications/by-job': [application()],
+    });
+    const user = userEvent.setup();
+    renderPage(<PlacementJobsPage />);
+
+    await user.click(await screen.findByRole('button', { name: 'Applications' }));
+    await user.click(await screen.findByRole('button', { name: 'Shortlist' }));
+
+    expect(screen.queryByLabelText('Package offered (LPA)')).toBeNull();
+  });
+
+  it('writes a package the way people do', () => {
+    expect(ctcAsLpa(650000)).toBe('₹6.5 LPA');
+    expect(ctcAsLpa(925000)).toBe('₹9.25 LPA');
+    expect(ctcAsLpa(null)).toBeNull();
   });
 });
 

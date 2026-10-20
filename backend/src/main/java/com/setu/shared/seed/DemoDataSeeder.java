@@ -962,9 +962,8 @@ public class DemoDataSeeder implements ApplicationRunner {
         if (applicationId.isPresent()) {
             userDirectoryService.authenticateForSeed(placementOfficer.userId());
             applicationService.shortlist(applicationId.get());
-            applicationService.select(applicationId.get());
-            placementRecordService.record(strong.studentId(), jobId, "Brightline Technologies", "Graduate Software Engineer",
-                new BigDecimal("650000"), LocalDate.now().plusMonths(2));
+            // selecting records the placement too, from the job and this offer (6.5 lakhs a year, joining in two months)
+            applicationService.select(applicationId.get(), null, new ApplicationService.Offer(new BigDecimal("6.5"), LocalDate.now().plusMonths(2)));
         }
 
         // A second job in a different, still-OPEN lifecycle state (no application yet) — so the placement
