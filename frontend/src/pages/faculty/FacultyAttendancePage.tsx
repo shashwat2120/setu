@@ -101,6 +101,9 @@ export default function FacultyAttendancePage() {
             const qr = await apiFetch<{ qrToken: string; qrExpiresAt: string }>(`/attendance/sessions/${open.id}/qr`);
             setSession({ sessionId: open.id, qrToken: qr.qrToken, qrExpiresAt: qr.qrExpiresAt });
             setClosedCount(null);
+            // a resumed session keeps whatever it was opened with: say so, so an instructor is not left wondering why students show no distance
+            setClassroomShared(open.hasClassroomPosition ?? null);
+            setClassroomHint(open.hasClassroomPosition === false ? 'This session was opened without it and cannot gain one: close it and open a new session, allowing location, to compare check-ins with the room.' : null);
           } else {
             setActionError('An attendance session is already open for this meeting, but it could not be found to resume.');
           }
@@ -228,7 +231,7 @@ export default function FacultyAttendancePage() {
           </button>
         ) : (
           <div>
-            <div className="badge badge-active" style={{ marginBottom: 12 }}>SESSION OPEN</div>
+            <div className={closedCount === null ? 'badge badge-active' : 'badge'} style={{ marginBottom: 12 }}>{closedCount === null ? 'SESSION OPEN' : 'SESSION CLOSED'}</div>
             {closedCount === null ? (
               <>
                 <p style={{ marginBottom: 8 }}>Session ID: <span className="mono" style={{ fontWeight: 700 }}>{session.sessionId}</span></p>
@@ -262,9 +265,19 @@ export default function FacultyAttendancePage() {
                 </p>
               </>
             ) : (
-              <p>
-                Session closed. {closedCount} student{closedCount === 1 ? '' : 's'} marked absent automatically for not scanning.
-              </p>
+              <>
+                <p>
+                  Session closed. {closedCount} student{closedCount === 1 ? '' : 's'} marked absent automatically for not scanning.
+                </p>
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  style={{ marginTop: 10 }}
+                  onClick={() => { setSession(null); setClosedCount(null); setClassroomShared(null); setClassroomHint(null); setActionError(null); }}
+                >
+                  Open another session
+                </button>
+              </>
             )}
           </div>
         )}

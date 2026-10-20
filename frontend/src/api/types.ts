@@ -178,6 +178,8 @@ export interface AttendanceSessionResponse {
   startedAt: string;
   endsAt: string;
   status: string;
+  /** Whether the instructor shared a classroom position when opening this session. */
+  hasClassroomPosition?: boolean;
 }
 
 export interface AttendanceOpenResponse {

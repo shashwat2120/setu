@@ -1,7 +1,7 @@
 import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { apiFetch } from '../api/client';
+import { ApiError, apiFetch } from '../api/client';
 import FacultyAttendancePage from '../pages/faculty/FacultyAttendancePage';
 import StudentAttendancePage from '../pages/student/StudentAttendancePage';
 import { expectAccessible, mockApi, renderPage, signedInAs, TENANT } from './helpers';
@@ -217,6 +217,56 @@ describe('instructor live attendance (tables, status, location signal)', () => {
 
     expect(requestBody('/attendance/sessions')).not.toHaveProperty('latitude');
     expect(await screen.findByText(/not shared from this device/)).toBeTruthy();
+  });
+
+  it('says the session is closed once it is, and lets the instructor open another without reloading', async () => {
+    signedInAs('FACULTY');
+    geolocation('ok');
+    mockApi({
+      '/enrollment/faculty-assignments': [{ id: 'a', tenantId: TENANT, sectionId: SECTION, facultyId: 'f', role: 'PRIMARY', allocationPct: 100, startsAt: null, endsAt: null, active: true }],
+      '/enrollment/course-sections/': section,
+      '/catalog/courses/': course,
+      '/catalog/meeting-patterns': [{ id: MEETING, tenantId: TENANT, sectionId: SECTION, dayOfWeek: 1, startTime: '09:00', endTime: '10:00', roomId: 'r', effectiveFrom: '2026-01-01', effectiveTo: null }],
+      [`/attendance/sessions/${SESSION}/close`]: { absentRecordsGenerated: 4 },
+      '/attendance/sessions/': [],
+      '/attendance/sessions': { sessionId: SESSION, qrToken: 'rotating-token', qrExpiresAt: '2026-10-19T09:30:00Z' },
+    });
+    const user = userEvent.setup();
+    renderPage(<FacultyAttendancePage />);
+    await openSession(user);
+
+    await user.click(await screen.findByRole('button', { name: 'Close session' }));
+
+    expect(await screen.findByText('SESSION CLOSED')).toBeTruthy();
+    expect(screen.queryByText('SESSION OPEN')).toBeNull();
+    expect(screen.getByText(/4 students marked absent automatically/)).toBeTruthy();
+    await user.click(screen.getByRole('button', { name: 'Open another session' }));
+    expect(await screen.findByRole('button', { name: 'Open attendance session' })).toBeTruthy();
+  });
+
+  it('says so when it resumes a session that was opened without a classroom position', async () => {
+    signedInAs('FACULTY');
+    geolocation('ok');
+    mockApi({
+      '/enrollment/faculty-assignments': [{ id: 'a', tenantId: TENANT, sectionId: SECTION, facultyId: 'f', role: 'PRIMARY', allocationPct: 100, startsAt: null, endsAt: null, active: true }],
+      '/enrollment/course-sections/': section,
+      '/catalog/courses/': course,
+      '/catalog/meeting-patterns': [{ id: MEETING, tenantId: TENANT, sectionId: SECTION, dayOfWeek: 1, startTime: '09:00', endTime: '10:00', roomId: 'r', effectiveFrom: '2026-01-01', effectiveTo: null }],
+      [`/attendance/sessions/${SESSION}/qr`]: { qrToken: 'again', qrExpiresAt: '2026-10-19T09:30:00Z' },
+      '/attendance/sessions/': [],
+      '/attendance/sessions': (_p: string, init?: { method?: string }) => {
+        if (init?.method === 'POST') throw new ApiError(409, 'an attendance session is already open for this meeting');
+        return [{ id: SESSION, tenantId: TENANT, sectionId: SECTION, meetingId: MEETING, startedAt: '2026-10-19T09:00:00Z', endsAt: '2026-10-19T10:00:00Z', status: 'OPEN', hasClassroomPosition: false }];
+      },
+    });
+    const user = userEvent.setup();
+    renderPage(<FacultyAttendancePage />);
+
+    await user.click(await screen.findByRole('button', { name: 'Open attendance session' }));
+
+    const note = await screen.findByText(/not shared from this device/);
+    expect(note.textContent).toContain('opened without it and cannot gain one');
+    expect(note.textContent).toContain('close it and open a new session');
   });
 
   it('shows where each student checked in from, in words, with a table a screen reader can navigate', async () => {

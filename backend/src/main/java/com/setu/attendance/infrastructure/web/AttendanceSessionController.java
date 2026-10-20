@@ -56,8 +56,9 @@ public class AttendanceSessionController {
         };
     }
 
+    /** {@code hasClassroomPosition}: whether the instructor shared a classroom position when opening (so check-ins can be compared with it). Never the position itself. */
     public record SessionResponse(UUID id, UUID tenantId, UUID sectionId, UUID meetingId, Instant startedAt,
-                                   Instant endsAt, String status) {
+                                   Instant endsAt, String status, boolean hasClassroomPosition) {
     }
 
     @GetMapping("/{sessionId}")
@@ -69,7 +70,8 @@ public class AttendanceSessionController {
     }
 
     private static SessionResponse toResponse(AttendanceSession s) {
-        return new SessionResponse(s.id(), s.tenantId(), s.sectionId(), s.meetingId(), s.startedAt(), s.endsAt(), s.status().name());
+        return new SessionResponse(s.id(), s.tenantId(), s.sectionId(), s.meetingId(), s.startedAt(), s.endsAt(), s.status().name(),
+            s.anchorLatitude() != null && s.anchorLongitude() != null);
     }
 
     @GetMapping
