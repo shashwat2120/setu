@@ -634,6 +634,20 @@ public class EnrollmentService {
             .map(e -> new ActiveEnrollmentRef(e.id(), e.sectionId())).toList();
     }
 
+    /** A section as a person knows it: its course's code and title, and the section's own code ("CS101", "Introduction to Programming", "CS101-A"). */
+    public record SectionLabel(String courseCode, String courseTitle, String sectionCode) {
+    }
+
+    /**
+     * The label of a section, with no authorization of its own (the same precedent as the ports above): for a caller that has already decided the reader may
+     * see the student's records (the advisor's facts), so a line can say "CS101" and not a section id. Empty if the section or its course cannot be found.
+     */
+    @Transactional(readOnly = true)
+    public Optional<SectionLabel> labelOfSection(UUID sectionId) {
+        return courseSectionRepository.findById(sectionId)
+            .flatMap(s -> courseService.summaryUnchecked(s.courseId()).map(c -> new SectionLabel(c.code(), c.title(), s.sectionCode())));
+    }
+
     /** What publishing a final grade did to an enrollment. */
     enum CompletionResult {
         /** ENROLLED became COMPLETED with this final grade. */

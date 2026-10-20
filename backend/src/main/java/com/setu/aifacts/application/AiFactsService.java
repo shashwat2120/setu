@@ -100,7 +100,15 @@ public class AiFactsService {
 
     // ---- 1. getStudentAttendance ----------------------------------------------------------
 
-    public record AttendanceResult(double percentage, long presentOrLate, long total) {
+    /**
+     * One course's own attendance: the same arithmetic as the overall figure, for the one enrollment. {@code course} and {@code section} are what a person recognises.
+     * {@code percentage} is null when no session has been held in this course yet: a course with nothing to attend has no percentage, and must not read as 100%.
+     */
+    public record CourseAttendance(String course, String section, Double percentage, long presentOrLate, long total) {
+    }
+
+    /** {@code percentage}, {@code presentOrLate} and {@code total} are across ALL the student's enrolled sections; {@code courses} breaks the same sessions down by course. */
+    public record AttendanceResult(double percentage, long presentOrLate, long total, List<CourseAttendance> courses) {
     }
 
     public Object getStudentAttendance(
@@ -117,13 +125,19 @@ public class AiFactsService {
         }
         long presentOrLate = 0;
         long total = 0;
+        List<CourseAttendance> courses = new ArrayList<>();
         for (var ref : enrollmentService.listActiveEnrollmentRefsForStudent(t.studentId())) {
             var pct = attendanceRecordService.percentageForEnrollmentUnchecked(ref.enrollmentId());
             presentOrLate += pct.presentOrLate();
             total += pct.total();
+            var label = enrollmentService.labelOfSection(ref.sectionId());
+            courses.add(new CourseAttendance(
+                label.map(l -> l.courseCode() + " " + l.courseTitle()).orElse("a course"),
+                label.map(EnrollmentService.SectionLabel::sectionCode).orElse(null),
+                pct.total() == 0 ? null : round1((pct.presentOrLate() * 100.0) / pct.total()), pct.presentOrLate(), pct.total()));
         }
         double percentage = total == 0 ? 100.0 : (presentOrLate * 100.0) / total;
-        return new AttendanceResult(round1(percentage), presentOrLate, total);
+        return new AttendanceResult(round1(percentage), presentOrLate, total, List.copyOf(courses));
     }
 
     // ---- 2. getAcademicProgress -------------------------------------------------------------

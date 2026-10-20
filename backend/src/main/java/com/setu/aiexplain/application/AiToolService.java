@@ -53,8 +53,8 @@ public class AiToolService {
         }
     }
 
-    @Tool(description = "Get a student's overall attendance percentage across all their currently enrolled sections. "
-        + "Omit studentId to get the current user's own attendance.")
+    @Tool(description = "Get a student's attendance: the overall percentage across all their currently enrolled sections, and the same figures for each course "
+        + "(use the per-course list when asked about one course or 'each' or 'every' course). Omit studentId to get the current user's own attendance.")
     public Object getStudentAttendance(
         @ToolParam(description = "Student profile UUID, or omit for the caller's own attendance", required = false) String studentId) {
         return invoke("getStudentAttendance", () -> facts.studentAttendance(studentId));
