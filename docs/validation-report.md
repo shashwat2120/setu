@@ -168,6 +168,21 @@ On the nine containers, through the gateway, after rebuilding the image with the
 
 **Not run live, and why:** an assignment that outlived a revoked faculty role. Revoking a FACULTY role needs a fresh passkey step-up (`ELEVATED_ROLES`), which a script cannot give; it is covered by `FacultyRoleRequiredTests` (6 tests, including the section lists and learning content). The live run did leave its throwaway data in the demo college: two closed periods named `Live close test …`, one closed section and one dropped enrollment (student.intervention). `reset-demo.ps1` removes them.
 
+## Staff check-in location, run live (2026-10-20)
+
+On the nine containers through the gateway after rebuilding the image (migration V95 applied by the core on start). The setting was left OFF afterwards, as in the demo's default.
+
+| Claim | How it was checked | Result |
+|---|---|---|
+| It is off until a college switches it on, and only an administrator can read or change the campus position | admin read the setting; a student read it; faculty tried to change it; admin switched on with no campus position | off; 403; 403; 400 |
+| Switching it on needs the campus position and records only an outcome | admin switched on with the campus position and a 300 m radius; faculty read it | 200; faculty see `enabled` true and **no coordinates** |
+| A check-in records where it was made from and is never refused for it | faculty.rao checked in about 33 m from the campus, faculty.mehta about 14 km away | both 201 PRESENT; `NEAR` (33 m) and `FAR` (14,277 m) |
+| The administrator sees it, and no coordinates are stored or returned | the day list through the gateway, and the Staff Attendance page in a browser | "On campus (33 m)" and "Away from campus (14.3 km)"; no latitude or longitude in any record; all page requests 200 |
+
+The automated tests (`StaffCheckInLocationTests`, 12) also cover: a college with it off ignores a reported position and stores nothing; the college's own radius decides; sharing nothing or an impossible position checks in as `NO_LOCATION`; no coordinate column exists and none reaches the day row or the audit log; the database refuses half a campus position and switching on without one; only an administrator changes it (audited with who) and only an administrator sees the campus coordinates; a student can neither read nor change it.
+
+**Not run live:** the staff member's own check-in page (the consent note and the browser's location prompt), which needs a real device position; the page logic is covered by `staffLocation.test.tsx`. The two check-ins this run made remain in the demo college's day record for 2026-10-20.
+
 ## Not validated
 
 - Kafka consumer lag **under load**. (The dead-letter path **was** run with a real poison event on the real stack, see below.)

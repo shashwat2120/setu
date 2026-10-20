@@ -190,7 +190,7 @@ export default function StaffAttendancePage() {
     },
     { key: 'in', header: 'Checked in', render: (r) => time(r.record?.checkInAt ?? null) },
     // only when the college records it, and only for a check-in the person made themselves
-    { key: 'where', header: 'Checked in from', render: (r) => (r.record?.source === 'SELF' && r.record.locationStatus ? locationLabel(r.record.locationStatus, r.record.locationDistanceMeters) : '—') },
+    { key: 'where', header: 'Checked in from', render: (r) => (r.record?.source === 'SELF' && r.record.locationStatus ? locationLabel(r.record.locationStatus, r.record.locationDistanceMeters, 'campus') : '—') },
     { key: 'out', header: 'Checked out', render: (r) => time(r.record?.checkOutAt ?? null) },
     { key: 'worked', header: 'Worked', render: (r) => (r.record?.workedMinutes != null ? formatMinutes(r.record.workedMinutes) : '—') },
     {

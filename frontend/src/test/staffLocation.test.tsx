@@ -150,3 +150,16 @@ describe('the administrator\'s setting for it', () => {
     expect(await screen.findByRole('alert')).toBeTruthy();
   });
 });
+
+describe('the words for where a check-in came from', () => {
+  it('speak of the campus for staff and of the room for students, and never invent a place', async () => {
+    const { locationLabel } = await import('../lib/devicePosition');
+    expect(locationLabel('NEAR', 33, 'campus')).toBe('On campus (33 m)');
+    expect(locationLabel('FAR', 14277, 'campus')).toBe('Away from campus (14.3 km)');
+    expect(locationLabel('NO_REFERENCE', null, 'campus')).toBe('No campus position');
+    expect(locationLabel('NEAR', 10)).toBe('In the room (10 m)');
+    expect(locationLabel('NO_REFERENCE')).toBe('No classroom position');
+    expect(locationLabel('NO_LOCATION', null, 'campus')).toBe('Location not shared');
+    expect(locationLabel(null, null, 'campus')).toBe('—');
+  });
+});
