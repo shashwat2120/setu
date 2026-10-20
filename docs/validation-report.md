@@ -238,6 +238,21 @@ An officer can limit a job to the batch of a given year. A student's batch comes
 
 A batch of 1999 is refused when the job is posted (400), and the database refuses it too. The form in the browser offers "Any batch" and the batches from last year to five years ahead. Unit tests cover the rule, the missing-record case, and a college with three terms a year (the same student graduates a year earlier). **Limits:** one batch per job (not "2026 or 2027"); the batch assumes terms are spread evenly across years and a student who takes longer or has a break keeps the batch their admission year gives; `terms_per_year` has no settings page yet, it is set in the college's settings.
 
+## Placement: a job closes at its deadline and when its openings are filled, run live (2026-10-21)
+
+A job is reported closed, with the reason, as soon as an officer closes it (`CLOSED`), its deadline passes (`DEADLINE_PASSED`) or the selected students reach its openings (`FULL`). This is worked out when the job is read, so nothing runs in the background and the state a student sees is the state applying will give. Selecting past the openings is refused, a full job takes no new applications, and the job's row is locked while selecting so two officers choosing for the last opening at once take turns. Run through the gateway on the containers with example jobs titled `[live-test ...]`:
+
+| Check | Result |
+|---|---|
+| A job with one opening and three shortlisted applicants | open, 0 of 1 selected |
+| Two selects for the one opening sent at the same moment | one 204, the other 409 "all 1 opening is already filled" |
+| After that | the job reads `FULL`, 1 of 1 selected |
+| A third select | 409, same reason |
+| A new applicant to the full job | 409 "all the openings for this job have been filled" |
+| A job whose deadline is 6 seconds away | no closed reason; 7 seconds later `DEADLINE_PASSED`; applying gives 409 with "The application deadline passed on ..." |
+
+The student's job card says why a job is closed and offers no Apply; the officer's table shows each job's "x of N openings filled" and the reason a still-open job has closed. Unit and integration tests cover each state to the instant, a rejected applicant not using up an opening, a job with no stated openings, and the last-opening race. **Limits:** nobody is told when a job they applied to closes before a decision (a notification on the roadmap); a job is not marked CLOSED in the database at its deadline, it is only reported so, which matters to anything that reads the status column directly; a withdrawn student's selected application is not possible (withdrawing is only from submitted or shortlisted), so openings cannot be freed by withdrawal.
+
 ## Not validated
 
 - Kafka consumer lag **under load**. (The dead-letter path **was** run with a real poison event on the real stack, see below.)
