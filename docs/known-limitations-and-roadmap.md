@@ -66,6 +66,13 @@ and the validation report ([validation-report.md](validation-report.md)) carry t
    history under **Your recent check-ins** on the Attendance page (`GET /attendance/enrollments/{id}/records`: the student, the section's faculty and an
    administrator; a guardian gets the records without the place). Checked live through the gateway on 2026-10-20: near, far and not shared all appear to the
    instructor, and a second student gets 403 on someone else's history.
+   **9c. Staff check-in location (added 2026-10-20), off by default.** A college can switch on recording where its staff check in from (Staff Attendance page:
+   campus position and radius, default 300 m). When on, each staff check-in stores only the outcome (near, far, not shared, no campus position), the distance and
+   the accuracy the device claimed, never the person's coordinates, and the administrator sees it in the day table. It is information and never a rule: a check-in is
+   never refused or changed because of it, a college that has not switched it on has any reported position ignored and nothing stored, staff are told on the
+   check-in page before their device is asked, and only an administrator changes the setting or sees the campus coordinates. The same limits as 9b apply (a phone
+   can report any position; indoors the accuracy is tens of metres). The admin's student Attendance page now shows the student check-in location too, as the
+   instructor's page does. **Not built:** a retention rule for these outcomes beyond the record itself, and any check-out location.
    **9a. Closed, with one limit. Online payment through Razorpay.** A student pays a fee in Razorpay's own checkout window (card, UPI and net banking
    never touch Setu); the server creates the order for the fee's amount, and the payment becomes `SUCCEEDED` only through the provider's signed
    webhook or a server-to-server lookup of the order, never on what the browser says ([state-machines.md #20](state-machines.md)). Verified in tests

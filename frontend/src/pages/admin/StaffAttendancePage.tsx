@@ -8,6 +8,8 @@ import { tenantForRole } from '../../auth/types';
 import { PageHeader } from '../../components/ui/PageHeader';
 import { DataTable, type Column } from '../../components/ui/DataTable';
 import { StatusBadge } from '../../components/ui/StatusBadge';
+import { StaffLocationPolicyCard } from '../../components/staff/StaffLocationPolicyCard';
+import { locationLabel } from '../../lib/devicePosition';
 
 interface Row {
   faculty: FacultyResponse;
@@ -187,6 +189,8 @@ export default function StaffAttendancePage() {
       ) : <span style={{ color: 'var(--ink-soft)' }}>Not recorded</span>),
     },
     { key: 'in', header: 'Checked in', render: (r) => time(r.record?.checkInAt ?? null) },
+    // only when the college records it, and only for a check-in the person made themselves
+    { key: 'where', header: 'Checked in from', render: (r) => (r.record?.source === 'SELF' && r.record.locationStatus ? locationLabel(r.record.locationStatus, r.record.locationDistanceMeters) : '—') },
     { key: 'out', header: 'Checked out', render: (r) => time(r.record?.checkOutAt ?? null) },
     { key: 'worked', header: 'Worked', render: (r) => (r.record?.workedMinutes != null ? formatMinutes(r.record.workedMinutes) : '—') },
     {
@@ -223,6 +227,8 @@ export default function StaffAttendancePage() {
   return (
     <div>
       <PageHeader title="Staff attendance" subtitle="Faculty members' own daily attendance. Every mark or correction needs a reason and is written to the audit log." />
+
+      <StaffLocationPolicyCard />
 
       <section className="card" style={{ marginBottom: 24 }} aria-label="Attendance policy">
         <h2 style={{ fontSize: 16, marginBottom: 4 }}>Attendance policy</h2>

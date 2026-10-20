@@ -8,6 +8,7 @@ import { PageHeader } from '../../components/ui/PageHeader';
 import { DataTable, type Column } from '../../components/ui/DataTable';
 import { StatusBadge } from '../../components/ui/StatusBadge';
 import { SectionSelect, useSectionOptions } from '../../components/ui/SectionSelect';
+import { locationLabel } from '../../lib/devicePosition';
 
 const RECORD_STATUSES = ['PRESENT', 'LATE', 'ABSENT', 'EXCUSED'] as const;
 
@@ -28,6 +29,8 @@ function SessionRecords({ sessionId, tenantId, sessionOpen, studentNameForEnroll
     { key: 'status', header: 'Status', render: (r) => <StatusBadge value={r.status} /> },
     { key: 'markedAt', header: 'Marked at', render: (r) => new Date(r.markedAt).toLocaleString() },
     { key: 'source', header: 'Source', render: (r) => r.source },
+    // where the student's device said they were at check-in, compared with the classroom; only a check-in the student made themselves has one
+    { key: 'where', header: 'Checked in from', render: (r) => (r.source === 'QR_SCAN' ? locationLabel(r.locationStatus, r.locationDistanceMeters) : '—') },
     ...(sessionOpen ? [] : [{
       key: 'correct',
       header: 'Correct',

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { apiFetch, ApiError } from '../../api/client';
 import { useApiQuery } from '../../api/useApiQuery';
-import type { RegularisationResponse, StaffAttendancePolicy, StaffAttendanceResponse, StaffAttendanceToday } from '../../api/types';
+import type { RegularisationResponse, StaffAttendancePolicy, StaffAttendanceResponse, StaffAttendanceToday, StaffLocationPolicy } from '../../api/types';
 import { useAuth } from '../../auth/AuthContext';
 import { DataTable, type Column } from '../../components/ui/DataTable';
 import { StatusBadge } from '../../components/ui/StatusBadge';
@@ -12,6 +12,7 @@ import { RequestsList } from '../../components/staff/RequestsList';
 import { WeekStrip } from '../../components/staff/WeekStrip';
 import { addDays, mondayOf, monthStart } from '../../lib/staffCalendar';
 import { formatHm, formatMinutes, formatShiftTime, useServerNow } from '../../lib/staffTime';
+import { getDevicePosition } from '../../lib/devicePosition';
 
 const time = (iso: string | null) => (iso ? new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '—');
 
@@ -31,6 +32,9 @@ export default function FacultyMyAttendancePage() {
   const today = useApiQuery<StaffAttendanceToday>('/staff-attendance/me/today');
   const requests = useApiQuery<RegularisationResponse[]>('/staff-attendance/regularisations/me');
   const policy = useApiQuery<StaffAttendancePolicy>('/staff-attendance/policy');
+  // whether the college records where staff check in from: nothing about the device is asked unless it is on, and the page says so first
+  const locationPolicy = useApiQuery<StaffLocationPolicy>('/staff-attendance/location-policy');
+  const locationOn = locationPolicy.data?.enabled === true;
   const [showPolicy, setShowPolicy] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -52,7 +56,17 @@ export default function FacultyMyAttendancePage() {
     setBusy(true);
     setMessage(null);
     try {
-      await apiFetch<StaffAttendanceResponse>(path, { method: 'POST' });
+      // location is a signal for the administrator, never a requirement: declining, or a device without it, checks in the same
+      const position = locationOn && path.endsWith('/check-in') ? await getDevicePosition() : null;
+      const saved = await apiFetch<StaffAttendanceResponse>(path, {
+        method: 'POST',
+        ...(position ? { body: { latitude: position.latitude, longitude: position.longitude, accuracyMeters: position.accuracyMeters } } : {}),
+      });
+      if (path.endsWith('/check-in') && locationOn) {
+        setMessage(saved.locationStatus === 'NEAR' ? 'Checked in. Your location matches the campus.'
+          : saved.locationStatus === 'FAR' ? 'Checked in. Your location looks far from the campus; your administrator will see that.'
+          : saved.locationStatus === 'NO_LOCATION' ? 'Checked in. Your location was not shared, so your administrator sees none.' : null);
+      }
       today.refetch();
     } catch (e) {
       setMessage(e instanceof ApiError ? e.message : 'Something went wrong. Please try again.');
@@ -178,7 +192,15 @@ export default function FacultyMyAttendancePage() {
         {today.error ? (
           <section className="staff-card"><p role="alert" className="form-error">Could not load today's record. {today.error.message}</p></section>
         ) : (
-          <ClockCard today={today.data} policy={policy.data} now={now} busy={busy} message={message} onAct={act} />
+          <>
+            {locationOn && (
+              <p className="staff-muted" role="note" style={{ fontSize: 12, marginBottom: 8 }}>
+                Your college records whether you are on campus when you check in. Your device will ask to share its location once; only how close you were is kept,
+                never your coordinates, and your administrator can see it. Declining still lets you check in.
+              </p>
+            )}
+            <ClockCard today={today.data} policy={policy.data} now={now} busy={busy} message={message} onAct={act} />
+          </>
         )}
         <MonthSummaryCard records={history.data} todayIso={date} />
         <WeekStrip records={history.data} todayIso={date} onFullHistory={openHistory} onFixDay={fixDay} />

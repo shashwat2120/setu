@@ -693,6 +693,19 @@ export interface StaffAttendanceResponse {
   policyVersion: number | null;
   /** Worked fewer minutes than a half day needs. */
   shortHours: boolean;
+  /** How the check-in's reported position compared with the campus: NEAR, FAR, NO_LOCATION or NO_REFERENCE. Null when the college does not record it. Never coordinates. */
+  locationStatus?: string | null;
+  locationDistanceMeters?: number | null;
+  locationAccuracyMeters?: number | null;
+}
+
+/** Whether the college records where staff check in from. Coordinates only for an administrator. */
+export interface StaffLocationPolicy {
+  enabled: boolean;
+  campusConfigured: boolean;
+  radiusMeters: number;
+  campusLatitude: number | null;
+  campusLongitude: number | null;
 }
 
 /** `date` is today in the college's own timezone, supplied by the server along with its clock and the college timezone. */

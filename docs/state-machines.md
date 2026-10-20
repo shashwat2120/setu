@@ -328,6 +328,17 @@ terminal states → correction rules → audit → emitted event.
   `FacultyAttendanceCorrected` (admin changed an existing day, carries the previous status) — via the transactional outbox, in
   the same transaction as the change; refused actions emit nothing. No consumer exists yet
 
+## 25a. Staff check-in location (added to #25)
+
+- **Setting**: `attendance.staff_location_policies`, one row per college, OFF by default; switching it on needs the campus position (both coordinates) and a
+  radius of 50 to 5000 m (DB-enforced). Only `MANAGE_STAFF_ATTENDANCE` changes it, each change audited (`STAFF_LOCATION_POLICY_CHANGED`); faculty can read whether it
+  is on (to be told before their device is asked), and only an administrator is shown the campus coordinates.
+- **At check-in**: with the setting off, a reported position is ignored and nothing is stored. With it on, the position is compared with the campus allowing for
+  the accuracy the device claimed, and only the outcome (`NEAR`, `FAR`, `NO_LOCATION`, `NO_REFERENCE`), the distance and the accuracy are stored on the day
+  record; the coordinates are never stored (no such column) or audited.
+- **Never a gate**: the outcome does not change the check-in's status, source or times, and a check-in with no position, or an impossible one, is recorded as
+  `NO_LOCATION` and counts.
+
 ## 26. Faculty Attendance Regularisation
 
 - **States**: `PENDING`, `APPROVED`, `REJECTED`, `WITHDRAWN`
