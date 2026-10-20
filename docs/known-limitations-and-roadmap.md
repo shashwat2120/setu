@@ -62,7 +62,10 @@ and the validation report ([validation-report.md](validation-report.md)) carry t
    can be made to report any position, and indoors the accuracy can be tens of metres, so a check-in is flagged `FAR` only when it is outside 100 m even
    allowing for that accuracy, and it is never refused. The classroom position is whatever the instructor's device reports when the session opens (optional:
    without it a check-in shows no distance). Only the outcome (status, distance, accuracy) is stored, never the student's coordinates; there is no retention
-   rule beyond the record itself, and the consent text is on the check-in form.
+   rule beyond the record itself, and the consent text is on the check-in form. The instructor sees it per session ("Checked in from"); the student sees their own
+   history under **Your recent check-ins** on the Attendance page (`GET /attendance/enrollments/{id}/records`: the student, the section's faculty and an
+   administrator; a guardian gets the records without the place). Checked live through the gateway on 2026-10-20: near, far and not shared all appear to the
+   instructor, and a second student gets 403 on someone else's history.
    **9a. Closed, with one limit. Online payment through Razorpay.** A student pays a fee in Razorpay's own checkout window (card, UPI and net banking
    never touch Setu); the server creates the order for the fee's amount, and the payment becomes `SUCCEEDED` only through the provider's signed
    webhook or a server-to-server lookup of the order, never on what the browser says ([state-machines.md #20](state-machines.md)). Verified in tests
