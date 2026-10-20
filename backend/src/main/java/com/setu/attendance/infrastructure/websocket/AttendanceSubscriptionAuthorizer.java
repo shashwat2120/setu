@@ -68,7 +68,8 @@ public class AttendanceSubscriptionAuthorizer implements StompDestinationAuthori
         }
 
         Optional<UUID> facultyId = academic.facultyIdOfUser(tenantId.get(), userId);
-        if (facultyId.isPresent() && academic.isActivelyAssigned(sectionId, facultyId.get())) {
+        if (facultyId.isPresent() && academic.isActivelyAssigned(sectionId, facultyId.get())
+            && authorizationContext.userHoldsFacultyRole(userId, tenantId.get())) {
             return true;
         }
         return authorizationContext.canAsUser(userId, MANAGE_PERMISSION, ResourceRef.of("attendance_session", sectionId, tenantId.get()))

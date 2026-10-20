@@ -252,7 +252,8 @@ public class CourseSectionService implements CourseSectionDirectory {
             }
             UUID currentUserId = authorizationContext.currentUserId();
             UUID ownFacultyId = facultyDirectory.findIdByTenantAndOwnerUserId(s.tenantId(), currentUserId).orElse(null);
-            boolean isAssignedFaculty = ownFacultyId != null && facultyAssignmentService.isActivelyAssigned(s.id(), ownFacultyId);
+            boolean isAssignedFaculty = ownFacultyId != null && facultyAssignmentService.isActivelyAssigned(s.id(), ownFacultyId)
+                && authorizationContext.holdsFacultyRole(s.tenantId());
             UUID ownStudentId = studentProfileService.findIdByTenantAndOwnerUserId(s.tenantId(), currentUserId).orElse(null);
             boolean isEnrolledStudent = ownStudentId != null && enrollmentRepository.findBySectionIdAndStudentId(s.id(), ownStudentId)
                 .filter(e -> e.status() == EnrollmentStatus.ENROLLED).isPresent();

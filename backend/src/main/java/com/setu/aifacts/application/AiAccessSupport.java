@@ -61,7 +61,7 @@ class AiAccessSupport {
 
     boolean currentUserIsAdvisorOf(UUID tenantId, UUID studentId) {
         Optional<UUID> facultyId = facultyProfileService.findIdByTenantAndOwnerUserId(tenantId, authorizationContext.currentUserId());
-        if (facultyId.isEmpty()) {
+        if (facultyId.isEmpty() || !authorizationContext.holdsFacultyRole(tenantId)) {
             return false;
         }
         return enrollmentService.listActiveEnrollmentRefsForStudent(studentId).stream()

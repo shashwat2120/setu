@@ -48,4 +48,22 @@ public interface AuthorizationContext {
      * state to do so.
      */
     AccessDecision canAsUser(UUID userId, String permissionCode, ResourceRef resource);
+
+    /** The marker permission of the faculty role (V55: FACULTY and SUPER_ADMIN hold it, COLLEGE_ADMIN does not). */
+    String FACULTY_ROLE_PERMISSION = "VIEW_ASSIGNED_SECTIONS";
+
+    /**
+     * Whether the current principal still holds the faculty ROLE in this tenant, asked of the role system and not of the assignment table. A section
+     * assignment says WHICH section a faculty member may work in; it never says they may act as faculty at all. Every place that lets "the faculty
+     * member assigned to this section" through asks this too, so an assignment that outlives a role change opens nothing (the rule Assessment has
+     * always applied through its own permission). An administrator reaches a section through the administrator permissions, never through this.
+     */
+    default boolean holdsFacultyRole(UUID tenantId) {
+        return can(FACULTY_ROLE_PERMISSION, ResourceRef.of("faculty_role", currentUserId(), tenantId)).isAllowed();
+    }
+
+    /** {@link #holdsFacultyRole} for a user already authenticated some other way (a STOMP connection), where there is no current principal. */
+    default boolean userHoldsFacultyRole(UUID userId, UUID tenantId) {
+        return canAsUser(userId, FACULTY_ROLE_PERMISSION, ResourceRef.of("faculty_role", userId, tenantId)).isAllowed();
+    }
 }

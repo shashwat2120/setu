@@ -539,7 +539,8 @@ public class EnrollmentService {
     @Transactional(readOnly = true)
     public org.springframework.data.domain.Page<Enrollment> listForSection(UUID sectionId, UUID tenantId, org.springframework.data.domain.Pageable pageable) {
         Optional<UUID> ownFacultyId = facultyProfileService.findIdByTenantAndOwnerUserId(tenantId, authorizationContext.currentUserId());
-        boolean isAssignedFaculty = ownFacultyId.isPresent() && facultyAssignmentService.isActivelyAssigned(sectionId, ownFacultyId.get());
+        boolean isAssignedFaculty = ownFacultyId.isPresent() && facultyAssignmentService.isActivelyAssigned(sectionId, ownFacultyId.get())
+            && authorizationContext.holdsFacultyRole(tenantId);
         if (!isAssignedFaculty) {
             authorizationContext.assertCan(VIEW_PERMISSION, ResourceRef.of("enrollment", UUID.randomUUID(), tenantId));
         }

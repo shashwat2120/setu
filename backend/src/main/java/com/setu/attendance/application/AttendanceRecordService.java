@@ -234,7 +234,8 @@ public class AttendanceRecordService {
             .orElseThrow(() -> new IllegalArgumentException("attendance session not found"));
         UUID currentUserId = authorizationContext.currentUserId();
         Optional<UUID> facultyId = academic.facultyIdOfUser(tenantId, currentUserId);
-        boolean isAssignedFaculty = facultyId.isPresent() && academic.isActivelyAssigned(session.sectionId(), facultyId.get());
+        boolean isAssignedFaculty = facultyId.isPresent() && academic.isActivelyAssigned(session.sectionId(), facultyId.get())
+            && authorizationContext.holdsFacultyRole(tenantId);
         if (!isAssignedFaculty) {
             authorizationContext.assertCan(VIEW_PERMISSION, ResourceRef.of("attendance_record", UUID.randomUUID(), tenantId));
         }
@@ -274,7 +275,8 @@ public class AttendanceRecordService {
         boolean isSelf = studentInfo.isPresent() && currentUserId.equals(studentInfo.get().ownerUserId());
         if (!isSelf) {
             UUID facultyId = academic.facultyIdOfUser(tenantId, currentUserId).orElse(null);
-            boolean isAssignedFaculty = facultyId != null && academic.isActivelyAssigned(summary.get().sectionId(), facultyId);
+            boolean isAssignedFaculty = facultyId != null && academic.isActivelyAssigned(summary.get().sectionId(), facultyId)
+                && authorizationContext.holdsFacultyRole(tenantId);
             if (!isAssignedFaculty
                 && !authorizationContext.can(VIEW_PERMISSION, ResourceRef.of("attendance_record", enrollmentId, tenantId)).isAllowed()) {
                 // Falls through to a guardian with an active VIEW_ATTENDANCE delegation for this exact student
@@ -324,7 +326,8 @@ public class AttendanceRecordService {
 
         UUID currentUserId = authorizationContext.currentUserId();
         Optional<UUID> facultyId = academic.facultyIdOfUser(session.tenantId(), currentUserId);
-        boolean isAssignedFaculty = facultyId.isPresent() && academic.isActivelyAssigned(session.sectionId(), facultyId.get());
+        boolean isAssignedFaculty = facultyId.isPresent() && academic.isActivelyAssigned(session.sectionId(), facultyId.get())
+            && authorizationContext.holdsFacultyRole(session.tenantId());
         if (!isAssignedFaculty) {
             authorizationContext.assertCan(MANAGE_PERMISSION, ResourceRef.of("attendance_record", record.id(), session.tenantId()));
         }

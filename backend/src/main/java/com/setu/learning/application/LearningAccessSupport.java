@@ -27,11 +27,13 @@ class LearningAccessSupport {
         this.authorizationContext = authorizationContext;
     }
 
-    /** Non-empty only if the CURRENT principal is faculty actively assigned to this exact section. */
+    /** Non-empty only if the CURRENT principal is faculty actively assigned to this exact section and still holds the faculty role. */
     Optional<UUID> currentAssignedFacultyId(UUID tenantId, UUID sectionId) {
         UUID currentUserId = authorizationContext.currentUserId();
         return academic.facultyIdOfUser(tenantId, currentUserId)
-            .filter(facultyId -> academic.isActivelyAssigned(sectionId, facultyId));
+            .filter(facultyId -> academic.isActivelyAssigned(sectionId, facultyId))
+            // assigned AND still faculty: an assignment that outlived a role change opens nothing
+            .filter(facultyId -> authorizationContext.holdsFacultyRole(tenantId));
     }
 
     /** Non-empty only if the CURRENT principal is a student with an active ENROLLED enrollment in this exact section. */

@@ -108,7 +108,9 @@ public class AttendanceSessionService {
     private boolean isAssignedFacultyOrAdmin(UUID sectionId, UUID tenantId) {
         UUID currentUserId = authorizationContext.currentUserId();
         Optional<UUID> facultyId = academic.facultyIdOfUser(tenantId, currentUserId);
-        boolean isAssignedFaculty = facultyId.isPresent() && academic.isActivelyAssigned(sectionId, facultyId.get());
+        // assigned AND still faculty: an assignment that outlived a role change falls through to the administrator check and is refused
+        boolean isAssignedFaculty = facultyId.isPresent() && academic.isActivelyAssigned(sectionId, facultyId.get())
+            && authorizationContext.holdsFacultyRole(tenantId);
         if (!isAssignedFaculty) {
             authorizationContext.assertCan(MANAGE_PERMISSION, ResourceRef.of("attendance_session", UUID.randomUUID(), tenantId));
         }
