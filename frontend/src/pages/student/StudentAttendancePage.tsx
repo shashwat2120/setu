@@ -2,18 +2,25 @@ import { useEffect, useState } from 'react';
 import { useAuth } from '../../auth/AuthContext';
 import { apiFetch } from '../../api/client';
 import { useApiQuery } from '../../api/useApiQuery';
-import type { EnrollmentResponse, PageResponse, CourseSectionResponse, CourseResponse, AttendancePercentageResponse } from '../../api/types';
+import type { EnrollmentResponse, PageResponse, CourseSectionResponse, CourseResponse, AttendancePercentageResponse, AttendanceRecordResponse } from '../../api/types';
 import { PageHeader } from '../../components/ui/PageHeader';
 import { DataTable, type Column } from '../../components/ui/DataTable';
 import { StatusBadge } from '../../components/ui/StatusBadge';
 import { Skeleton, ErrorState } from '../../components/ui/EmptyState';
-import { getDevicePosition } from '../../lib/devicePosition';
+import { getDevicePosition, locationLabel } from '../../lib/devicePosition';
 
 interface Row {
   enrollment: EnrollmentResponse;
   section: CourseSectionResponse | null;
   course: CourseResponse | null;
   percentage: AttendancePercentageResponse | null;
+  /** This enrollment's most recent records, newest first (the student's own check-in history). */
+  recent: AttendanceRecordResponse[];
+}
+
+interface HistoryRow {
+  record: AttendanceRecordResponse;
+  course: string;
 }
 
 function bandFor(pct: number): string {
@@ -67,7 +74,10 @@ export default function StudentAttendancePage() {
           const section = await apiFetch<CourseSectionResponse>(`/enrollment/course-sections/${enrollment.sectionId}`).catch(() => null);
           const course = section ? await apiFetch<CourseResponse>(`/catalog/courses/${section.courseId}`).catch(() => null) : null;
           const percentage = await apiFetch<AttendancePercentageResponse>(`/attendance/enrollments/${enrollment.id}/percentage`).catch(() => null);
-          return { enrollment, section, course, percentage };
+          const recent = await apiFetch<AttendanceRecordResponse[]>(`/attendance/enrollments/${enrollment.id}/records`)
+            .then((list) => (Array.isArray(list) ? list : []))
+            .catch(() => [] as AttendanceRecordResponse[]);
+          return { enrollment, section, course, percentage, recent };
         }));
         if (!cancelled) setRows(result);
       } catch (e) {
@@ -91,6 +101,22 @@ export default function StudentAttendancePage() {
       ) : '—'),
     },
     { key: 'sessions', header: 'Sessions', render: (r) => (r.percentage ? `${r.percentage.presentOrLate} / ${r.percentage.total}` : '—') },
+  ];
+
+  const history: HistoryRow[] = (rows ?? [])
+    .flatMap((r) => r.recent.map((record) => ({ record, course: r.course ? r.course.code : '—' })))
+    .sort((a, b) => b.record.markedAt.localeCompare(a.record.markedAt))
+    .slice(0, 15);
+  const historyColumns: Column<HistoryRow>[] = [
+    { key: 'when', header: 'When', render: (h) => new Date(h.record.markedAt).toLocaleString() },
+    { key: 'course', header: 'Course', render: (h) => <span className="mono">{h.course}</span> },
+    { key: 'status', header: 'Status', render: (h) => <StatusBadge value={h.record.status} /> },
+    {
+      key: 'where',
+      header: 'Checked in from',
+      // only a check-in you made yourself has a place; a mark the system or an instructor wrote has none
+      render: (h) => (h.record.source === 'QR_SCAN' ? locationLabel(h.record.locationStatus, h.record.locationDistanceMeters) : '—'),
+    },
   ];
 
   return (
@@ -119,6 +145,23 @@ export default function StudentAttendancePage() {
           emptyDescription="You are not enrolled in any sections yet."
           rowKey={(r) => r.enrollment.id}
         />
+      )}
+      {rows && rows.length > 0 && (
+        <section aria-labelledby="recent-checkins" style={{ marginTop: 22 }}>
+          <h2 id="recent-checkins" style={{ fontSize: 17, marginBottom: 6 }}>Your recent check-ins</h2>
+          <p style={{ color: 'var(--ink-soft)', fontSize: 12, marginBottom: 10 }}>
+            Where your device said you were when you checked in, compared with the classroom. Only how close you were is kept, never your coordinates.
+          </p>
+          <DataTable
+            columns={historyColumns}
+            rows={history}
+            loading={false}
+            error={null}
+            emptyTitle="No check-ins yet"
+            emptyDescription="Your check-ins appear here after you scan a session."
+            rowKey={(h) => h.record.id}
+          />
+        </section>
       )}
     </div>
   );

@@ -38,6 +38,12 @@ function studentApi(onScan?: (body: unknown) => unknown) {
     '/enrollment/course-sections/': section,
     '/catalog/courses/': course,
     '/attendance/enrollments/': { presentOrLate: 3, total: 5, percentage: 60 },
+    // the student's own check-in history: one in the room, one far away, one marked by the system with no place
+    [`/attendance/enrollments/${ENROLLMENT}/records`]: [
+      { id: 'rec-1', attendanceSessionId: 's1', enrollmentId: ENROLLMENT, status: 'PRESENT', markedAt: '2026-10-20T09:05:00Z', source: 'QR_SCAN', correctedBy: null, locationStatus: 'NEAR', locationDistanceMeters: 10, locationAccuracyMeters: 12 },
+      { id: 'rec-2', attendanceSessionId: 's2', enrollmentId: ENROLLMENT, status: 'PRESENT', markedAt: '2026-10-19T09:07:00Z', source: 'QR_SCAN', correctedBy: null, locationStatus: 'FAR', locationDistanceMeters: 5560, locationAccuracyMeters: 20 },
+      { id: 'rec-3', attendanceSessionId: 's3', enrollmentId: ENROLLMENT, status: 'ABSENT', markedAt: '2026-10-18T10:00:00Z', source: 'SYSTEM', correctedBy: null, locationStatus: null, locationDistanceMeters: null, locationAccuracyMeters: null },
+    ],
     '/attendance/scan': (_p: string, init?: { body?: unknown }) => onScan?.(init?.body) ?? { recordId: 'r', status: 'PRESENT', locationStatus: 'NEAR' },
   });
 }
@@ -62,6 +68,33 @@ describe('student check-in (spec section 13: authentication/QR accessibility, fo
     const { container } = renderPage(<StudentAttendancePage />);
     await screen.findByText('CS101 — Introduction to Programming');
     await expectAccessible(container);
+  });
+
+  it('shows the student their own recent check-ins and where each was made from', async () => {
+    signedInAs('STUDENT');
+    studentApi();
+    renderPage(<StudentAttendancePage />);
+    const heading = await screen.findByRole('heading', { name: 'Your recent check-ins' });
+    const table = within(heading.closest('section') as HTMLElement).getByRole('table');
+    expect(within(table).getByRole('columnheader', { name: 'Checked in from' })).toBeTruthy();
+    expect(within(table).getByText('In the room (10 m)')).toBeTruthy();
+    expect(within(table).getByText(/Away from the room/)).toBeTruthy();
+    // a mark the system wrote has no place, and the page does not invent one
+    const absentRow = within(table).getByText('ABSENT').closest('tr') as HTMLElement;
+    expect(within(absentRow).getByText('—')).toBeTruthy();
+  });
+
+  it('shows no history, and does not break, when the server sends none or something that is not a list', async () => {
+    signedInAs('STUDENT');
+    mockApi({
+      '/enrollment/enrollments': { content: [{ id: ENROLLMENT, tenantId: TENANT, sectionId: SECTION, studentId: 's', status: 'ENROLLED', requestedAt: null, enrolledAt: null, droppedAt: null, finalStatus: null }], page: 0, size: 100, totalElements: 1, totalPages: 1 },
+      '/enrollment/course-sections/': section,
+      '/catalog/courses/': course,
+      '/attendance/enrollments/': { presentOrLate: 0, total: 0, percentage: 0 },
+    });
+    renderPage(<StudentAttendancePage />);
+    await screen.findByText('CS101 — Introduction to Programming');
+    expect(await screen.findByText('No check-ins yet')).toBeTruthy();
   });
 
   it('tells the student, before the browser asks, why location is wanted and that declining is fine', async () => {

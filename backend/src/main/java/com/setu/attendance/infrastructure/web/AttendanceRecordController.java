@@ -86,6 +86,19 @@ public class AttendanceRecordController {
         return ResponseEntity.ok(new PercentageResponse(p.presentOrLate(), p.total(), p.percentage()));
     }
 
+    /**
+     * An enrollment's recent check-ins, newest first: the student's own history, the section staff's view of one student. A guardian gets the records
+     * without where the student checked in from.
+     */
+    @GetMapping("/enrollments/{enrollmentId}/records")
+    public ResponseEntity<List<RecordResponse>> recentForEnrollment(@PathVariable UUID enrollmentId) {
+        var history = attendanceRecordService.recentForEnrollment(enrollmentId);
+        return ResponseEntity.ok(history.records().stream().map(AttendanceRecordController::toResponse)
+            .map(r -> history.includeLocation() ? r : new RecordResponse(r.id(), r.attendanceSessionId(), r.enrollmentId(), r.status(), r.markedAt(),
+                r.source(), r.correctedBy(), null, null, null))
+            .toList());
+    }
+
     public record CorrectRequest(AttendanceRecordStatus status, String reason) {
     }
 

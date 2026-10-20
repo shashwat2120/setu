@@ -263,32 +263,58 @@ public class AttendanceRecordService {
      */
     @Transactional(readOnly = true)
     public AttendancePercentage percentageForEnrollment(UUID enrollmentId) {
-        Optional<AcademicDirectory.EnrollmentRef> summary =
-            academic.enrollment(enrollmentId);
+        Optional<AcademicDirectory.EnrollmentRef> summary = academic.enrollment(enrollmentId);
         if (summary.isEmpty()) {
             return new AttendancePercentage(0, 0);
         }
-        UUID tenantId = summary.get().tenantId();
-        UUID currentUserId = authorizationContext.currentUserId();
-        Optional<AcademicDirectory.TenantOwner> studentInfo =
-            academic.studentOwner(summary.get().studentId());
-        boolean isSelf = studentInfo.isPresent() && currentUserId.equals(studentInfo.get().ownerUserId());
-        if (!isSelf) {
-            UUID facultyId = academic.facultyIdOfUser(tenantId, currentUserId).orElse(null);
-            boolean isAssignedFaculty = facultyId != null && academic.isActivelyAssigned(summary.get().sectionId(), facultyId)
-                && authorizationContext.holdsFacultyRole(tenantId);
-            if (!isAssignedFaculty
-                && !authorizationContext.can(VIEW_PERMISSION, ResourceRef.of("attendance_record", enrollmentId, tenantId)).isAllowed()) {
-                // Falls through to a guardian with an active VIEW_ATTENDANCE delegation for this exact student
-                // (GuardianAccessService's supported-permissions set) — same delegatableForStudent idiom as
-                // GradeService/RiskCalculationService/LearningProgressService/StudentAccountService.
-                UUID ownerUserId = studentInfo.map(AcademicDirectory.TenantOwner::ownerUserId).orElse(null);
-                ResourceRef delegated = ResourceRef.of("attendance_record", enrollmentId, tenantId)
-                    .ownedBy(ownerUserId).delegatableForStudent(summary.get().studentId());
-                authorizationContext.assertCan("VIEW_ATTENDANCE", delegated);
-            }
-        }
+        assertCanViewEnrollment(summary.get(), enrollmentId);
         return percentageForEnrollmentUnchecked(enrollmentId);
+    }
+
+    /** Who is asking about an enrollment's attendance: the student, the staff who run the section (assigned faculty or an administrator), or a guardian acting on a grant. */
+    private enum Viewer {SELF, STAFF, GUARDIAN}
+
+    /** Throws unless the current principal may read this enrollment's attendance; says in what capacity they may. */
+    private Viewer assertCanViewEnrollment(AcademicDirectory.EnrollmentRef enrollment, UUID enrollmentId) {
+        UUID tenantId = enrollment.tenantId();
+        UUID currentUserId = authorizationContext.currentUserId();
+        Optional<AcademicDirectory.TenantOwner> studentInfo = academic.studentOwner(enrollment.studentId());
+        if (studentInfo.isPresent() && currentUserId.equals(studentInfo.get().ownerUserId())) {
+            return Viewer.SELF;
+        }
+        UUID facultyId = academic.facultyIdOfUser(tenantId, currentUserId).orElse(null);
+        boolean isAssignedFaculty = facultyId != null && academic.isActivelyAssigned(enrollment.sectionId(), facultyId)
+            && authorizationContext.holdsFacultyRole(tenantId);
+        if (isAssignedFaculty
+            || authorizationContext.can(VIEW_PERMISSION, ResourceRef.of("attendance_record", enrollmentId, tenantId)).isAllowed()) {
+            return Viewer.STAFF;
+        }
+        // Falls through to a guardian with an active VIEW_ATTENDANCE delegation for this exact student
+        // (GuardianAccessService's supported-permissions set) — same delegatableForStudent idiom as
+        // GradeService/RiskCalculationService/LearningProgressService/StudentAccountService.
+        UUID ownerUserId = studentInfo.map(AcademicDirectory.TenantOwner::ownerUserId).orElse(null);
+        ResourceRef delegated = ResourceRef.of("attendance_record", enrollmentId, tenantId)
+            .ownedBy(ownerUserId).delegatableForStudent(enrollment.studentId());
+        authorizationContext.assertCan("VIEW_ATTENDANCE", delegated);
+        return Viewer.GUARDIAN;
+    }
+
+    /**
+     * An enrollment's recent records. {@code includeLocation} is false for a guardian: where the student was when they checked in is for the student and
+     * the staff who run the section, and a guardian's grant (attendance) does not reach it.
+     */
+    public record EnrollmentHistory(List<AttendanceRecord> records, boolean includeLocation) {
+    }
+
+    /** Same authorization as {@link #percentageForEnrollment}: the student themself, the section's faculty or an administrator, or a guardian with the grant. */
+    @Transactional(readOnly = true)
+    public EnrollmentHistory recentForEnrollment(UUID enrollmentId) {
+        Optional<AcademicDirectory.EnrollmentRef> summary = academic.enrollment(enrollmentId);
+        if (summary.isEmpty()) {
+            return new EnrollmentHistory(List.of(), false);
+        }
+        Viewer viewer = assertCanViewEnrollment(summary.get(), enrollmentId);
+        return new EnrollmentHistory(attendanceRecordRepository.findTop20ByEnrollmentIdOrderByMarkedAtDesc(enrollmentId), viewer != Viewer.GUARDIAN);
     }
 
     /** No authorization of its own — see {@link #percentageForEnrollment}'s javadoc. Only for callers (e.g. {@code risk.application.RiskFeatureService}) that have already authorized their own outer operation. */

@@ -18,6 +18,9 @@ public interface AttendanceRecordRepository extends JpaRepository<AttendanceReco
 
     List<AttendanceRecord> findByAttendanceSessionId(UUID attendanceSessionId);
 
+    /** The enrollment's most recent records, newest first: what a student sees of their own check-ins. */
+    List<AttendanceRecord> findTop20ByEnrollmentIdOrderByMarkedAtDesc(UUID enrollmentId);
+
     long countByEnrollmentIdAndStatusIn(UUID enrollmentId, Collection<AttendanceRecordStatus> statuses);
 
     long countByEnrollmentId(UUID enrollmentId);
