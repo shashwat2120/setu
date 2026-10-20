@@ -1,5 +1,6 @@
 package com.setu.career.infrastructure.web;
 
+import com.setu.career.application.JobAvailability;
 import com.setu.career.application.JobService;
 import com.setu.career.domain.Job;
 import com.setu.career.domain.JobTerms;
@@ -25,9 +26,11 @@ import java.util.UUID;
 public class JobController {
 
     private final JobService jobService;
+    private final JobAvailability jobAvailability;
 
-    public JobController(JobService jobService) {
+    public JobController(JobService jobService, JobAvailability jobAvailability) {
         this.jobService = jobService;
+        this.jobAvailability = jobAvailability;
     }
 
     /**
@@ -55,14 +58,18 @@ public class JobController {
 
     public record JobResponse(UUID id, UUID tenantId, UUID postedBy, String title, String employer, String description, String status, int version,
                               BigDecimal minCgpa, BigDecimal minAttendancePct, Instant applicationDeadline, BigDecimal packageLpa, String location,
-                              Integer openings, String jobType, List<UUID> allowedProgramIds, Integer graduatingYear) {
+                              Integer openings, String jobType, List<UUID> allowedProgramIds, Integer graduatingYear, int selectedCount, String closedReason) {
     }
 
-    private static JobResponse toResponse(Job j) {
+    private JobResponse toResponse(Job j) {
+        return toResponse(j, jobAvailability.forJob(j, java.time.Instant.now()));
+    }
+
+    private static JobResponse toResponse(Job j, JobAvailability.State state) {
         JobTerms t = j.terms();
         return new JobResponse(j.id(), j.tenantId(), j.postedBy(), j.title(), j.employer(), j.description(), j.status().name(), j.version(),
             t.minCgpa(), t.minAttendancePct(), t.applicationDeadline(), t.packageLpa(), t.location(), t.openings(),
-            t.jobType() == null ? null : t.jobType().name(), t.allowedProgramIds(), t.graduatingYear());
+            t.jobType() == null ? null : t.jobType().name(), t.allowedProgramIds(), t.graduatingYear(), state.selected(), state.closedReason());
     }
 
     @PostMapping
@@ -70,7 +77,7 @@ public class JobController {
         var result = jobService.create(request.tenantId(), request.title(), request.employer(), request.description(), request.terms());
         return switch (result) {
             case JobService.CreateResult.Success r -> ResponseEntity.status(HttpStatus.CREATED)
-                .body(jobService.get(r.jobId()).map(JobController::toResponse).orElseThrow());
+                .body(jobService.get(r.jobId()).map(this::toResponse).orElseThrow());
             case JobService.CreateResult.TenantNotFound ignored ->
                 ResponseEntity.status(HttpStatus.BAD_REQUEST).body(new ErrorResponse("tenant not found"));
             case JobService.CreateResult.InvalidData invalid ->
@@ -86,7 +93,9 @@ public class JobController {
 
     @GetMapping
     public ResponseEntity<List<JobResponse>> listForTenant(@RequestParam UUID tenantId) {
-        return ResponseEntity.ok(jobService.listForTenant(tenantId).stream().map(JobController::toResponse).toList());
+        var jobs = jobService.listForTenant(tenantId);
+        var states = jobAvailability.forJobs(jobs, java.time.Instant.now());
+        return ResponseEntity.ok(jobs.stream().map(j -> toResponse(j, states.get(j.id()))).toList());
     }
 
     @PostMapping("/{jobId}/close")

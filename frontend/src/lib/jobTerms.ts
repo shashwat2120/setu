@@ -17,6 +17,22 @@ export function batchYears(current?: number | null, now: Date = new Date()): num
   return years.sort((a, b) => a - b);
 }
 
+/** Why a job takes no more applications, in a sentence; null while it does. */
+export function closedReasonText(reason: string | null | undefined): string | null {
+  switch (reason) {
+    case 'DEADLINE_PASSED': return 'Closed: the application deadline has passed.';
+    case 'FULL': return 'Closed: every opening has been filled.';
+    case 'CLOSED': return 'Closed by the placement officer.';
+    default: return null;
+  }
+}
+
+/** "2 of 4 openings filled" for a job with stated openings; null when it states none. */
+export function openingsFilled(job: Pick<JobResponse, 'openings' | 'selectedCount'>): string | null {
+  if (job.openings == null) return null;
+  return `${job.selectedCount ?? 0} of ${job.openings} opening${job.openings === 1 ? '' : 's'} filled`;
+}
+
 /** An instant for an `<input type="datetime-local">`, in the viewer's own time zone ('' when there is none). */
 export function toLocalInput(iso: string | null | undefined): string {
   if (!iso) return '';

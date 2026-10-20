@@ -6,7 +6,7 @@ import { useApiQuery } from '../../api/useApiQuery';
 import type {
   JobResponse, ApplicationResponse, SkillResponse, JobSkillResponse, StudentResponse, PageResponse, ProgramResponse,
 } from '../../api/types';
-import { JOB_TYPE_LABELS, batchYears, fromLocalInput, toLocalInput } from '../../lib/jobTerms';
+import { JOB_TYPE_LABELS, batchYears, closedReasonText, fromLocalInput, openingsFilled, toLocalInput } from '../../lib/jobTerms';
 import { PageHeader } from '../../components/ui/PageHeader';
 import { DataTable, type Column } from '../../components/ui/DataTable';
 import { StatusBadge } from '../../components/ui/StatusBadge';
@@ -336,7 +336,17 @@ export default function PlacementJobsPage() {
   const columns: Column<JobResponse>[] = [
     { key: 'title', header: 'Title', render: (j) => j.title },
     { key: 'employer', header: 'Employer', render: (j) => j.employer },
-    { key: 'status', header: 'Status', render: (j) => <StatusBadge value={j.status} /> },
+    {
+      key: 'status',
+      header: 'Status',
+      render: (j) => (
+        <div>
+          <StatusBadge value={j.status} />
+          {j.status === 'OPEN' && closedReasonText(j.closedReason) && <div style={{ fontSize: 12, color: 'var(--flag)', marginTop: 4 }}>{closedReasonText(j.closedReason)}</div>}
+        </div>
+      ),
+    },
+    { key: 'openings', header: 'Openings', render: (j) => openingsFilled(j) ?? '' },
     {
       key: 'actions',
       header: 'Actions',

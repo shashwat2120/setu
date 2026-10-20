@@ -19,6 +19,12 @@ public interface ApplicationRepository extends JpaRepository<Application, UUID> 
 
     Optional<Application> findByJobIdAndStudentId(UUID jobId, UUID studentId);
 
+    long countByJobIdAndStatus(UUID jobId, ApplicationStatus status);
+
+    /** For each of these jobs that has any, how many applications are in this status: rows of (job id, count). */
+    @Query("select a.jobId, count(a) from Application a where a.jobId in :jobIds and a.status = :status group by a.jobId")
+    List<Object[]> countByJobForStatus(@Param("jobIds") java.util.Collection<UUID> jobIds, @Param("status") ApplicationStatus status);
+
     /** Status-checked conditional UPDATE — see StudentChargeRepository#transitionIfStatus's javadoc for why this replaces a @Version column here; guards against two concurrent lifecycle-transition attempts on the same application. */
     @Modifying
     @Query("update Application a set a.status = :target where a.id = :id and a.status = :expected")

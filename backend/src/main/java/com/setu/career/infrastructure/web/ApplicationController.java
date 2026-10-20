@@ -52,6 +52,8 @@ public class ApplicationController {
                 ResponseEntity.status(HttpStatus.BAD_REQUEST).body(new ErrorResponse("job not found"));
             case ApplicationService.ApplyResult.JobNotOpen ignored ->
                 ResponseEntity.status(HttpStatus.CONFLICT).body(new ErrorResponse("this job is no longer open"));
+            case ApplicationService.ApplyResult.JobFull ignored ->
+                ResponseEntity.status(HttpStatus.CONFLICT).body(new ErrorResponse("all the openings for this job have been filled"));
             case ApplicationService.ApplyResult.StudentNotFound ignored ->
                 ResponseEntity.status(HttpStatus.BAD_REQUEST).body(new ErrorResponse("student not found"));
             case ApplicationService.ApplyResult.NotEligible r ->
@@ -93,6 +95,8 @@ public class ApplicationController {
                 ResponseEntity.status(HttpStatus.CONFLICT).body(new ErrorResponse("invalid status transition"));
             case ApplicationService.TransitionResult.ReasonRequired ignored ->
                 ResponseEntity.badRequest().body(new ErrorResponse("a rejection needs a reason, which the student is shown"));
+            case ApplicationService.TransitionResult.OpeningsFilled r ->
+                ResponseEntity.status(HttpStatus.CONFLICT).body(new ErrorResponse("all " + r.openings() + " opening" + (r.openings() == 1 ? " is" : "s are") + " already filled"));
             case ApplicationService.TransitionResult.ReasonTooLong ignored ->
                 ResponseEntity.badRequest().body(new ErrorResponse("the reason must be at most " + ApplicationService.MAX_REASON_LENGTH + " characters"));
         };

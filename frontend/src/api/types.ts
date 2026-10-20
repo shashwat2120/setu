@@ -415,6 +415,10 @@ export interface JobResponse {
   minAttendancePct?: number | null;
   applicationDeadline?: string | null;
   allowedProgramIds?: string[] | null;
+  /** How many students have been selected so far. */
+  selectedCount?: number;
+  /** Why the job takes no more applications: CLOSED (an officer closed it), DEADLINE_PASSED or FULL (every opening filled); null or absent while it does. */
+  closedReason?: string | null;
   /** The graduating batch the job is for (the year students are expected to graduate); null or absent: any batch. */
   graduatingYear?: number | null;
   /** About the job: package in lakhs per annum, a place, the number of openings, FULL_TIME / INTERNSHIP / CONTRACT. Information only, not enforced. */

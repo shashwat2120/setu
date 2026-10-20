@@ -86,6 +86,11 @@ public class JobService {
         }
     }
 
+    /** The job with its row locked for the rest of the transaction (no authorization of its own: the caller has authorized the decision this protects). */
+    Optional<Job> lockForUpdate(UUID jobId) {
+        return jobRepository.findByIdForUpdate(jobId);
+    }
+
     @Transactional(readOnly = true)
     public Optional<Job> get(UUID jobId) {
         Optional<Job> job = jobRepository.findById(jobId);

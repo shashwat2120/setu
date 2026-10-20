@@ -13,6 +13,11 @@ public interface JobRepository extends JpaRepository<Job, UUID> {
 
     List<Job> findByTenantId(UUID tenantId);
 
+    /** The job, locked until the transaction ends: two officers selecting for the last opening at once are made to take turns. */
+    @org.springframework.data.jpa.repository.Lock(jakarta.persistence.LockModeType.PESSIMISTIC_WRITE)
+    @Query("select j from Job j where j.id = :id")
+    java.util.Optional<Job> findByIdForUpdate(@Param("id") UUID id);
+
     /** Status-checked conditional UPDATE — see StudentChargeRepository#transitionIfStatus's javadoc for why this replaces a @Version column here (no unique-constraint risk on jobs itself, so no insert guard is needed for creation, only this transition guard). */
     @Modifying
     @Query("update Job j set j.status = com.setu.career.domain.JobStatus.CLOSED, j.version = j.version + 1 where j.id = :id and j.status = com.setu.career.domain.JobStatus.OPEN")

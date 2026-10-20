@@ -71,12 +71,14 @@ public class ApplicationService {
     private final AuditLogWriter auditLogWriter;
     private final StudentStandings studentStandings;
     private final OutboxEventWriter outboxEventWriter;
+    private final JobAvailability jobAvailability;
 
     public ApplicationService(ApplicationRepository applicationRepository, ApplicationInsertGuard applicationInsertGuard,
                                JobService jobService, JobSkillService jobSkillService, StudentSkillService studentSkillService,
                                StudentProfileService studentProfileService, CareerAccessSupport accessSupport,
                                AuthorizationContext authorizationContext, AuditLogWriter auditLogWriter, StudentStandings studentStandings,
-                               OutboxEventWriter outboxEventWriter) {
+                               OutboxEventWriter outboxEventWriter, JobAvailability jobAvailability) {
+        this.jobAvailability = jobAvailability;
         this.studentStandings = studentStandings;
         this.outboxEventWriter = outboxEventWriter;
         this.applicationRepository = applicationRepository;
@@ -172,6 +174,10 @@ public class ApplicationService {
         record JobNotOpen() implements ApplyResult {
         }
 
+        /** Every opening has been filled. */
+        record JobFull() implements ApplyResult {
+        }
+
         record StudentNotFound() implements ApplyResult {
         }
 
@@ -191,6 +197,9 @@ public class ApplicationService {
         Job job = maybeJob.get();
         if (job.status() != com.setu.career.domain.JobStatus.OPEN) {
             return new ApplyResult.JobNotOpen();
+        }
+        if (JobAvailability.FULL.equals(jobAvailability.forJob(job, Instant.now()).closedReason())) {
+            return new ApplyResult.JobFull();
         }
         Optional<StudentProfileService.StudentTenantOwner> studentInfo = studentProfileService.findTenantAndOwnerUserId(studentId);
         if (studentInfo.isEmpty() || !studentInfo.get().tenantId().equals(job.tenantId())) {
@@ -229,6 +238,10 @@ public class ApplicationService {
         }
 
         record ReasonTooLong() implements TransitionResult {
+        }
+
+        /** Selecting would go past the job's openings. */
+        record OpeningsFilled(int openings) implements TransitionResult {
         }
     }
 
@@ -294,6 +307,14 @@ public class ApplicationService {
             return new TransitionResult.InvalidTransition();
         }
         Instant now = Instant.now();
+        if (target == ApplicationStatus.SELECTED) {
+            // take the job's row lock first, so two officers selecting for the last opening take turns and the second is told the openings are filled
+            Job locked = jobService.lockForUpdate(application.jobId()).orElseThrow();
+            Integer openings = locked.terms().openings();
+            if (openings != null && applicationRepository.countByJobIdAndStatus(locked.id(), ApplicationStatus.SELECTED) >= openings) {
+                return new TransitionResult.OpeningsFilled(openings);
+            }
+        }
         if (applicationRepository.decideIfStatus(application.id(), application.status(), target, reason, now) == 0) {
             return new TransitionResult.InvalidTransition();
         }
