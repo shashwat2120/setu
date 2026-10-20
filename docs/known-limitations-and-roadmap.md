@@ -115,12 +115,12 @@ In the order that removes the most risk first.
    the enrollment facts it needs.
 4. **Done for the live attendance board** (item 8). **Still open:** a route for Notification's live delivery and the AI job status, each on a path of its own.
 5. ~~Settle the faculty role-versus-assignment rule~~ **Done** (item 10).
-6. ~~Add a hosted second AI fallback~~ **Built, off until a key is set.** A hosted model on NVIDIA's OpenAI-compatible endpoint (`nvidia/nemotron-3-ultra-550b-a55b` by default, to be confirmed against the real endpoint; any
+6. ~~Add a hosted second AI fallback~~ **Built, off until a key is set.** A hosted model on NVIDIA's OpenAI-compatible endpoint (`nvidia/nemotron-3.5-lightning-30b-a3b` by default: measured 2026-10-20 at 1.3 s to a correct tool call, where `nemotron-3-ultra-550b-a55b` took 22 s and `deepseek-v4.1-flash` timed out; any
    tool-calling model) is tried after the second Gemini model and before the local one, through the same tools and the same per-user authorization. It needs
    `NVIDIA_API_KEY` in the git-ignored `.env` files (`pwsh infra/scripts/set-nvidia-key.ps1` asks for it without showing it); without a key nothing about it exists.
    Scripted tests cover the order (`AiChatNvidiaFallbackTests`) and the on/off wiring; **not yet checked against the real endpoint**. **Two things found on
    NVIDIA's own pages (2026-10-20):** (1) the model first chosen, `meta/llama-3.3-70b-instruct` (and `llama-3.1-70b-instruct`), shows "Free Endpoint: Deprecated" there, so the
-   free ones to try are the current free-endpoint tool-calling models (for example `nvidia/nemotron-3-ultra-550b-a55b`); the model is one setting (`NVIDIA_MODEL`).
+   free ones to try are the current free-endpoint tool-calling models (the Llama 3.x ones now answer 410 "end of life" from the endpoint); the model is one setting (`NVIDIA_MODEL`).
    (2) the free trial endpoint's own notice says input and output are recorded and used to improve NVIDIA products, and not to send confidential or personal data. The
    advisor sends a student's facts (attendance, grades) to whichever model answers, so **use this fallback with the seeded example data only**; for real students a
    college would need a paid or self-hosted endpoint under a data-processing agreement. It stays off unless a key is set. The same kind of caveat applies to any

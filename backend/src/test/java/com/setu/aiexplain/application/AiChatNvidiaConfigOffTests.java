@@ -8,7 +8,7 @@ import org.springframework.context.ApplicationContext;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /** With no NVIDIA key nothing about it exists: no client, and the chat service is not given one, so the chain is exactly what it was before. */
-@SpringBootTest
+@SpringBootTest(properties = "app.ai.nvidia.api-key=")   // pinned: a developer's own NVIDIA_API_KEY in the environment must not change what this asserts
 class AiChatNvidiaConfigOffTests {
 
     @Autowired

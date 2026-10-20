@@ -44,7 +44,7 @@
 		     embedded): they are opt-in, ./mvnw test -DexcludedGroups=none -Dtest=GeminiPolicySearchLiveTests. Chat on Gemini needs no such care.
 		     Tests tagged performance measure the demo latency targets (spec section 14); timings taken while other tests run prove nothing, so they are also
 		     skipped by default: ./mvnw test -DexcludedGroups=live-ollama -Dtest=DemoTargetsPerformanceTests -->
-		<excludedGroups>live-ollama,live-gemini,performance</excludedGroups>
+		<excludedGroups>live-ollama,live-gemini,live-nvidia,performance</excludedGroups>
 	</properties>
 	<dependencies>
 		<dependency>
@@ -353,6 +353,25 @@
 				<version>${spring-ai.version}</version>
 				<type>pom</type>
 				<scope>import</scope>
+			</dependency>
+			<!-- ONE OkHttp and ONE okio on the classpath. The Google GenAI SDK uses OkHttp 5 (okhttp-jvm 5.3.x, which needs okio 3.16), while spring-ai-openai
+			     brings OkHttp 4.12 with okio 3.6. Both put the same okhttp3.* and okio.* classes on the classpath, the old ones win, and the new ones then fail with
+			     NoSuchMethodError: okio.Okio.socket(Socket) the first time a request is made (found by AiChatNvidiaLiveTests against the real endpoint). Pinning the
+			     newer versions for both makes every client use the same classes. -->
+			<dependency>
+				<groupId>com.squareup.okhttp3</groupId>
+				<artifactId>okhttp</artifactId>
+				<version>5.3.2</version>
+			</dependency>
+			<dependency>
+				<groupId>com.squareup.okio</groupId>
+				<artifactId>okio</artifactId>
+				<version>3.16.4</version>
+			</dependency>
+			<dependency>
+				<groupId>com.squareup.okio</groupId>
+				<artifactId>okio-jvm</artifactId>
+				<version>3.16.4</version>
 			</dependency>
 		</dependencies>
 	</dependencyManagement>

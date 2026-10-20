@@ -84,7 +84,7 @@ class AiAccessSupport {
      * about.
      */
     Optional<TargetStudent> resolveTargetStudent(String studentIdParam) {
-        if (studentIdParam == null || studentIdParam.isBlank()) {
+        if (isNoStudentGiven(studentIdParam)) {
             Optional<UUID> tenantId = tenantContext.tenantId();
             if (tenantId.isEmpty()) {
                 return Optional.empty();
@@ -101,6 +101,21 @@ class AiAccessSupport {
         }
         return studentProfileService.findTenantAndOwnerUserId(studentId)
             .map(info -> new TargetStudent(info.tenantId(), studentId, info.ownerUserId()));
+    }
+
+    /**
+     * No student given: nothing, blank, or one of the words a model writes into an optional argument it was told to leave out ("None", "null", "undefined", "N/A",
+     * "me", "self"). Some hosted models do this, and a student id that is not an id would otherwise be refused as an invalid target even though the question was
+     * plainly about the caller. It only ever widens "no student" to the CALLER'S OWN profile, the narrowest scope there is, and never to anyone else.
+     */
+    static boolean isNoStudentGiven(String studentIdParam) {
+        if (studentIdParam == null || studentIdParam.isBlank()) {
+            return true;
+        }
+        return switch (studentIdParam.trim().toLowerCase(java.util.Locale.ROOT)) {
+            case "none", "null", "undefined", "n/a", "na", "me", "self", "myself", "current", "caller" -> true;
+            default -> false;
+        };
     }
 
     /**
