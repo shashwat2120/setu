@@ -20,6 +20,8 @@ public interface CourseSectionRepository extends JpaRepository<CourseSection, UU
 
     Page<CourseSection> findByTenantId(UUID tenantId, Pageable pageable);
 
+    java.util.List<CourseSection> findByPeriodId(UUID periodId);
+
     Page<CourseSection> findByTenantIdAndStatus(UUID tenantId, CourseSectionStatus status, Pageable pageable);
 
     /**

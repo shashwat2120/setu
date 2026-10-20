@@ -62,6 +62,7 @@ envelope in its Kafka headers (see [contracts/kafka-contracts.md](contracts/kafk
 | `EnrollmentDropped` | 1 | `setu.enrollments` | `enrollmentId` UUID, `sectionId` UUID, `studentId` UUID, `droppedAt` Instant, `wasEnrolled` boolean |
 | `FacultyAssigned` | 1 | `setu.faculty_assignments` | `assignmentId` UUID, `sectionId` UUID, `facultyId` UUID, `endsAt` LocalDate |
 | `FacultyAssignmentEnded` | 1 | `setu.faculty_assignments` | `assignmentId` UUID, `sectionId` UUID, `facultyId` UUID, `endsAt` LocalDate |
+| `PeriodClosed` | 1 | `setu.academic_periods` | `periodId` UUID, `academicYearId` UUID, `periodCode` String |
 | `StudentEnrolled` | 1 | `setu.enrollments` | `enrollmentId` UUID, `sectionId` UUID, `studentId` UUID, `viaWaitlist` boolean |
 | `StudentWaitlisted` | 1 | `setu.enrollments` | `enrollmentId` UUID, `sectionId` UUID, `studentId` UUID, `position` int |
 | `WaitlistConverted` | 1 | `setu.waitlist_entries` | `waitlistEntryId` UUID, `enrollmentId` UUID, `sectionId` UUID, `studentId` UUID |

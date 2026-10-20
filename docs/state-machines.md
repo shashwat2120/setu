@@ -100,7 +100,14 @@ terminal states → correction rules → audit → emitted event.
   override of the schedule)
 - **Validation**: `enrollment` requests are only accepted while status is
   `REGISTRATION_OPEN`; `CLOSED` requires all sections in the period to be
-  `CLOSED` or `CANCELLED`
+  `CLOSED` or `CANCELLED` **and no enrollment in the period still `ENROLLED`**
+  (a student leaves `ENROLLED` by a published final grade, which completes the
+  enrollment, or by being dropped, so a close never decides a result). A blocked
+  close changes nothing (409; `GET /catalog/academic-periods/{id}/close-check`
+  lists the open sections and the sections with students still enrolled).
+  `closeOpenSections: true` on the close first closes the open sections and
+  cancels never-opened drafts, each as the ordinary audited section change, in
+  the same transaction (rolled back with a blocked close)
 - **Terminal**: `CLOSED`
 - **Correction**: manual override of the automatic schedule is allowed
   (audited); no reversal once `CLOSED`

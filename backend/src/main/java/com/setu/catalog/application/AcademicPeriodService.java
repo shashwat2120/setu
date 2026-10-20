@@ -5,9 +5,11 @@ import com.setu.catalog.domain.AcademicYear;
 import com.setu.catalog.infrastructure.AcademicPeriodRepository;
 import com.setu.catalog.infrastructure.AcademicYearRepository;
 import com.setu.shared.academic.AcademicCalendarPolicy;
+import com.setu.shared.academic.PeriodCloseGuard;
 import com.setu.shared.authorization.AuthorizationContext;
 import com.setu.shared.authorization.ResourceRef;
 import com.setu.shared.governance.AuditLogWriter;
+import com.setu.shared.governance.OutboxEventWriter;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -52,9 +54,14 @@ public class AcademicPeriodService implements AcademicCalendarPolicy {
     private final AcademicYearRepository yearRepository;
     private final AuthorizationContext authorizationContext;
     private final AuditLogWriter auditLogWriter;
+    private final PeriodCloseGuard periodCloseGuard;
+    private final OutboxEventWriter outboxEventWriter;
 
     public AcademicPeriodService(AcademicPeriodRepository periodRepository, AcademicYearRepository yearRepository,
-                                  AuthorizationContext authorizationContext, AuditLogWriter auditLogWriter) {
+                                  AuthorizationContext authorizationContext, AuditLogWriter auditLogWriter,
+                                  PeriodCloseGuard periodCloseGuard, OutboxEventWriter outboxEventWriter) {
+        this.periodCloseGuard = periodCloseGuard;
+        this.outboxEventWriter = outboxEventWriter;
         this.periodRepository = periodRepository;
         this.yearRepository = yearRepository;
         this.authorizationContext = authorizationContext;
@@ -127,10 +134,20 @@ public class AcademicPeriodService implements AcademicCalendarPolicy {
         return period;
     }
 
-    public enum TransitionResult {SUCCESS, NOT_FOUND, INVALID_TRANSITION}
+    /** CLOSE_BLOCKED: the period cannot close yet; {@link #closeCheck} says why. Nothing was changed. */
+    public enum TransitionResult {SUCCESS, NOT_FOUND, INVALID_TRANSITION, CLOSE_BLOCKED}
 
-    @Transactional
     public TransitionResult transitionTo(UUID periodId, AcademicPeriod.PeriodStatus target) {
+        return transitionTo(periodId, target, false);
+    }
+
+    /**
+     * @param closeOpenSections only meaningful for a close: first close the period's open sections (and cancel its never-opened drafts), each as the
+     *                          ordinary audited section change, so a registrar does not have to do forty by hand. It never decides a student's result:
+     *                          students still ENROLLED after it keep blocking the close until they are graded or dropped.
+     */
+    @Transactional
+    public TransitionResult transitionTo(UUID periodId, AcademicPeriod.PeriodStatus target, boolean closeOpenSections) {
         Optional<AcademicPeriod> maybePeriod = periodRepository.findById(periodId);
         if (maybePeriod.isEmpty()) {
             return TransitionResult.NOT_FOUND;
@@ -140,13 +157,39 @@ public class AcademicPeriodService implements AcademicCalendarPolicy {
         if (!period.canTransitionTo(target)) {
             return TransitionResult.INVALID_TRANSITION;
         }
+        if (target == AcademicPeriod.PeriodStatus.CLOSED) {
+            if (closeOpenSections) {
+                periodCloseGuard.closeOpenSections(period.id());
+            }
+            // Checked after the sections were closed, in this same transaction: a blocked close rolls the section changes back with it.
+            if (!periodCloseGuard.blockersFor(period.id()).none()) {
+                org.springframework.transaction.interceptor.TransactionAspectSupport.currentTransactionStatus().setRollbackOnly();
+                return TransitionResult.CLOSE_BLOCKED;
+            }
+        }
         UUID actor = authorizationContext.currentUserId();
         var from = period.status();
-        period.transitionTo(target, actor, Instant.now());
+        Instant now = Instant.now();
+        period.transitionTo(target, actor, now);
         periodRepository.save(period);
         auditLogWriter.write(period.tenantId(), actor, "ACADEMIC_PERIOD_STATUS_CHANGED", "catalog.academic_periods",
             period.id(), Map.of("from", from.name(), "to", target.name()));
+        if (target == AcademicPeriod.PeriodStatus.CLOSED) {
+            UUID correlationId = UUID.randomUUID();
+            var event = new com.setu.catalog.domain.PeriodClosedEvent(UUID.randomUUID(), now, period.tenantId(), period.id(), correlationId, null,
+                period.id(), period.academicYearId(), period.code());
+            outboxEventWriter.write("academic_periods", period.id(), event.eventType(), event.eventVersion(), event, period.tenantId(), correlationId, null);
+        }
         return TransitionResult.SUCCESS;
+    }
+
+    /** What would stop this period closing right now (empty lists: nothing). Empty Optional when the period does not exist. */
+    @Transactional(readOnly = true)
+    public Optional<PeriodCloseGuard.Blockers> closeCheck(UUID periodId) {
+        return periodRepository.findById(periodId).map(period -> {
+            authorizationContext.assertCan(PERMISSION, ResourceRef.of("academic_period", period.id(), period.tenantId()));
+            return periodCloseGuard.blockersFor(period.id());
+        });
     }
 
     public enum RegistrationWindowResult {SUCCESS, NOT_FOUND, INVALID_WINDOW}

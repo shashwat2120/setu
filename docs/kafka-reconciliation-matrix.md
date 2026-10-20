@@ -32,7 +32,7 @@ event, catalog does not have it. ⚠ = present but with a flagged issue.
 | Academic Year: `→CLOSED` | `AcademicYearClosed` | **✗ MISSING** | Institution/Academic | Notification, Analytics | `academic_year_id` | tenant | `tenant_id` |
 | Academic Period: `→REGISTRATION_OPEN` | `RegistrationOpened` | **✗ MISSING** | Institution/Academic | Notification, Enrollment (self), Analytics | `period_id` | tenant | `period_id` |
 | Academic Period: `→REGISTRATION_CLOSED` | `RegistrationClosed` | **✗ MISSING** | Institution/Academic | Notification, Enrollment (self), Analytics | `period_id` | tenant | `period_id` |
-| Academic Period: `→CLOSED` | `PeriodClosed` | **✗ MISSING** | Institution/Academic | Record (triggers `student_academic_periods` posting — see note), Notification, Analytics | `period_id` | tenant | `period_id` |
+| Academic Period: `→CLOSED` | `PeriodClosed` | **✓ emitted** (2026-10-20, `PeriodCloseTests`; no consumer yet) | Institution/Academic | Record (triggers `student_academic_periods` posting — see note), Notification, Analytics | `period_id` | tenant | `period_id` |
 | Student: `→SUSPENDED` | `StudentSuspended` | **✗ MISSING** | Institution/Academic | Notification, Guardian-access (policy: does suspension affect grants? — flagged), Analytics | `student_id` | tenant | `student_id` |
 | Student: `→GRADUATED` | `StudentGraduated` | **✗ MISSING** | Institution/Academic | Academic Record, Notification, Analytics | `student_id` | tenant | `student_id` |
 | Student: `→WITHDRAWN` | `StudentWithdrawn` | **✗ MISSING** | Institution/Academic | Notification, Analytics | `student_id` | tenant | `student_id` |

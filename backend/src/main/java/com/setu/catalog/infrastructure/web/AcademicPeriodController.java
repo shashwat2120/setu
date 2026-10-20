@@ -70,15 +70,33 @@ public class AcademicPeriodController {
             .map(AcademicPeriodController::toResponse).toList());
     }
 
-    public record TransitionRequest(AcademicPeriod.PeriodStatus target) {
+    /** {@code closeOpenSections} is only read for a close: it first closes the period's open sections (see AcademicPeriodService#transitionTo). */
+    public record TransitionRequest(AcademicPeriod.PeriodStatus target, Boolean closeOpenSections) {
+    }
+
+    public record CloseBlockersResponse(boolean canClose, java.util.List<com.setu.shared.academic.PeriodCloseGuard.OpenSection> openSections,
+                                        java.util.List<com.setu.shared.academic.PeriodCloseGuard.UngradedSection> ungradedSections) {
+        static CloseBlockersResponse of(com.setu.shared.academic.PeriodCloseGuard.Blockers b) {
+            return new CloseBlockersResponse(b.none(), b.openSections(), b.ungradedSections());
+        }
+    }
+
+    /** What stands between this period and its close: sections not yet closed or cancelled, and sections with students still enrolled (no final grade, not dropped). */
+    @GetMapping("/{periodId}/close-check")
+    public ResponseEntity<?> closeCheck(@PathVariable UUID periodId) {
+        return academicPeriodService.closeCheck(periodId)
+            .<ResponseEntity<?>>map(b -> ResponseEntity.ok(CloseBlockersResponse.of(b)))
+            .orElse(ResponseEntity.status(HttpStatus.NOT_FOUND).build());
     }
 
     @PostMapping("/{periodId}/status")
     public ResponseEntity<?> transition(@PathVariable UUID periodId, @RequestBody TransitionRequest request) {
-        return switch (academicPeriodService.transitionTo(periodId, request.target())) {
+        return switch (academicPeriodService.transitionTo(periodId, request.target(), Boolean.TRUE.equals(request.closeOpenSections()))) {
             case SUCCESS -> ResponseEntity.noContent().build();
             case NOT_FOUND -> ResponseEntity.status(HttpStatus.NOT_FOUND).build();
             case INVALID_TRANSITION -> ResponseEntity.status(HttpStatus.BAD_REQUEST).body(new ErrorResponse("invalid status transition"));
+            case CLOSE_BLOCKED -> ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(new ErrorResponse("the period cannot close yet: see GET /catalog/academic-periods/" + periodId + "/close-check"));
         };
     }
 
