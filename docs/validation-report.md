@@ -282,6 +282,23 @@ Rules the figures follow, each tested: a student placed twice counts once; a pla
 
 **Limits:** statistics are the present state, not a history or a comparison with last year; "placed" counts every student with a placement record, including those recorded outside the portal; the administrator can read the endpoint but has no page for it yet.
 
+## The resume, sent with each application, run live (2026-10-21)
+
+A student keeps a resume: a headline, a summary, https links (LinkedIn, GitHub, portfolio), and up to 20 projects, certifications and experiences. Their batch, CGPA, attendance and skills are added from the college's own records, so a resume cannot claim them. When the student applies, the application keeps a snapshot of the resume and of that record, so the placement officer reads what was submitted and not what the student edited afterwards. A job can require a resume ("Applicants must have a resume"); applying then fails with the reason, like any other rule. The student can print the resume or save it as a PDF from the page. Run through the gateway on the containers with an example job titled `[live-test ...]`:
+
+| Check | Result |
+|---|---|
+| A job that needs a resume, a student with none | not eligible: "This job needs a resume; add one under Resume (a headline is enough to begin)."; applying gives 409 |
+| A resume with a `javascript:` link | 400 "the GitHub address must be an https link"; nothing stored |
+| Save the resume | 200, version 1 |
+| A second save claiming it opened on an empty resume | 409 (a flaw found here: a saved resume used to read as version 0 like an empty one, so this save was allowed to overwrite; a saved resume now starts at version 1) |
+| Another student, or the officer, reading the resume directly | 403 each |
+| Apply with the resume | 201, the application says it has a resume |
+| The student edits the resume after applying | the officer, reading through the application, still sees the resume as submitted (headline, the project and its date, the record at that moment, the resume version) |
+| Another student reading that application's resume | 403; the student reading their own: 200 |
+
+An officer reaches a student's resume only through an application, and each such reading is written to the audit log. Tests cover the bounds on every field, https-only links, blanks becoming nothing, the headline as the least a resume needs (a summary alone does not count), the access rules above, the snapshot surviving edits, the job rule, the audit entry, and the two pages in the browser (the student's form, and the officer's "View resume"). **Limits:** no file upload (see the roadmap: PDF only when it is built); the student's skills in the snapshot are ids and levels, shown by name on the page; a resume is plain text and links, with no photo or formatting; an application made before this existed, or by a student with no resume, has none attached and the officer's table says so.
+
 ## Not validated
 
 - Kafka consumer lag **under load**. (The dead-letter path **was** run with a real poison event on the real stack, see below.)
