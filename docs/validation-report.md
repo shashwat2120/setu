@@ -299,6 +299,26 @@ A student keeps a resume: a headline, a summary, https links (LinkedIn, GitHub, 
 
 An officer reaches a student's resume only through an application, and each such reading is written to the audit log. Tests cover the bounds on every field, https-only links, blanks becoming nothing, the headline as the least a resume needs (a summary alone does not count), the access rules above, the snapshot surviving edits, the job rule, the audit entry, and the two pages in the browser (the student's form, and the officer's "View resume"). **Limits:** no file upload (see the roadmap: PDF only when it is built); the student's skills in the snapshot are ids and levels, shown by name on the page; a resume is plain text and links, with no photo or formatting; an application made before this existed, or by a student with no resume, has none attached and the officer's table says so.
 
+## Uploading the resume as a PDF, run live (2026-10-21)
+
+A student can upload a PDF of up to 2 MB as their resume file, beside the resume they write. The file is judged by its content, never by its name or type: it must start and end like a PDF, not be encrypted, and not carry scripts, launch actions, embedded files, form submissions or links to other documents (a name spelled with hex escapes, such as `/J#61vaScript`, is decoded and caught; the binary bodies of streams are skipped so chance bytes cannot trip the check). It is kept on a volume (`setu_resumes`, mounted into the core service) under the SHA-256 of its content, never in the database, which keeps only the reference, the cleaned display name and the size. Word files are not accepted: the page says to save as PDF first. Run through the gateway on the containers, with a real, valid PDF built by the script:
+
+| Check | Result |
+|---|---|
+| Upload the PDF, sent as `C:\Users\priya\My Resume.pdf` | 200; shown as "My Resume.pdf", 610 bytes, with its hash |
+| A zip (a docx is one) renamed `resume.pdf` | 400 "only PDF files are accepted" |
+| A PDF with a JavaScript open action | 400 "this PDF is using features a resume must not ... save a plain copy and upload that" |
+| A file of 2.5 MB | 400 "the file is larger than 2 MB" |
+| A file of 5 MB | 500, a flaw found here. Fixed to answer 413 in the standard envelope (`FILE_TOO_LARGE`), covered by a test of the handler; **not yet re-run on the containers** after the fix |
+| The student downloads their own file | 200, `application/pdf`, `attachment; filename="My Resume.pdf"`, `nosniff`, `default-src 'none'; sandbox`, the same bytes |
+| Another student, or the officer, downloading it directly | 403 each |
+| Apply, then the student uploads a replacement and then removes the file | the application is unaffected |
+| The officer reads the application's resume | the snapshot names the file the student had when they applied |
+| The officer downloads that file | 200 with the **first** version's exact bytes, not the later one |
+| Another student downloading it / the student downloading their own | 403 / 200 |
+
+An officer can reach a file only through an application; the download is written to the audit log (`RESUME_FILE_DOWNLOADED`), as are an upload and a removal. The file is only ever handed over as a download, never shown inside the application. A PDF alone counts as a resume for a job that needs one. Tests cover each rule of the PDF check (including the hex-escaped name, a stream that is never closed, and a hostile file with 100,000 stream markers checked in one pass), the cleaned display name never being a path, the store refusing anything that is not a hash and another college's directory, and the access, freezing and audit rules above. **Limits:** the PDF check is a screen, not a guarantee (a name hidden inside a compressed part of the file cannot be seen without opening it), which is why the file is never displayed in the application and is served as an attachment; no virus scan; no preview of the PDF's text; a student has one current file; files of removed or replaced uploads stay on the volume because applications may still point at them, and nothing removes the unreferenced ones yet; the volume needs the same backup as the database.
+
 ## Not validated
 
 - Kafka consumer lag **under load**. (The dead-letter path **was** run with a real poison event on the real stack, see below.)

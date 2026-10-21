@@ -128,7 +128,7 @@ In the order that removes the most risk first.
 7. **Done** (item 6): the frontend test runner and its accessibility checks. **Next there:** data states for the remaining pages.
 8. **Analytics read models** when a consumer for them exists (item 9).
 9. **Placement, next phases** (the graduating-batch rule, a job closing at its deadline and enforcing its openings are built too; phase 1, eligibility rules and job details, and the first part of phase 2, a reason with each decision and a notification to the student, are built: [validation-report](validation-report.md)). *Phase 2, still to do:* a college setting for whether a placed student may apply again, an eligibility exception an officer can
-   grant with a recorded reason. *Phase 3:* an applicant export, and **uploading a resume as a file** (PDF only, about 2 MB, checked by its content and not its name, kept on a volume or an object store and never in the database, served to an officer as a download only; the built resume can already be printed to PDF from its page).
+   grant with a recorded reason. *Phase 3:* an applicant export. (Uploading the resume as a PDF is built; what remains of it is a clean-up of files nothing refers to any more, and backing up the volume with the database.)
    Which of these a college wants first is a product decision, not a technical one.
 
 ## Explicitly not planned (canonical spec §15)
