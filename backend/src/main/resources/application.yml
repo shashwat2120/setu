@@ -168,6 +168,9 @@ spring:
 server:
   port: ${SERVER_PORT:8080}
   tomcat:
+    # how much of a request that is being refused for its size (an upload past the multipart limit) is read and thrown away so the refusal can be answered: below this a caller
+    # gets a 413 saying so, above it the connection is simply closed (the default of 2 MB made a 5 MB upload through the gateway come back as a 502)
+    max-swallow-size: 16MB
     threads:
       # at most this many requests are in flight at once; the rest wait in the accept queue (see the pool-sizing rule under spring.datasource.hikari).
       # The gateway and the AI service have no database and set their own, higher, value.
