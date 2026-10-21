@@ -309,7 +309,7 @@ A student can upload a PDF of up to 2 MB as their resume file, beside the resume
 | A zip (a docx is one) renamed `resume.pdf` | 400 "only PDF files are accepted" |
 | A PDF with a JavaScript open action | 400 "this PDF is using features a resume must not ... save a plain copy and upload that" |
 | A file of 2.5 MB | 400 "the file is larger than 2 MB" |
-| A file of 5 MB | 500, a flaw found here. Fixed to answer 413 in the standard envelope (`FILE_TOO_LARGE`), covered by a test of the handler; **not yet re-run on the containers** after the fix |
+| A file of 3.5 MB, and of 5 MB | 413 in the standard envelope (`FILE_TOO_LARGE`, "a resume file may be at most 2 MB"). Two flaws found here and fixed: a 500 (no handler for an upload past the servlet limit), then a 502 through the gateway (the core closed the connection before the gateway had finished sending, because it would only read 2 MB of a refused request; it now reads and discards up to 16 MB). Re-run on the containers after both fixes |
 | The student downloads their own file | 200, `application/pdf`, `attachment; filename="My Resume.pdf"`, `nosniff`, `default-src 'none'; sandbox`, the same bytes |
 | Another student, or the officer, downloading it directly | 403 each |
 | Apply, then the student uploads a replacement and then removes the file | the application is unaffected |
