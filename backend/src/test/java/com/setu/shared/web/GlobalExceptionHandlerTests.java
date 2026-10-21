@@ -347,6 +347,18 @@ class GlobalExceptionHandlerTests {
     }
 
     @Test
+    void anUploadPastTheServletLimit_mapsTo413_inTheStandardEnvelope() {
+        MockHttpServletRequest request = new MockHttpServletRequest("POST", "/career/resumes/file");
+        var response = globalExceptionHandler.handleUploadTooLarge(new org.springframework.web.multipart.MaxUploadSizeExceededException(3L * 1024 * 1024), request);
+
+        assertThat(response.getStatusCode().value()).isEqualTo(413);
+        assertThat(response.getBody()).isNotNull();
+        assertThat(response.getBody().code()).isEqualTo("FILE_TOO_LARGE");
+        assertThat(response.getBody().message()).contains("2 MB");
+        assertThat(response.getBody().requestId()).isNotNull();
+    }
+
+    @Test
     void dataIntegrityViolation_mapsTo409_viaRealHandlerBean() {
         MockHttpServletRequest request = new MockHttpServletRequest("POST", "/catalog/rooms");
         var response = globalExceptionHandler.handleDataIntegrityViolation(

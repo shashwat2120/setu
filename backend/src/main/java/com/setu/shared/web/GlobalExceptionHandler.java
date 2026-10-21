@@ -17,6 +17,7 @@ import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.MissingRequestHeaderException;
 import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.HandlerMethodValidationException;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
@@ -145,6 +146,12 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(HttpMessageNotReadableException.class)
     public ResponseEntity<ErrorResponse> handleMalformedBody(HttpMessageNotReadableException ex, HttpServletRequest request) {
         return respond(HttpStatus.BAD_REQUEST, "MALFORMED_REQUEST", "request body could not be parsed", request);
+    }
+
+    /** An upload past the servlet's limit (the resume service answers for a file just over its own 2 MB limit in words; this is for anything far larger). */
+    @ExceptionHandler(MaxUploadSizeExceededException.class)
+    public ResponseEntity<ErrorResponse> handleUploadTooLarge(MaxUploadSizeExceededException ex, HttpServletRequest request) {
+        return respond(HttpStatus.PAYLOAD_TOO_LARGE, "FILE_TOO_LARGE", "the file is too large (a resume file may be at most 2 MB)", request);
     }
 
     @ExceptionHandler(MethodArgumentTypeMismatchException.class)
