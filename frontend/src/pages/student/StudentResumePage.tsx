@@ -1,14 +1,14 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../../auth/AuthContext';
 import { tenantForRole } from '../../auth/types';
-import { apiFetch } from '../../api/client';
+import { apiDownload, apiFetch } from '../../api/client';
 import { useApiQuery } from '../../api/useApiQuery';
-import type { ResumeContent, ResumeItem, ResumeViewResponse, SkillResponse } from '../../api/types';
+import type { ResumeContent, ResumeFileInfo, ResumeItem, ResumeViewResponse, SkillResponse } from '../../api/types';
 import { PageHeader } from '../../components/ui/PageHeader';
 import { Skeleton } from '../../components/ui/EmptyState';
 import { ResumeCard } from '../../components/career/ResumeCard';
-import { ITEM_KINDS, KIND_LABELS, emptyContent, toRequestFields } from '../../lib/resume';
+import { ITEM_KINDS, KIND_LABELS, emptyContent, fileProblem, sizeText, toRequestFields } from '../../lib/resume';
 
 const inputStyle: React.CSSProperties = {
   width: '100%', fontFamily: 'var(--font-body)', fontSize: 14, padding: '9px 12px', border: '1px solid var(--rule)', borderRadius: 4, background: 'var(--bg-elev)', color: 'var(--ink)',
@@ -28,14 +28,70 @@ export default function StudentResumePage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
+  const [file, setFile] = useState<ResumeFileInfo | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [fileMessage, setFileMessage] = useState<{ text: string; problem: boolean } | null>(null);
+  const filled = useRef(false);
 
   useEffect(() => {
     if (resume.data) {
-      const c = resume.data.content;
-      setForm({ headline: c.headline ?? '', summary: c.summary ?? '', linkedinUrl: c.linkedinUrl ?? '', githubUrl: c.githubUrl ?? '', portfolioUrl: c.portfolioUrl ?? '', items: c.items ?? [] });
+      // the form is filled once, from what was saved; later reads only bring the version and the file up to date, so what is being typed is never overwritten
+      if (!filled.current) {
+        filled.current = true;
+        const c = resume.data.content;
+        setForm({ headline: c.headline ?? '', summary: c.summary ?? '', linkedinUrl: c.linkedinUrl ?? '', githubUrl: c.githubUrl ?? '', portfolioUrl: c.portfolioUrl ?? '', items: c.items ?? [] });
+      }
       setVersion(resume.data.version);
+      setFile(resume.data.file ?? null);
     }
   }, [resume.data]);
+
+  const upload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const chosen = e.target.files?.[0];
+    e.target.value = '';
+    if (!chosen || !studentId) return;
+    const problem = fileProblem(chosen);
+    if (problem) {
+      setFileMessage({ text: problem, problem: true });
+      return;
+    }
+    setUploading(true);
+    setFileMessage(null);
+    try {
+      const data = new FormData();
+      data.append('studentId', studentId);
+      data.append('file', chosen);
+      const result = await apiFetch<{ file: ResumeFileInfo; version: number }>('/career/resumes/file', { method: 'POST', body: data });
+      setFile(result.file);
+      setVersion(result.version);
+      setFileMessage({ text: 'Your PDF is saved and will be sent with your applications.', problem: false });
+    } catch (err) {
+      setFileMessage({ text: err instanceof Error ? err.message : 'Could not upload that file.', problem: true });
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const removeFile = async () => {
+    if (!studentId || !window.confirm('Remove your resume file? Applications you have already made keep the file they were sent with.')) return;
+    try {
+      await apiFetch(`/career/resumes/file?studentId=${studentId}`, { method: 'DELETE' });
+      setFile(null);
+      setFileMessage({ text: 'Your PDF was removed.', problem: false });
+      resume.refetch();
+    } catch (err) {
+      setFileMessage({ text: err instanceof Error ? err.message : 'Could not remove that file.', problem: true });
+    }
+  };
+
+  const downloadFile = async () => {
+    if (!studentId) return;
+    try {
+      await apiDownload(`/career/resumes/file?studentId=${studentId}`);
+    } catch (err) {
+      setFileMessage({ text: err instanceof Error ? err.message : 'Could not download your file.', problem: true });
+    }
+  };
 
   const set = (patch: Partial<ResumeContent>) => { setSaved(false); setForm((f) => ({ ...f, ...patch })); };
   const setItem = (index: number, patch: Partial<ResumeItem>) => set({ items: form.items.map((it, i) => (i === index ? { ...it, ...patch } : it)) });
@@ -70,6 +126,24 @@ export default function StudentResumePage() {
 
       {resume.data && (
         <>
+          <section className="card no-print" style={{ marginBottom: 20 }} aria-labelledby="resume-file-heading">
+            <h2 id="resume-file-heading" style={{ fontSize: 16, marginBottom: 6 }}>Resume file (PDF)</h2>
+            <p style={{ fontSize: 13, color: 'var(--ink-soft)', marginBottom: 10 }}>
+              Optional. A PDF of up to 2 MB, sent with your applications beside what you write below. Word files are not accepted: in Word, choose Save as PDF first. No password, scripts or attachments inside.
+            </p>
+            {file ? (
+              <p style={{ fontSize: 14, marginBottom: 10 }}>
+                <strong>{file.name}</strong> ({sizeText(file.size)}){' '}
+                <button type="button" className="btn btn-ghost" style={{ padding: '4px 10px', fontSize: 12 }} onClick={downloadFile}>Download</button>{' '}
+                <button type="button" className="btn btn-ghost" style={{ padding: '4px 10px', fontSize: 12 }} onClick={removeFile}>Remove</button>
+              </p>
+            ) : <p style={{ fontSize: 14, marginBottom: 10 }}>No file uploaded.</p>}
+            <label htmlFor="resume-file" style={labelStyle}>{file ? 'Replace with another PDF' : 'Choose a PDF'}</label>
+            <input id="resume-file" type="file" accept=".pdf,application/pdf" disabled={uploading} onChange={upload} />
+            {uploading && <span role="status" style={{ fontSize: 13, marginLeft: 8 }}>Uploading…</span>}
+            {fileMessage && <p role={fileMessage.problem ? 'alert' : 'status'} style={{ fontSize: 13, marginTop: 8, color: fileMessage.problem ? 'var(--flag)' : 'inherit' }}>{fileMessage.text}</p>}
+          </section>
+
           <form onSubmit={save} className="card no-print" style={{ marginBottom: 20 }}>
             <p style={{ fontSize: 13, color: 'var(--ink-soft)', marginBottom: 12 }}>
               When you apply to a job, a copy of your resume is sent with the application, so the placement officer reads what you submitted even if you edit it later. A headline is the least a resume needs.
@@ -140,7 +214,8 @@ export default function StudentResumePage() {
             <h2 style={{ fontSize: 18, margin: 0 }}>How it reads</h2>
             <button type="button" className="btn btn-ghost no-print" style={{ padding: '8px 14px', fontSize: 13 }} onClick={() => window.print()}>Print or save as PDF</button>
           </div>
-          <ResumeCard content={{ ...preview, items: preview.items as ResumeItem[] }} record={resume.data.record} skills={resume.data.skills} skillName={skillName} />
+          <ResumeCard content={{ ...preview, items: preview.items as ResumeItem[] }} record={resume.data.record} skills={resume.data.skills} skillName={skillName} file={file}
+            onDownloadFile={downloadFile} />
         </>
       )}
     </div>

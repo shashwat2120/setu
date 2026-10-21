@@ -1,4 +1,9 @@
 spring:
+  servlet:
+    multipart:
+      # a resume file is at most 2 MB (the service says so in words); a little above that is read so the service can, anything beyond is refused outright
+      max-file-size: 3MB
+      max-request-size: 4MB
   config:
     # Load ignored developer settings when Spring starts from the backend folder or repo root.
     import:

@@ -42,6 +42,23 @@ export function recordLine(record: ResumeRecord): string {
   ].filter(Boolean).join(' · ');
 }
 
+/** "245 KB", "1.4 MB": a file's size as a person reads it. */
+export function sizeText(bytes: number): string {
+  if (bytes < 1024) return `${bytes} bytes`;
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+export const MAX_FILE_BYTES = 2 * 1024 * 1024;
+
+/** Why a chosen file cannot be uploaded, from what the browser knows before sending it; null if it may be tried. The server judges the content. */
+export function fileProblem(file: { name: string; size: number }): string | null {
+  if (file.size === 0) return 'That file is empty.';
+  if (file.size > MAX_FILE_BYTES) return `That file is ${sizeText(file.size)}; the limit is 2 MB.`;
+  if (!/\.pdf$/i.test(file.name)) return 'Only PDF files are accepted.';
+  return null;
+}
+
 export const emptyContent = (): ResumeContent => ({ headline: '', summary: '', linkedinUrl: '', githubUrl: '', portfolioUrl: '', items: [] });
 
 /** The form's values as the server takes them: blanks are nothing, entries without a title are dropped, text is trimmed. */

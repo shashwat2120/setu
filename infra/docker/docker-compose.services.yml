@@ -77,8 +77,12 @@ services:
         condition: service_healthy
     mem_limit: 1600m
     ports: ["127.0.0.1:8083:8083"]
+    # uploaded resume files: on a volume, not in the database
+    volumes:
+      - setu_resumes:/data/resumes
     environment:
       <<: *common
+      APP_RESUMES_DIR: /data/resumes
       SETU_MAIN: com.setu.BackendApplication
       SERVER_PORT: "8083"
       APPLICATION_NAME: core

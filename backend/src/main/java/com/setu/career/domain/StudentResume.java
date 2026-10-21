@@ -32,6 +32,19 @@ public class StudentResume {
     @Version
     private int version;
 
+    /** The uploaded PDF, if any: its content hash (its name in storage), the name to show, and its size. All set or all null. */
+    @Column(name = "file_sha256")
+    private String fileSha256;
+
+    @Column(name = "file_name")
+    private String fileName;
+
+    @Column(name = "file_size")
+    private Integer fileSize;
+
+    @Column(name = "file_uploaded_at")
+    private Instant fileUploadedAt;
+
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 
@@ -77,6 +90,38 @@ public class StudentResume {
 
     public Instant updatedAt() {
         return updatedAt;
+    }
+
+    public String fileSha256() {
+        return fileSha256;
+    }
+
+    public String fileName() {
+        return fileName;
+    }
+
+    public Integer fileSize() {
+        return fileSize;
+    }
+
+    public Instant fileUploadedAt() {
+        return fileUploadedAt;
+    }
+
+    public void attachFile(String sha256, String name, int size, Instant now) {
+        this.fileSha256 = sha256;
+        this.fileName = name;
+        this.fileSize = size;
+        this.fileUploadedAt = now;
+        this.updatedAt = now;
+    }
+
+    public void clearFile(Instant now) {
+        this.fileSha256 = null;
+        this.fileName = null;
+        this.fileSize = null;
+        this.fileUploadedAt = null;
+        this.updatedAt = now;
     }
 
     public void replaceContent(String content, Instant now) {

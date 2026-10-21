@@ -1,17 +1,25 @@
-import type { ResumeContent, ResumeRecord, ResumeSkill } from '../../api/types';
-import { KIND_HEADINGS, ITEM_KINDS, datesText, isHttpsUrl, recordLine } from '../../lib/resume';
+import type { ResumeContent, ResumeFileInfo, ResumeRecord, ResumeSkill } from '../../api/types';
+import { KIND_HEADINGS, ITEM_KINDS, datesText, isHttpsUrl, recordLine, sizeText } from '../../lib/resume';
 
 /**
  * A resume as a reader sees it: what the student wrote, next to what the college's own records say (batch, CGPA, attendance, skills). Links are shown only if they are
  * https addresses. Used for the student's own preview and for the placement officer reading an application.
  */
-export function ResumeCard({ content, record, skills, skillName }: { content: ResumeContent; record: ResumeRecord; skills: ResumeSkill[]; skillName: (id: string) => string }) {
+export function ResumeCard({ content, record, skills, skillName, file, onDownloadFile }: {
+  content: ResumeContent; record: ResumeRecord; skills: ResumeSkill[]; skillName: (id: string) => string; file?: ResumeFileInfo | null; onDownloadFile?: () => void;
+}) {
   const links = [['LinkedIn', content.linkedinUrl], ['GitHub', content.githubUrl], ['Portfolio', content.portfolioUrl]].filter(([, url]) => isHttpsUrl(url as string | null));
   const facts = recordLine(record);
   return (
     <article className="card resume-card" aria-label="Resume">
       <h3 style={{ fontSize: 20, margin: 0 }}>{content.headline ?? 'No headline yet'}</h3>
       {content.summary && <p style={{ marginTop: 8, whiteSpace: 'pre-wrap' }}>{content.summary}</p>}
+      {file && (
+        <p className="no-print" style={{ marginTop: 8, fontSize: 14 }}>
+          Resume file: <strong>{file.name}</strong> ({sizeText(file.size)}){' '}
+          {onDownloadFile && <button type="button" className="btn btn-ghost" style={{ padding: '4px 10px', fontSize: 12 }} onClick={onDownloadFile}>Download</button>}
+        </p>
+      )}
       {links.length > 0 && (
         <p style={{ marginTop: 8, fontSize: 14 }}>
           {links.map(([label, url], i) => (

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useAuth } from '../../auth/AuthContext';
 import { tenantForRole } from '../../auth/types';
-import { apiFetch } from '../../api/client';
+import { apiDownload, apiFetch } from '../../api/client';
 import { useApiQuery } from '../../api/useApiQuery';
 import type {
   ResumeSnapshotResponse, JobResponse, ApplicationResponse, SkillResponse, JobSkillResponse, StudentResponse, PageResponse, ProgramResponse,
@@ -245,6 +245,7 @@ const DECISION_LABELS: Record<DecisionAction, string> = { shortlist: 'Shortlist'
 /** The resume an application was made with, as the student submitted it. */
 function ApplicationResume({ applicationId, studentName, skillName, onClose }: { applicationId: string; studentName: string; skillName: (id: string) => string; onClose: () => void }) {
   const snapshot = useApiQuery<ResumeSnapshotResponse>(`/career/applications/${applicationId}/resume`);
+  const [downloadError, setDownloadError] = useState<string | null>(null);
   return (
     <div style={{ margin: '12px 0' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
@@ -253,7 +254,14 @@ function ApplicationResume({ applicationId, studentName, skillName, onClose }: {
       </div>
       {snapshot.loading && <Skeleton height={80} />}
       {snapshot.error && !snapshot.loading && <p role="alert" style={{ color: 'var(--flag)', fontSize: 13 }}>Could not load this resume.</p>}
-      {snapshot.data && <ResumeCard content={snapshot.data.content} record={snapshot.data.record} skills={snapshot.data.skills} skillName={skillName} />}
+      {downloadError && <p role="alert" style={{ color: 'var(--flag)', fontSize: 13 }}>{downloadError}</p>}
+      {snapshot.data && (
+        <ResumeCard content={snapshot.data.content} record={snapshot.data.record} skills={snapshot.data.skills} skillName={skillName} file={snapshot.data.file}
+          onDownloadFile={async () => {
+            setDownloadError(null);
+            try { await apiDownload(`/career/applications/${applicationId}/resume/file`); } catch (err) { setDownloadError(err instanceof Error ? err.message : 'Could not download the file.'); }
+          }} />
+      )}
     </div>
   );
 }

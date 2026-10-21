@@ -245,6 +245,18 @@ public class ApplicationService {
         }
     }
 
+    public sealed interface ResumeFileResult {
+        record Found(ResumeService.Download file) implements ResumeFileResult {
+        }
+
+        /** The application was made without a resume file (or the file is no longer in storage). */
+        record None() implements ResumeFileResult {
+        }
+
+        record NotFound() implements ResumeFileResult {
+        }
+    }
+
     /**
      * The resume an application was made with: readable by the student whose application it is and by a placement officer of the college (an officer's reading is audited).
      * Nobody else, and an officer reaches a student's resume only through an application, never by browsing.
@@ -256,6 +268,31 @@ public class ApplicationService {
             return new ResumeResult.NotFound();
         }
         Application application = maybe.get();
+        authorizeResumeReading(application, "RESUME_VIEWED");
+        if (application.resumeSnapshot() == null) {
+            return new ResumeResult.None();
+        }
+        return new ResumeResult.Found(resumeService.readSnapshot(application.resumeSnapshot()));
+    }
+
+    /** The PDF the application was made with (the exact file, even if the student has since replaced theirs), under the same rules as {@link #resumeOf}. */
+    @Transactional
+    public ResumeFileResult resumeFileOf(UUID applicationId) {
+        Optional<Application> maybe = applicationRepository.findById(applicationId);
+        if (maybe.isEmpty()) {
+            return new ResumeFileResult.NotFound();
+        }
+        Application application = maybe.get();
+        authorizeResumeReading(application, "RESUME_FILE_DOWNLOADED");
+        if (application.resumeSnapshot() == null) {
+            return new ResumeFileResult.None();
+        }
+        return resumeService.load(application.tenantId(), resumeService.readSnapshot(application.resumeSnapshot()).file())
+            .<ResumeFileResult>map(ResumeFileResult.Found::new).orElse(new ResumeFileResult.None());
+    }
+
+    /** The student whose application it is, or a placement officer of the college (audited); no one else, and no other student whatever their role. */
+    private void authorizeResumeReading(Application application, String auditAction) {
         Optional<UUID> own = accessSupport.currentStudentId(application.tenantId());
         boolean isOwn = own.isPresent() && own.get().equals(application.studentId());
         if (own.isPresent() && !isOwn) {
@@ -263,13 +300,9 @@ public class ApplicationService {
         }
         if (!isOwn) {
             authorizationContext.assertCan(MANAGE_PERMISSION, ResourceRef.of("application", application.id(), application.tenantId()));
-            auditLogWriter.write(application.tenantId(), authorizationContext.currentUserId(), "RESUME_VIEWED", "career.applications", application.id(),
+            auditLogWriter.write(application.tenantId(), authorizationContext.currentUserId(), auditAction, "career.applications", application.id(),
                 Map.of("studentId", application.studentId(), "jobId", application.jobId()));
         }
-        if (application.resumeSnapshot() == null) {
-            return new ResumeResult.None();
-        }
-        return new ResumeResult.Found(resumeService.readSnapshot(application.resumeSnapshot()));
     }
 
     public sealed interface TransitionResult {

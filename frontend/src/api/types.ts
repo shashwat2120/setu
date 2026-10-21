@@ -464,6 +464,13 @@ export interface ResumeContent {
 }
 
 /** What the system itself holds about the student; any figure is null when it cannot be known yet. */
+/** An uploaded resume file: the name to show, its size in bytes and the hash of its content. */
+export interface ResumeFileInfo {
+  name: string;
+  size: number;
+  sha256: string;
+}
+
 export interface ResumeRecord {
   cgpa: number | null;
   attendancePercentage: number | null;
@@ -484,6 +491,7 @@ export interface ResumeViewResponse {
   updatedAt: string | null;
   record: ResumeRecord;
   skills: ResumeSkill[];
+  file?: ResumeFileInfo | null;
 }
 
 /** GET /career/applications/{id}/resume: the resume the application was made with. */
@@ -493,6 +501,7 @@ export interface ResumeSnapshotResponse {
   content: ResumeContent;
   record: ResumeRecord;
   skills: ResumeSkill[];
+  file?: ResumeFileInfo | null;
 }
 
 /** GET /career/placement-stats: the college's placement figures. Packages are in lakhs per annum; a percentage is null where there are no students to take it of. */

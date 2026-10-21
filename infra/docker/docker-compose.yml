@@ -133,3 +133,5 @@ volumes:
   setu_grafana_data:
   setu_tempo_data:
   setu_loki_data:
+  # uploaded resume files (used by the core service in docker-compose.services.yml)
+  setu_resumes:

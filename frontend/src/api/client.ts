@@ -82,16 +82,18 @@ export interface ApiFetchOptions {
 export async function apiFetch<T>(path: string, options: ApiFetchOptions = {}): Promise<T> {
   const { method = 'GET', body, skipAuthRetry, unauthorizedKeepsSession, headers } = options;
 
+  // a FormData body is sent as it is (the browser sets its multipart type and boundary); anything else is JSON
+  const isForm = typeof FormData !== 'undefined' && body instanceof FormData;
   const doFetch = async (): Promise<Response> =>
     fetch(path, {
       method,
       credentials: 'include',
       headers: {
-        ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}),
+        ...(body !== undefined && !isForm ? { 'Content-Type': 'application/json' } : {}),
         ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
         ...headers,
       },
-      body: body !== undefined ? JSON.stringify(body) : undefined,
+      body: body === undefined ? undefined : isForm ? (body as FormData) : JSON.stringify(body),
     });
 
   let response = await doFetch();
@@ -128,6 +130,40 @@ export async function apiFetch<T>(path: string, options: ApiFetchOptions = {}): 
   }
 
   return json as T;
+}
+
+/**
+ * Fetches a file with the signed-in person's token (a plain link would carry none) and hands it to the browser to save under the name the server offered it as.
+ * Same auth behaviour as {@link apiFetch}: one silent refresh-and-retry on a 401. A refusal is thrown as an {@link ApiError} carrying the server's message.
+ */
+export async function apiDownload(path: string): Promise<void> {
+  const doFetch = async (): Promise<Response> =>
+    fetch(path, { credentials: 'include', headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {} });
+
+  let response = await doFetch();
+  if (response.status === 401) {
+    if (await refreshAccessToken()) {
+      response = await doFetch();
+    } else {
+      onUnauthorized?.();
+      throw new ApiError(401, 'Session expired');
+    }
+  }
+  if (!response.ok) {
+    const text = await response.text();
+    const envelope = (text ? safeJsonParse(text) : {}) as ErrorEnvelope | undefined;
+    throw new ApiError(response.status, envelope?.message ?? response.statusText, envelope?.code, envelope?.requestId, envelope?.errors);
+  }
+  const blob = await response.blob();
+  const named = /filename\*?=(?:UTF-8'')?"?([^";]+)"?/i.exec(response.headers.get('Content-Disposition') ?? '');
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = named ? decodeURIComponent(named[1]) : 'download';
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 0);
 }
 
 export interface SseHandlers {

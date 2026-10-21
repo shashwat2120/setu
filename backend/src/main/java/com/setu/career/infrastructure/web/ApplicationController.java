@@ -38,6 +38,17 @@ public class ApplicationController {
             a.resumeSnapshot() != null);
     }
 
+    /** The PDF this application was made with, as a download and nothing else; 404 when it was made without one. */
+    @GetMapping("/{applicationId}/resume/file")
+    public ResponseEntity<?> resumeFile(@PathVariable UUID applicationId) {
+        return switch (applicationService.resumeFileOf(applicationId)) {
+            case ApplicationService.ResumeFileResult.Found f -> ResumeController.pdfDownload(f.file());
+            case ApplicationService.ResumeFileResult.None ignored ->
+                ResponseEntity.status(HttpStatus.NOT_FOUND).body(new ErrorResponse("this application was made without a resume file"));
+            case ApplicationService.ResumeFileResult.NotFound ignored -> ResponseEntity.status(HttpStatus.NOT_FOUND).build();
+        };
+    }
+
     /** The resume this application was made with; 404 when it was made without one. */
     @GetMapping("/{applicationId}/resume")
     public ResponseEntity<?> resume(@PathVariable UUID applicationId) {
