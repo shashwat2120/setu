@@ -135,3 +135,5 @@ volumes:
   setu_loki_data:
   # uploaded resume files (used by the core service in docker-compose.services.yml)
   setu_resumes:
+  # the Notification service's own database server (docker-compose.services.yml)
+  setu_notification_pg:

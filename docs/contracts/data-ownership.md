@@ -129,7 +129,39 @@ Rehearsed on the compose database for Identity (11 tables), Academic (38), Learn
 the missing `directory` schema) unless `SETU_SPLIT_EXCLUDE=record` leaves Record behind; with it, 18 tables copy cleanly. The read-model tables are copied with the rest and then kept
 current by replay: the consumer's group starts from the earliest offset, and the processed-event table makes the overlap harmless.
 
+## 4a. The first service on a database of its own: Notification
+
+Notification runs on **its own PostgreSQL server** (`postgres-notification`, its own volume), not as a login on the shared one. That server holds exactly three schemas and
+20 tables: `notification` (16: notifications, delivery attempts, preferences, processed event ids and the `rm_*` read model), its **own empty copy of the platform tables**
+(`governance`: outbox, audit log, idempotency keys), and Spring Modulith's event log (`public.event_publication`). Nothing of any other service is on it.
+
+How it got there, repeatably: the compose one-shot `db-notification-init` runs `infra/db/split/provision-service-db.sh notification notification`. It waits for the core
+(which creates the tables), loads the notification schema **with its data** and the platform tables **without** in a **single transaction** (the last table in the load is
+`public.event_publication`, so its existence means the load finished: a failed run leaves nothing that looks finished), compares the row count of every copied table with
+the source, refuses a copy that contains any schema that is not the service's, and applies the service's login (section 1a). Run again on a loaded database it only
+re-applies the grants. Because the read-model tables and the processed-event ids come across, the service carries on from where the monolith stopped: Kafka's committed
+offsets are the same group, so nothing is replayed twice and nothing is lost.
+
+The one other change the cut-over needed: **the core stopped consuming for Notification** (`APP_NOTIFICATION_CONSUMER_ENABLED=false`). The core still contains the notification
+module and would otherwise join the same Kafka consumer group; an event it handled would be written to the old copy in the shared database, where nobody reads it, and
+half of all notifications would silently disappear.
+
+**What it shows, run for real:** an event published by the Assessment service travels through Kafka to the Notification service and becomes a row in *its* database
+(41 rows there, the old copy unchanged at 40); the student reads it back through the gateway; and when the Notification service's database server is stopped, only
+Notification fails (the gateway answers 504 in the standard envelope) while Identity, Academic, Learning and Attendance keep answering, and it recovers by itself when
+the server returns.
+
 ## 5. Honest limits
+
+* **Only Notification has a database of its own.** Every other service still shares the one PostgreSQL database as its own login (section 1a).
+* **The service's database does not receive future migrations by itself.** The service never migrates; the core's Flyway applies the `V*` files to the shared database, so the
+  `notification` schema there is now a stale, unused copy (it has to stay: the core still contains the module and validates its entities at start-up), and a migration that changes
+  the notification schema would have to be applied to the service's database as well. That is the next step: a migration folder per service, run by that service against its own
+  database. Until then the provisioning script is how a service's database is made, and a schema change to Notification needs doing twice.
+* **A database outage is not free of cost to events.** A failing event is retried three times and then dead-lettered ([kafka-contracts.md](kafka-contracts.md) section 5), so events that
+  arrive while the Notification database is down for longer than that window go to `setu.*.DLQ` and need replaying. The outage test above sent no events during the outage.
+* **The failure looks like a slow 504, not an instant refusal:** the service waits out its connection pool timeout before the gateway gives up on it.
+* Same PostgreSQL version and the same development password (`SETU_SERVICE_DB_PASSWORD`); one Docker host.
 
 * Every service runs as its own database login (section 1a), but they still share one PostgreSQL database, so the platform tables (outbox, audit log, idempotency keys)
   and Modulith's event log are shared. A process publishes any `NEW` outbox row, whichever service wrote it; that works because every consumer is idempotent, and ends when

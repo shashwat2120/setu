@@ -40,6 +40,10 @@ BEGIN
             ('notification', ARRAY['notification'])
         ) AS s(name, schemas)
     LOOP
+        -- a database that holds none of this service's schemas (a service's own database holds only its own) gets no login for it
+        IF NOT EXISTS (SELECT 1 FROM pg_namespace WHERE nspname = ANY (service.schemas)) THEN
+            CONTINUE;
+        END IF;
         role_name := 'setu_' || service.name;
 
         IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = role_name) THEN
@@ -62,6 +66,9 @@ BEGIN
 
         -- the schemas this service owns: ordinary data access, no schema changes
         FOREACH schema_name IN ARRAY service.schemas LOOP
+            IF NOT EXISTS (SELECT 1 FROM pg_namespace WHERE nspname = schema_name) THEN
+                CONTINUE;
+            END IF;
             EXECUTE format('GRANT USAGE ON SCHEMA %I TO %I', schema_name, role_name);
             EXECUTE format('GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA %I TO %I', schema_name, role_name);
             EXECUTE format('GRANT USAGE, SELECT, UPDATE ON ALL SEQUENCES IN SCHEMA %I TO %I', schema_name, role_name);
@@ -70,10 +77,12 @@ BEGIN
         END LOOP;
 
         -- the platform's cross-cutting tables, with only what each is for
-        EXECUTE format('GRANT USAGE ON SCHEMA governance TO %I', role_name);
-        EXECUTE format('GRANT SELECT, INSERT, UPDATE ON governance.outbox_events TO %I', role_name);
-        EXECUTE format('GRANT SELECT, INSERT ON governance.audit_logs TO %I', role_name);
-        EXECUTE format('GRANT SELECT, INSERT, UPDATE, DELETE ON governance.idempotency_keys TO %I', role_name);
+        IF to_regclass('governance.outbox_events') IS NOT NULL THEN
+            EXECUTE format('GRANT USAGE ON SCHEMA governance TO %I', role_name);
+            EXECUTE format('GRANT SELECT, INSERT, UPDATE ON governance.outbox_events TO %I', role_name);
+            EXECUTE format('GRANT SELECT, INSERT ON governance.audit_logs TO %I', role_name);
+            EXECUTE format('GRANT SELECT, INSERT, UPDATE, DELETE ON governance.idempotency_keys TO %I', role_name);
+        END IF;
 
         -- the public schema holds the migration history (the core's alone) and one table every process needs: Spring Modulith's log of application events it has
         -- published and not yet seen handled, which it writes itself from any process that publishes one (found when the attendance service, switched to its own

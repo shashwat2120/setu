@@ -342,6 +342,29 @@ another service's tables, deleting outbox events, changing or removing audit rec
 added by a later migration, a stray grant being taken back when the script runs again, and the script agreeing with `table-owners.txt`. **Limits:** one PostgreSQL
 database and server still; the same development password for every role; the outbox, audit log, idempotency keys and Modulith's event log are shared tables; the suites run as the owner, so they cannot show a service asking for something its login would refuse. Two things cover that: `ServiceSqlStaysInItsSchemasTests` reads the hand-written SQL of every package a service scans (its modules and the shared kernel) and fails if it names another service's schema (none does; JPA mappings are held to their own schema by `TableOwnershipTests`), and the live run exercised the 16-step flow, Learning and Notification. What neither proves is a path that builds its SQL from pieces at run time; it would fail at that moment with "permission denied".
 
+## The Notification service on a database of its own, run live (2026-10-23)
+
+Notification now runs on its **own PostgreSQL server** (`postgres-notification`), loaded from the shared database by `provision-service-db.sh`
+([contracts/data-ownership.md](contracts/data-ownership.md) section 4a). Cut-over order: stop the service, recreate the core with its Notification consumer switched off, copy
+while nothing is writing, start the service on the new server (Kafka kept whatever arrived in between). Run on the containers:
+
+| Check | Result |
+|---|---|
+| The copy | one transaction; every table's row count compared with the source by the script; exit 0 |
+| What the new server holds | exactly three schemas (`governance`, `notification`, `public`), **20 tables, none of any other service's**; 40 notifications and 40 processed event ids carried across |
+| Its platform tables | its own, empty (outbox 0, audit log 0) |
+| Connections | the service connects there as `setu_notification`; the shared database shows no notification connections |
+| A grade published through the Assessment service (smoke flow, 14 of 14 steps) | the Assessment service's event goes to Kafka, the Notification service writes the notification **to its own database** (41 there; the old copy **stayed at 40**), and the student reads it back through the gateway after 0.6 s |
+| The core's Notification consumer | off (no mention in its log): otherwise it would share the Kafka group and half the notifications would go to the old copy |
+| **Failure isolation:** the Notification database server stopped | `/notifications` answers 504 `GATEWAY_TIMEOUT` in the standard envelope; **Learning, Academic, Identity and Attendance all keep answering 200** |
+| The server started again | `/notifications` answers 200 on its own, nothing restarted |
+
+`ServiceDatabaseRolesTests` gained a case that builds a database holding only one service's schemas and the platform tables and applies the roles script to it: the service gets
+its login and no other service's login can use either schema. **Limits** (also in the contract): only Notification is split; **the service's database does not receive future
+migrations automatically** (the core's Flyway only migrates the shared database, so a schema change to Notification would have to be applied to both until each service has a migration
+folder of its own); events that arrive during a database outage longer than the retry window are dead-lettered (no events were sent during the outage test); the failure shows as a
+slow 504; one Docker host and the development password.
+
 ## Not validated
 
 - Kafka consumer lag **under load**. (The dead-letter path **was** run with a real poison event on the real stack, see below.)

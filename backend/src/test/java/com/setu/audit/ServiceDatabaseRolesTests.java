@@ -214,6 +214,42 @@ class ServiceDatabaseRolesTests {
     }
 
     @Test
+    void theScriptWorksOnAServicesOwnDatabaseThatHoldsOnlyItsOwnSchemasAndGrantsNothingElse() throws Exception {
+        String probe = "setu_roles_probe";
+        String probeUrl = env.getProperty("spring.datasource.url").replaceFirst("/[^/]+$", "/" + probe);
+        jdbc.execute("DROP DATABASE IF EXISTS " + probe + " WITH (FORCE)");
+        jdbc.execute("CREATE DATABASE " + probe);
+        try (Connection owner = DriverManager.getConnection(probeUrl, env.getProperty("spring.datasource.username"), env.getProperty("spring.datasource.password"));
+             Statement s = owner.createStatement()) {
+            // what a service's own database holds: its schema, the platform tables, and the framework's event log: nothing of any other service
+            s.execute("CREATE SCHEMA notification");
+            s.execute("CREATE TABLE notification.notifications (id int PRIMARY KEY, body text)");
+            s.execute("CREATE SCHEMA governance");
+            s.execute("CREATE TABLE governance.outbox_events (id int PRIMARY KEY, status text)");
+            s.execute("CREATE TABLE governance.audit_logs (id int PRIMARY KEY, action text)");
+            s.execute("CREATE TABLE governance.idempotency_keys (id int PRIMARY KEY)");
+            s.execute("CREATE TABLE public.event_publication (id int PRIMARY KEY, status text)");
+            s.execute(Files.readString(Path.of("../infra/db/roles/service-roles.sql"), StandardCharsets.UTF_8));
+
+            assertThat(canUse(s, "setu_notification", "notification")).as("the service's own schema").isTrue();
+            assertThat(canUse(s, "setu_notification", "governance")).as("the platform schema").isTrue();
+            for (String other : List.of("setu_identity", "setu_academic", "setu_learning", "setu_assessment", "setu_attendance")) {
+                assertThat(canUse(s, other, "notification")).as(other + " in the notification database").isFalse();
+                assertThat(canUse(s, other, "governance")).as(other + " in the notification database").isFalse();
+            }
+        } finally {
+            jdbc.execute("DROP DATABASE IF EXISTS " + probe + " WITH (FORCE)");
+        }
+    }
+
+    private static boolean canUse(Statement s, String role, String schema) throws SQLException {
+        try (var rs = s.executeQuery("SELECT has_schema_privilege('" + role + "', '" + schema + "', 'USAGE')")) {
+            rs.next();
+            return rs.getBoolean(1);
+        }
+    }
+
+    @Test
     void everyServiceRoleExistsCannotCreateRolesOrDatabasesAndIsNotASuperuser() {
         for (String role : ROLE_OF_OWNER.values()) {
             var row = jdbc.queryForMap("SELECT rolcanlogin, rolsuper, rolcreatedb, rolcreaterole FROM pg_roles WHERE rolname = ?", role);

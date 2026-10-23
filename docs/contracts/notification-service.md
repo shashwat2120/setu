@@ -1,5 +1,8 @@
 # Notification / Realtime service (Sprint 6B.3)
 
+> **Its own database (2026-10-23):** this service now runs on a PostgreSQL server of its own, holding only the notification schema and its own copy of the platform tables. See
+> [data-ownership.md](data-ownership.md) section 4a for how it is made, what it proved and what is still open (migrations).
+
 The `notification` module (in-app notifications built from business events, and their live delivery) runs as its own service:
 `com.setu.notification.NotificationServiceApplication`, `setu.service=notification`, port 8087, gateway route `/notifications/**`. It follows
 the same pattern as Learning, Assessment and Attendance ([extracted-services.md](extracted-services.md)): the module plus the shared kernel,

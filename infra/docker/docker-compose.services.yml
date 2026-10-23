@@ -83,6 +83,46 @@ services:
         -c "SET setu.role_password = '${SETU_SERVICE_DB_PASSWORD:-setu_dev_password}'" -f /service-roles.sql
     restart: "no"
 
+  # The Notification service's own database: a PostgreSQL server of its own, holding only the notification schema and the platform tables the service needs (its own outbox,
+  # audit log and idempotency keys, and Modulith's event log). docs/contracts/data-ownership.md section 4a.
+  postgres-notification:
+    image: pgvector/pgvector:pg16
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: setu_notification
+      POSTGRES_USER: ${POSTGRES_USER:-setu}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-setu_dev_password}
+    volumes:
+      - setu_notification_pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-setu} -d setu_notification"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # Loads that server from the shared database the first time (the notification schema with its data, the platform tables without), checks every row count, and gives the
+  # service its login. It waits for the core, which creates the tables. Safe to run again: a loaded database only has its login's grants re-applied.
+  db-notification-init:
+    image: pgvector/pgvector:pg16
+    depends_on:
+      core:
+        condition: service_healthy
+      postgres-notification:
+        condition: service_healthy
+    environment:
+      PGPASSWORD: ${POSTGRES_PASSWORD:-setu_dev_password}
+      PG_USER: ${POSTGRES_USER:-setu}
+      SRC_HOST: postgres
+      SRC_DB: ${SETU_DB_NAME:-setu_demo}
+      TGT_HOST: postgres-notification
+      TGT_DB: setu_notification
+      SETU_SERVICE_DB_PASSWORD: ${SETU_SERVICE_DB_PASSWORD:-setu_dev_password}
+    volumes:
+      - ../db/split/provision-service-db.sh:/provision-service-db.sh:ro
+      - ../db/roles/service-roles.sql:/service-roles.sql:ro
+    entrypoint: ["bash", "/provision-service-db.sh", "notification", "notification"]
+    restart: "no"
+
   # The modules not yet extracted (record, risk, career, finance, onboarding) and the owner of the migrations. Verifies tokens like any other
   # service (remote), and seeds the demo college on an empty database.
   core:
@@ -101,6 +141,9 @@ services:
       - setu_resumes:/data/resumes
     environment:
       <<: *common
+      # Notification has a database of its own now. The core still contains the notification module and would join the same Kafka group, and an event it handled would be
+      # written to the shared database's old copy, where nobody reads it: so the core does not consume for Notification any more.
+      APP_NOTIFICATION_CONSUMER_ENABLED: "false"
       APP_RESUMES_DIR: /data/resumes
       SETU_MAIN: com.setu.BackendApplication
       SERVER_PORT: "8083"
@@ -220,11 +263,13 @@ services:
     <<: *service
     depends_on:
       core: {condition: service_healthy}
-      db-roles: {condition: service_completed_successfully}
+      db-notification-init: {condition: service_completed_successfully}
     mem_limit: 640m
     ports: ["127.0.0.1:8087:8087"]
     environment:
       <<: *common
+      DB_HOST: postgres-notification
+      DB_NAME: setu_notification
       DB_USER: setu_notification
       DB_PASSWORD: ${SETU_SERVICE_DB_PASSWORD:-setu_dev_password}
       SETU_MAIN: com.setu.notification.NotificationServiceApplication
