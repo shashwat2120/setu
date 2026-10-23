@@ -3,6 +3,8 @@ import { apiFetch, apiStream, ApiError } from '../../api/client';
 import type { AiChatResponse } from '../../api/types';
 import { PageHeader } from '../../components/ui/PageHeader';
 import { AdvisorEvidence } from '../../components/AdvisorEvidence';
+import { ChatMarkdown } from '../../components/ChatMarkdown';
+import { followUpsFor } from '../../lib/advisorFollowUps';
 
 interface ChatTurn {
   role: 'user' | 'assistant';
@@ -40,11 +42,17 @@ function errorText(status: number, message: string): string {
   return message || 'Something went wrong.';
 }
 
+/** The advisor's mark beside its answers: decorative, the words carry the meaning. */
+function Avatar() {
+  return <span className="adv-avatar" aria-hidden="true">S</span>;
+}
+
 export default function StudentAdvisorPage() {
   const [turns, setTurns] = useState<ChatTurn[]>([]);
   const [message, setMessage] = useState('');
   const [sending, setSending] = useState(false);
   const [activity, setActivity] = useState<string | null>(null);
+  const [copied, setCopied] = useState<number | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
 
@@ -107,6 +115,24 @@ export default function StudentAdvisorPage() {
     }
   };
 
+  /** Asks the last question again, in place of its answer. */
+  const retry = () => {
+    const lastQuestion = [...turns].reverse().find((t) => t.role === 'user')?.text;
+    if (!lastQuestion || sending) return;
+    setTurns((t) => t.slice(0, -2));
+    void send(lastQuestion);
+  };
+
+  const copy = async (index: number, text: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(index);
+      window.setTimeout(() => setCopied((c) => (c === index ? null : c)), 2000);
+    } catch {
+      // the browser refused (no permission, or not a secure page): the answer is still on screen to select
+    }
+  };
+
   const newConversation = async () => {
     abortRef.current?.abort();
     setTurns([]);
@@ -118,6 +144,9 @@ export default function StudentAdvisorPage() {
       // the on-screen conversation is already cleared; a failed server-side clear only means older context may linger until it expires
     }
   };
+
+  const last = turns.length - 1;
+  const asked = turns.filter((t) => t.role === 'user').map((t) => t.text);
 
   return (
     <div>
@@ -135,56 +164,87 @@ export default function StudentAdvisorPage() {
         </button>
       </div>
 
-      <div className="card" style={{ minHeight: 320, display: 'flex', flexDirection: 'column', gap: 14, marginBottom: 16 }}>
+      <div className="card adv-chat">
         {turns.length === 0 && (
-          <div>
-            <p style={{ color: 'var(--ink-soft)', fontSize: 14, marginBottom: 12 }}>
-              Ask about your attendance, grades, upcoming deadlines, skill gaps, or college policy. The advisor answers only from data you're authorized to see, and remembers the last few questions of this conversation.
-            </p>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-              {SUGGESTIONS.map((s) => (
-                <button key={s} type="button" className="btn btn-ghost" style={{ fontSize: 13, padding: '6px 12px' }} onClick={() => send(s)} disabled={sending}>
-                  {s}
-                </button>
-              ))}
+          <div className="adv-welcome">
+            <Avatar />
+            <div>
+              <p className="adv-welcome-title">Hi, I'm your Setu advisor.</p>
+              <p className="adv-welcome-text">
+                Ask about your attendance, grades, upcoming deadlines, skill gaps, or college policy. I answer only from data you're authorized to see, and I remember the last few questions of this conversation.
+              </p>
+              <div className="adv-chips">
+                {SUGGESTIONS.map((s) => (
+                  <button key={s} type="button" className="adv-chip" onClick={() => send(s)} disabled={sending}>
+                    {s}
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
         )}
         {/* the conversation is a live region: a new answer is announced when it arrives, and not word by word while it is still being written */}
-        <div role="log" aria-label="Conversation with the AI Advisor" aria-live="polite" aria-relevant="additions text" aria-busy={sending} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-        {turns.map((turn, i) => {
-          if (turn.role === 'assistant' && turn.streaming && !turn.text) return null; // shown as the activity line instead
-          return (
-            <div key={i} style={{ alignSelf: turn.role === 'user' ? 'flex-end' : 'flex-start', maxWidth: '80%' }}>
-              <div
-                style={{
-                  padding: '10px 14px',
-                  borderRadius: 8,
-                  background: turn.role === 'user' ? 'var(--accent)' : turn.error ? 'transparent' : 'var(--bg-elev)',
-                  color: turn.role === 'user' ? 'var(--accent-on)' : turn.error ? 'var(--flag)' : 'var(--ink)',
-                  border: turn.error ? '1px solid var(--flag)' : turn.role === 'assistant' ? '1px solid var(--rule)' : 'none',
-                  fontSize: 14,
-                  whiteSpace: 'pre-wrap',
-                }}
-              >
-                {turn.text}
-                {turn.streaming && <span aria-hidden="true"> ▍</span>}
+        <div role="log" aria-label="Conversation with the AI Advisor" aria-live="polite" aria-relevant="additions text" aria-busy={sending} className="adv-log">
+          {turns.map((turn, i) => {
+            if (turn.role === 'assistant' && turn.streaming && !turn.text) return null; // shown as the typing indicator instead
+            if (turn.role === 'user') {
+              return (
+                <div key={i} className="adv-row adv-row--user">
+                  <div className="adv-bubble adv-bubble--user">{turn.text}</div>
+                </div>
+              );
+            }
+            const done = !turn.streaming && !turn.error;
+            const followUps = i === last && done && !sending ? followUpsFor(turn.sources, asked) : [];
+            return (
+              <div key={i} className="adv-row adv-row--assistant">
+                <Avatar />
+                <div className="adv-body">
+                  <div className={`adv-bubble adv-bubble--assistant${turn.error ? ' adv-bubble--error' : ''}`}>
+                    {turn.error ? turn.text : <ChatMarkdown text={turn.text} />}
+                    {turn.streaming && <span className="adv-cursor" aria-hidden="true" />}
+                  </div>
+                  {done && <AdvisorEvidence sources={turn.sources} model={turn.model} />}
+                  {(done || turn.error) && (
+                    <div className="adv-actions">
+                      {done && (
+                        <button type="button" className="adv-action" onClick={() => copy(i, turn.text)} aria-label="Copy answer">
+                          {copied === i ? 'Copied' : 'Copy'}
+                        </button>
+                      )}
+                      {i === last && !sending && (
+                        <button type="button" className="adv-action" onClick={retry}>Try again</button>
+                      )}
+                    </div>
+                  )}
+                  {followUps.length > 0 && (
+                    <div className="adv-followups">
+                      <span className="adv-followups-label" id={`followups-${i}`}>You could ask next</span>
+                      <div className="adv-chips" role="group" aria-labelledby={`followups-${i}`}>
+                        {followUps.map((q) => (
+                          <button key={q} type="button" className="adv-chip" onClick={() => send(q)}>{q}</button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
               </div>
-              {turn.role === 'assistant' && !turn.error && !turn.streaming && <AdvisorEvidence sources={turn.sources} model={turn.model} />}
-            </div>
-          );
-        })}
+            );
+          })}
         </div>
         {activity && (
-          <div role="status" style={{ alignSelf: 'flex-start', fontSize: 13, color: 'var(--ink-soft)' }}>{activity}…</div>
+          <div className="adv-row adv-row--assistant">
+            <Avatar />
+            <div className="adv-bubble adv-bubble--assistant adv-typing">
+              <span className="adv-dots" aria-hidden="true"><i /><i /><i /></span>
+              <span role="status">{activity}…</span>
+            </div>
+          </div>
         )}
         <div ref={bottomRef} />
       </div>
 
-      <form
-        onSubmit={(e) => { e.preventDefault(); send(); }}
-        style={{ display: 'flex', gap: 8 }}
-      >
+      <form onSubmit={(e) => { e.preventDefault(); send(); }} className="adv-form">
         <label htmlFor="advisor-message" className="visually-hidden">Ask the AI Advisor</label>
         <input
           id="advisor-message"
@@ -193,7 +253,7 @@ export default function StudentAdvisorPage() {
           placeholder="Ask about your attendance, grades, or upcoming deadlines…"
           disabled={sending}
           maxLength={2000}
-          style={{ flex: 1, fontSize: 14, padding: '10px 14px', border: '1px solid var(--rule)', borderRadius: 4, background: 'var(--bg-elev)', color: 'var(--ink)' }}
+          autoComplete="off"
         />
         <button type="submit" className="btn btn-primary" style={{ padding: '10px 20px', fontSize: 14 }} disabled={sending || !message.trim()}>
           {sending ? 'Sending…' : 'Send'}
