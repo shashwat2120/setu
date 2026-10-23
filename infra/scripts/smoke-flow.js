@@ -148,12 +148,17 @@ async function until(label, check, timeoutMs = 90000, everyMs = 1500) {
   note('the enrollment completes with the grade as its final status (Assessment -> Kafka -> Academic)',
     !!completed.value && completed.value.finalStatus === gradeCode, completed.value ? `after ${(completed.ms / 1000).toFixed(1)}s` : 'did not complete within 90s');
 
+  // A student whose enrollment was already COMPLETED before this run has no attendance or assessment input left to change, so recalculating gives the same inputs and,
+  // by design, no new score row (a score is reproducible from its inputs). For that student the honest check is that a current score is still served.
+  const alreadyCompleted = before?.status === 'COMPLETED';
   const risk = await until('risk recalculated', async () => {
     const r = await call(student, 'GET', `/risk/scores/current?studentId=${studentId}`);
-    return r.status === 200 && r.json && new Date(r.json.calculatedAt).getTime() >= gradeAt - 2000 ? r.json : null;
-  });
-  note('risk is recalculated by the grade event (Assessment -> Kafka -> core)', !!risk.value,
-    risk.value ? `band ${risk.value.band}, after ${(risk.ms / 1000).toFixed(1)}s` : 'no new score within 90s');
+    if (!(r.status === 200 && r.json)) return null;
+    return alreadyCompleted || new Date(r.json.calculatedAt).getTime() >= gradeAt - 2000 ? r.json : null;
+  }, alreadyCompleted ? 15000 : 90000);
+  note(alreadyCompleted ? 'risk: the enrollment was already completed, so inputs are unchanged and no new score row is expected; the current score is still served'
+                        : 'risk is recalculated by the grade event (Assessment -> Kafka -> core)', !!risk.value,
+    risk.value ? `band ${risk.value.band}${alreadyCompleted ? '' : `, after ${(risk.ms / 1000).toFixed(1)}s`}` : 'no usable score');
 
   const notified = await until('notification', async () => {
     const n = await call(student, 'GET', '/notifications');
