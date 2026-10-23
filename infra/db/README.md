@@ -44,7 +44,7 @@ Each backend module owns its own PostgreSQL schema (`identity`, `institution`, `
 
 ## A service's own migrations
 
-`migrations/` is the monolith's: the core's Flyway applies it to the shared database. A service that has been given a **database of its own** (today only Notification,
+`migrations/` is the monolith's: the core's Flyway applies it to the shared database. A service that has been given a **database of its own** (today Notification and Attendance,
 `docs/contracts/data-ownership.md` section 4a) migrates that database itself, from two folders:
 
 | Folder | What it holds | Applied by |

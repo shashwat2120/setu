@@ -360,7 +360,7 @@ while nothing is writing, start the service on the new server (Kafka kept whatev
 | The server started again | `/notifications` answers 200 on its own, nothing restarted |
 
 `ServiceDatabaseRolesTests` gained a case that builds a database holding only one service's schemas and the platform tables and applies the roles script to it: the service gets
-its login and no other service's login can use either schema. **Limits** (also in the contract): only Notification is split; **the service's database does not receive future
+its login and no other service's login can use either schema. **Limits** (also in the contract): only Notification was split at that point (Attendance followed, see below); **the service's database does not receive future
 migrations automatically** (the core's Flyway only migrates the shared database, so a schema change to Notification would have to be applied to both until each service has a migration
 folder of its own); events that arrive during a database outage longer than the retry window are dead-lettered (no events were sent during the outage test); the failure shows as a
 slow 504; one Docker host and the development password.
@@ -381,9 +381,30 @@ migration, `V104__notification_unread_index.sql` (a partial index for the unread
 
 `ServiceMigrationsTests` (4 tests, no database needed) holds the rules: every version appears once across the monolith's folder, `platform/` and every service folder; the new folders
 are above 103; a service's files touch only its own schemas and never create or drop schemas, databases or roles or change grants; platform files touch only platform tables;
-and the image, the core's configuration and the service's compose entry each list every folder they must. **Limits:** only Notification has migrations of its own; no platform
+and the image, the core's configuration and the service's compose entry each list every folder they must. **Limits:** only Notification had migrations of its own at that point (Attendance followed, see below); no platform
 migration exists yet, so that path (every database applying it) is wired and checked for wiring but has not been run; a service database is still started from a copy, not built
 from its own folder alone; Flyway runs with the database owner's credentials.
+
+## Attendance on a database of its own, run live (2026-10-23)
+
+Contract: [contracts/data-ownership.md](contracts/data-ownership.md) sections 3a and 4c. The risk engine, the AI advisor and Career's standing used to call the attendance module in-process; they now
+ask the Attendance service for counts, then its data moved to a server of its own.
+
+| Check | Result |
+|---|---|
+| New port `AttendanceCounts`, remote reader against a stub owner (`AttendanceCountsTests`, 8 tests) | numbers come through; request carries the token and every id; long lists are split in 50s; a status other than 200, malformed, incomplete, impossible, duplicated or foreign answers, and a timeout are all `Unavailable`, never zeros |
+| The tests around the readers | Modularity (2), risk calculation (11), risk event processor (16), risk HTTP (4), AI facts controller (8), attendance records (17) all pass |
+| Frozen module contracts | the coupling went down by exactly two edges (`risk -> attendance`, `aifacts -> attendance`); the file was regenerated, the test passes |
+| Cut-over | Attendance stopped, core recreated (applied V105 to the shared copy, `SETU_ATTENDANCE_URL` set), `postgres-attendance` started, load job: one transaction, row counts compared, Flyway history baselined at 105, login granted; service started |
+| Copy complete | attendance_records 127 = 127, attendance_sessions 25 = 25, rm_enrollments 11 = 11; the new database holds only `attendance`, `governance` and `public` |
+| Its own history | one baseline row at 105; the index from V105 is in both databases |
+| Writes go to the new database only | smoke flow opens a session: **26** in the service's database, still **25** in the old copy |
+| Smoke flow | 14 of 14 steps |
+| Core asks the service | `POST /risk/scores/recalculate` with Attendance up: **200**; Attendance stopped: **503 `DEPENDENCY_UNAVAILABLE`** in the standard envelope (no score computed, no zeros); Attendance started again: **200** |
+
+**Limits:** the old copy stays in the shared database (unused) and migrations keep it in step; the load must be run with the Attendance service stopped; the seed still writes attendance
+through the monolith's module; the live failure test stopped the whole service (not just its database); the AI advisor's "attendance is unavailable" answer is implemented but has no test
+of its own and was not tried live while Attendance was down.
 
 ## Not validated
 

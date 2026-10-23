@@ -75,7 +75,7 @@ copy of grades is kept. It is only ever set from a published-grade event, and an
 
 ## 3. Synchronous calls: only where a stale answer is unacceptable
 
-Everything crosses services by event except one question, and it is on the security path:
+Everything crosses services by event except two questions. The first is on the security path:
 
 > **Does this guardian hold this permission for this student, right now?**
 
@@ -109,6 +109,21 @@ How the call is made:
 
 Tests: `GuardianGrantVerificationTests` (decision table; the client against a real socket for every kind of failure including a timeout),
 `GuardedCallTests`, `AcademicServiceWiringTests` (the endpoint's security), `GatewayFilterTests` (never routed).
+
+## 3a. The second synchronous question: attendance counts
+
+Once Attendance has a database of its own (section 4c), the three places that used to read its records in-process (the risk engine's attendance feature, the AI advisor's
+attendance tool, and Career's standing for placement eligibility) ask the Attendance service instead: `GET /internal/attendance/counts?enrollmentIds=...` (`InternalAttendanceCountsController`),
+answered from the attendance records in the service's own transaction. A calculation needs the current number, not a copy a few seconds behind, and a copy of every record in
+three other services is the wrong cost for one count.
+
+* It is internal: the service-to-service token only, no route at the gateway, no per-person check (the caller has authorized its own outer operation, as with the in-process method it
+  replaced).
+* The caller's side is the port `AttendanceCounts`: in the monolith the attendance module answers in-process (`LocalAttendanceCounts`); with `setu.attendance.url` set the answer is
+  `RemoteAttendanceCounts`, behind a circuit breaker and bulkhead, with short timeouts.
+* **No answer is never zeros.** A malformed, incomplete, impossible (more present than recorded) or missing answer, a timeout, a 5xx and an open circuit are all
+  `AttendanceCounts.Unavailable`: the risk event is retried (and dead-lettered after three tries) rather than scored on guessed attendance, the advisor tells the person that
+  attendance is unavailable instead of giving a figure, and an HTTP caller gets `503 DEPENDENCY_UNAVAILABLE` in the standard envelope.
 
 ## 4. Taking a service's tables out of the shared database
 
@@ -173,9 +188,24 @@ applied when the copy was taken, or the split version (103) when none. The monol
 things, which the service's own login cannot); the service itself keeps running as `setu_notification`, and anything a migration creates is covered for that login by the default
 privileges of section 1a.
 
+## 4c. The second service on a database of its own: Attendance
+
+Attendance runs on **its own PostgreSQL server** (`postgres-attendance`, its own volume) with the same shape as section 4a: the `attendance` schema and data, its own outbox, audit log and
+idempotency keys, Modulith's event log, and its own login. It migrates itself from `infra/db/platform` and `infra/db/services/attendance` (section 4b); the first migration is
+`V105__attendance_sessions_by_section.sql`, an index for the newest-first listing of a section's sessions that nothing indexed.
+
+What made it possible, and what Notification did not need: **nothing outside the attendance module reads its tables any more.** Before the split the risk engine, the AI advisor and Career's
+standing called the attendance module in-process, so moving the data would have given them the stale copy in the shared database. They now go through the `AttendanceCounts` port
+(section 3a), and the frozen module-contract list lost two edges (`risk -> attendance`, `aifacts -> attendance`).
+
+The load is done while the Attendance service is stopped (a copy taken while it writes would miss what it writes next), then the service starts and migrates. The core has no
+attendance consumers or schedules of its own, so there was no second consumer to switch off, unlike Notification.
+
 ## 5. Honest limits
 
-* **Only Notification has a database of its own.** Every other service still shares the one PostgreSQL database as its own login (section 1a).
+* **Only Notification and Attendance have databases of their own.** Identity, Academic, Learning and Assessment still share the one PostgreSQL database, each as its own login (section 1a).
+* **Attendance: the shared database still holds its old copy** (unused; the core validates its attendance entities against it at start-up), kept in step by the same migration files. The seed
+  data (`DemoDataSeeder`) still writes attendance through the monolith's module, so a fresh install seeds the shared database and the provisioning job copies it across.
 * **The shared database still holds a copy of the notification schema, now kept in step by the same migration files (section 4b), not left stale.** It is unused (nothing writes
   it since the core stopped consuming for Notification) and has to stay while the core contains the module and validates its entities at start-up. It goes when the core stops
   containing the module.
@@ -187,7 +217,7 @@ privileges of section 1a.
 * **The failure looks like a slow 504, not an instant refusal:** the service waits out its connection pool timeout before the gateway gives up on it.
 * Same PostgreSQL version and the same development password (`SETU_SERVICE_DB_PASSWORD`); one Docker host.
 
-* Every service runs as its own database login (section 1a), but they still share one PostgreSQL database, so the platform tables (outbox, audit log, idempotency keys)
+* Every service runs as its own database login (section 1a); all but Notification and Attendance still share one PostgreSQL database, so for them the platform tables (outbox, audit log, idempotency keys)
   and Modulith's event log are shared. A process publishes any `NEW` outbox row, whichever service wrote it; that works because every consumer is idempotent, and ends when
   each service has its own database and so its own outbox.
 
