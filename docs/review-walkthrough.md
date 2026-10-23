@@ -91,7 +91,7 @@ Done: per-service database roles, Notification on its own server, per-service mi
 
 Limits to state before they ask:
 
-- Only Notification, Attendance and Assessment have their own databases and migrations (the last two needed their in-process readers in the core moved behind ports that ask the service).
+- Notification, Attendance, Assessment and Learning have their own databases and migrations (the last three needed their in-process readers in the core moved behind ports that ask the service). Identity and Academic still share one.
 - Finance, career, record and risk are still inside the core.
 - Flyway runs with the database owner's login.
 - The smoke flow's risk step can show "no new score" when the student's inputs are unchanged (an identical recalculation is not written as a new row).

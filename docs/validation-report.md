@@ -428,6 +428,30 @@ academic record's transcripts and GPA), then the data.
 module; the outage test stopped the whole service, not only its database; the AI advisor's "grades / assessments are temporarily unavailable" answers are implemented but have no test
 of their own and were not tried live; and the advisor now names grades from the owner rather than under the caller's own read rights (contract section 3a).
 
+## Learning on a database of its own, run live (2026-10-23)
+
+Contract: [contracts/data-ownership.md](contracts/data-ownership.md) sections 3a and 4e. The in-process readers first (risk, the AI advisor), then the data, as for Attendance and Assessment.
+
+| Check | Result |
+|---|---|
+| New port `LearningFacts`, remote reader against a stub owner (`LearningFactsTests`, 8 tests) | counts, assignments, lessons and completed lessons come through exactly; the request carries the token and every id; long lists are split; a status other than 200, malformed, incomplete, duplicated or foreign answers, impossible counts (late over submitted, completed over started, negative), a due date that is not a time and a timeout are all `Unavailable`, never zeros or an empty list |
+| The Assessment and Attendance readers after moving onto the shared keyed client | their 9 and 8 tests still pass |
+| Tests around the readers | Modularity (2), risk calculation (11), risk event processor (16), AI facts controller (8), assignment submissions (9), assignments (7), completed-student access (7), course modules (11), learning concurrency (4), learning progress (9), lessons (9), record service (2) all pass |
+| Frozen module contracts | down by two module edges and ten type uses (`risk`, `aifacts` -> `learning`); only removals; regenerated, test passes |
+| Cut-over | Learning stopped, core recreated (`SETU_LEARNING_URL` set; applied V107 to the shared copy), `postgres-learning` started, load job (one transaction, row counts compared, Flyway history baselined at 107, login granted), service started |
+| Copy complete | assignments 3 = 3, submissions 10 = 10, modules 3 = 3, lessons 5 = 5, progress 12 = 12, rm_enrollments 11 = 11; the new database holds only `learning`, `governance` and `public` |
+| Its own history | one baseline row at 107; the three indexes are in both databases |
+| Writes go to the new database only | a student starts a lesson through the gateway (HTTP 200): **13** progress rows in the service's database, still **12** in the old copy |
+| Smoke flow | 14 of 14 steps |
+| Core asks the service | `POST /risk/scores/recalculate` with Learning up: **200**; Learning stopped: **503 `DEPENDENCY_UNAVAILABLE`**; started again: **200** |
+| The advisor's facts, end to end | with Learning, Assessment and Attendance all on their own databases, `/ai-facts/learning-resources`, `/deadlines`, `/assessment-results`, `/academic-progress`, `/attendance` and `/transcript` all answer 200 with real data |
+
+A first attempt to write progress was refused (409 and 404) because the test sent plain text for the lesson position, a JSON column; that was the test, not the service, and a request with valid JSON succeeded.
+
+**Limits:** the old copy stays in the shared database, unused, kept in step by migrations; the load must be run with the service stopped; the seed still writes through the monolith's
+module; the outage test stopped the whole service, not only its database; the advisor's "learning data / assignments are temporarily unavailable" answers are implemented but have no test
+of their own and were not tried live; the live write test left one lesson of the demo student `student.strong` marked in progress.
+
 ## Not validated
 
 - Kafka consumer lag **under load**. (The dead-letter path **was** run with a real poison event on the real stack, see below.)

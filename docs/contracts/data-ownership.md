@@ -132,6 +132,11 @@ each with the title, code and weight of the component it grades (`GET /internal/
 in-process call: the advisor used to name a grade only "as far as the caller is allowed to read" its assessment; it now gets the name from the owner for the grades the caller was
 already authorized to see (so a guardian with the grades permission now sees the assessment's title next to the grade).
 
+Learning (section 4e) is the same again through `LearningFacts`: a student's submission and lesson counts for the risk engine (`GET /internal/learning/student-counts`), and for the AI
+advisor the published assignments of a section (`/published-assignments`), the lessons of a section's active modules (`/lessons`) and the lessons a student has completed
+(`/completed-lessons`). The keyed-answer rule (one entry per id asked, each once, nothing else) and the chunked asking now live in the shared client for all three ports
+(`InternalJsonClient.getKeyed`, `KeyedResults`); counts must be whole, non-negative and plausible (late no more than submitted, completed no more than started).
+
 ## 4. Taking a service's tables out of the shared database
 
 `infra/db/split/split-service.sh <Service> <target-database>` copies exactly the schemas a service owns, structure then data, plus the Flyway
@@ -219,9 +224,19 @@ through the `AssessmentFacts` port first, and the frozen module-contract list lo
 `Grade` and `Assessment` types behind them. The `record` schema stays in the core (Record is not extracted), so only the `assessment` schema moved. The load was done with the
 service stopped.
 
+## 4e. The fourth service on a database of its own: Learning
+
+Learning runs on **its own PostgreSQL server** (`postgres-learning`, its own volume), the same shape as sections 4a, 4c and 4d, and migrates itself from `infra/db/platform` and
+`infra/db/services/learning`. The first migration is `V107__learning_lookups.sql`: three indexes for lookups every student dashboard, risk recalculation and advisor answer makes
+and nothing indexed (a student's submissions, a student's lesson progress, a section's assignments).
+
+As with Attendance and Assessment it was possible because nothing outside the learning module reads its tables any more: the risk engine and the AI advisor went through the
+`LearningFacts` port first, and the frozen module-contract list lost two module edges (`risk` and `aifacts` to `learning`) and ten uses of learning types behind them. The load was
+done with the service stopped.
+
 ## 5. Honest limits
 
-* **Only Notification, Attendance and Assessment have databases of their own.** Identity, Academic and Learning still share the one PostgreSQL database, each as its own login (section 1a).
+* **Notification, Attendance, Assessment and Learning have databases of their own.** Identity and Academic still share the one PostgreSQL database, each as its own login (section 1a).
 * **Attendance: the shared database still holds its old copy** (unused; the core validates its attendance entities against it at start-up), kept in step by the same migration files. The seed
   data (`DemoDataSeeder`) still writes attendance through the monolith's module, so a fresh install seeds the shared database and the provisioning job copies it across.
 * **The shared database still holds a copy of the notification schema, now kept in step by the same migration files (section 4b), not left stale.** It is unused (nothing writes
@@ -235,7 +250,7 @@ service stopped.
 * **The failure looks like a slow 504, not an instant refusal:** the service waits out its connection pool timeout before the gateway gives up on it.
 * Same PostgreSQL version and the same development password (`SETU_SERVICE_DB_PASSWORD`); one Docker host.
 
-* Every service runs as its own database login (section 1a); all but Notification, Attendance and Assessment still share one PostgreSQL database, so for them the platform tables (outbox, audit log, idempotency keys)
+* Every service runs as its own database login (section 1a); Identity and Academic still share one PostgreSQL database, so for them the platform tables (outbox, audit log, idempotency keys)
   and Modulith's event log are shared. A process publishes any `NEW` outbox row, whichever service wrote it; that works because every consumer is idempotent, and ends when
   each service has its own database and so its own outbox.
 
