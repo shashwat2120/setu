@@ -372,5 +372,5 @@ slow 504; one Docker host and the development password.
   connections, slow readers and the 512 KiB send buffer limit are not), and the frame size limit of relayed connections (the container's default).
 - Load over a real network, or beyond the 40-scan burst.
 - The cached dashboard aggregate's latency.
-- Accessibility (no automated frontend test exists).
+- Accessibility with a real screen reader, and the guardian, placement and super-admin pages' colour contrast in a browser (the automated WCAG 2.2 AA checks of every page exist and pass; see [known-limitations-and-roadmap.md](known-limitations-and-roadmap.md) item 6).
 - Live Gemini behavior under quota exhaustion beyond what the opt-in `live-gemini` test covers.

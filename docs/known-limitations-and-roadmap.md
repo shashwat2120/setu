@@ -108,7 +108,7 @@ In the order that removes the most risk first.
 
 1. **Add the remaining risk triggers** if wanted (assignment graded, `AssessmentCompleted`; attendance session closed is done), each with its own test.
 2. **Done for the layout** ([contracts/containers.md](contracts/containers.md)): the services run as containers and Kafka lag, the Grafana panels and the
-   live board were verified live. **Still open:** the DLQ against a live broker with a real poison event, and everything under load (items 2, 5).
+   live board were verified live. **Still open:** everything under load (items 2, 5). The dead-letter path was run against the live broker with a real poison event ([validation-report.md](validation-report.md)).
 3. **Finish moving Record into Assessment** (the port and the completion event are in place): Academic events for courses, curricula and student
    programs, a read-model implementation of `RecordDirectory`, the `/record` route; **then Finance and Career**, each behind its own read-model
    copy, with the frozen foreign keys replaced by write-time checks and a reconciliation count, the same recipe as 6A.5 (item 7). The completion event now exists, so the record's copy has
