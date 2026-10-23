@@ -406,6 +406,28 @@ ask the Attendance service for counts, then its data moved to a server of its ow
 through the monolith's module; the live failure test stopped the whole service (not just its database); the AI advisor's "attendance is unavailable" answer is implemented but has no test
 of its own and was not tried live while Attendance was down.
 
+## Assessment on a database of its own, run live (2026-10-23)
+
+Contract: [contracts/data-ownership.md](contracts/data-ownership.md) sections 3a and 4d. Done the way Attendance was: the three in-process readers first (risk, the AI advisor, the
+academic record's transcripts and GPA), then the data.
+
+| Check | Result |
+|---|---|
+| New port `AssessmentFacts`, remote reader against a stub owner (`AssessmentFactsTests`, 9 tests) | grades come through exactly (3.50 stays 3.50, null stays null), the request carries the token and every id, long lists are split, a status other than 200, malformed, incomplete, duplicated or foreign answers, a start that is not a time and a timeout are all `Unavailable`, never an empty list |
+| The Attendance reader after it moved onto the shared client | its 8 tests still pass |
+| Tests around the readers | Modularity (2), record service (2), GPA (6), final-grade flow (3), record directory (9), risk calculation (11), risk event processor (16), AI facts controller (8), grades (10), final-grade component (9), assessment concurrency (6), enrollment final grade (6) all pass |
+| Frozen module contracts | down by three module edges and four type uses (`risk`, `aifacts`, `record` -> `assessment`); only removals; the file was regenerated and the test passes |
+| Cut-over | Assessment stopped, core recreated (`SETU_ASSESSMENT_URL` set; applied V106 to the shared copy), `postgres-assessment` started, load job (one transaction, row counts compared, Flyway history baselined at 106, login granted), service started |
+| Copy complete | grades 17 = 17, assessments 10 = 10, assessment_components 4 = 4, rm_enrollments 11 = 11; the new database holds only `assessment`, `governance` and `public` |
+| Its own history | one baseline row at 106; the index from V106 is in both databases |
+| Writes go to the new database only | smoke flow publishes a grade: **18** grades in the service's database, still **17** in the old copy |
+| Smoke flow | 14 of 14 steps, including the transcript showing the completed course and its grade (read by the core from the service) |
+| Core asks the service | `POST /risk/scores/recalculate` with Assessment up: **200**; Assessment stopped: **503 `DEPENDENCY_UNAVAILABLE`**; started again: **200** |
+
+**Limits:** the old copy stays in the shared database, unused, kept in step by migrations; the load must be run with the service stopped; the seed still writes through the monolith's
+module; the outage test stopped the whole service, not only its database; the AI advisor's "grades / assessments are temporarily unavailable" answers are implemented but have no test
+of their own and were not tried live; and the advisor now names grades from the owner rather than under the caller's own read rights (contract section 3a).
+
 ## Not validated
 
 - Kafka consumer lag **under load**. (The dead-letter path **was** run with a real poison event on the real stack, see below.)

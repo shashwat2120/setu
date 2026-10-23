@@ -125,6 +125,13 @@ three other services is the wrong cost for one count.
   `AttendanceCounts.Unavailable`: the risk event is retried (and dead-lettered after three tries) rather than scored on guessed attendance, the advisor tells the person that
   attendance is unavailable instead of giving a figure, and an HTTP caller gets `503 DEPENDENCY_UNAVAILABLE` in the standard envelope.
 
+The same port pattern serves Assessment (section 4d): `AssessmentFacts` gives the risk engine, the AI advisor and the academic record (transcripts, GPA) a student's current grades,
+each with the title, code and weight of the component it grades (`GET /internal/assessment/grades`), and the student-visible assessments of a section for the advisor's deadlines
+(`GET /internal/assessment/visible`). Both answer one entry per id asked, so "none" is told apart from "not answered"; the HTTP plumbing is shared with the Attendance reader
+(`InternalJsonClient`), and every failure is a `DependencyUnavailableException` that one handler turns into `503 DEPENDENCY_UNAVAILABLE`. One deliberate change from the
+in-process call: the advisor used to name a grade only "as far as the caller is allowed to read" its assessment; it now gets the name from the owner for the grades the caller was
+already authorized to see (so a guardian with the grades permission now sees the assessment's title next to the grade).
+
 ## 4. Taking a service's tables out of the shared database
 
 `infra/db/split/split-service.sh <Service> <target-database>` copies exactly the schemas a service owns, structure then data, plus the Flyway
@@ -201,9 +208,20 @@ standing called the attendance module in-process, so moving the data would have 
 The load is done while the Attendance service is stopped (a copy taken while it writes would miss what it writes next), then the service starts and migrates. The core has no
 attendance consumers or schedules of its own, so there was no second consumer to switch off, unlike Notification.
 
+## 4d. The third service on a database of its own: Assessment
+
+Assessment runs on **its own PostgreSQL server** (`postgres-assessment`, its own volume), the same shape as sections 4a and 4c, and migrates itself from `infra/db/platform` and
+`infra/db/services/assessment`. The first migration is `V106__assessments_by_section.sql`: `assessments` had no index on `section_id`, which every section view and every
+deadline lookup filters by.
+
+As with Attendance, it was possible because nothing outside the assessment module reads its tables any more: the risk engine, the AI advisor and `AcademicRecordService` went
+through the `AssessmentFacts` port first, and the frozen module-contract list lost three module edges (`risk`, `aifacts` and `record` to `assessment`) and the four uses of
+`Grade` and `Assessment` types behind them. The `record` schema stays in the core (Record is not extracted), so only the `assessment` schema moved. The load was done with the
+service stopped.
+
 ## 5. Honest limits
 
-* **Only Notification and Attendance have databases of their own.** Identity, Academic, Learning and Assessment still share the one PostgreSQL database, each as its own login (section 1a).
+* **Only Notification, Attendance and Assessment have databases of their own.** Identity, Academic and Learning still share the one PostgreSQL database, each as its own login (section 1a).
 * **Attendance: the shared database still holds its old copy** (unused; the core validates its attendance entities against it at start-up), kept in step by the same migration files. The seed
   data (`DemoDataSeeder`) still writes attendance through the monolith's module, so a fresh install seeds the shared database and the provisioning job copies it across.
 * **The shared database still holds a copy of the notification schema, now kept in step by the same migration files (section 4b), not left stale.** It is unused (nothing writes
@@ -217,7 +235,7 @@ attendance consumers or schedules of its own, so there was no second consumer to
 * **The failure looks like a slow 504, not an instant refusal:** the service waits out its connection pool timeout before the gateway gives up on it.
 * Same PostgreSQL version and the same development password (`SETU_SERVICE_DB_PASSWORD`); one Docker host.
 
-* Every service runs as its own database login (section 1a); all but Notification and Attendance still share one PostgreSQL database, so for them the platform tables (outbox, audit log, idempotency keys)
+* Every service runs as its own database login (section 1a); all but Notification, Attendance and Assessment still share one PostgreSQL database, so for them the platform tables (outbox, audit log, idempotency keys)
   and Modulith's event log are shared. A process publishes any `NEW` outbox row, whichever service wrote it; that works because every consumer is idempotent, and ends when
   each service has its own database and so its own outbox.
 
