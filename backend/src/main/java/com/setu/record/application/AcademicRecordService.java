@@ -1,8 +1,6 @@
 package com.setu.record.application;
 
-import com.setu.assessment.application.AssessmentComponentService;
-import com.setu.assessment.application.GradeService;
-import com.setu.assessment.domain.Grade;
+import com.setu.shared.assessmentfacts.AssessmentFacts;
 import com.setu.shared.academic.AcademicDirectory;
 import com.setu.shared.academic.RecordDirectory;
 import com.setu.shared.authorization.AuthorizationContext;
@@ -48,17 +46,15 @@ public class AcademicRecordService {
 
     private final RecordDirectory recordDirectory;
     private final AcademicDirectory academicDirectory;
-    private final GradeService gradeService;
+    private final AssessmentFacts assessmentFacts;
     private final AuthorizationContext authorizationContext;
-    private final AssessmentComponentService assessmentComponentService;
 
-    public AcademicRecordService(RecordDirectory recordDirectory, AcademicDirectory academicDirectory, GradeService gradeService,
-                                  AuthorizationContext authorizationContext, AssessmentComponentService assessmentComponentService) {
+    public AcademicRecordService(RecordDirectory recordDirectory, AcademicDirectory academicDirectory, AssessmentFacts assessmentFacts,
+                                  AuthorizationContext authorizationContext) {
         this.recordDirectory = recordDirectory;
         this.academicDirectory = academicDirectory;
-        this.gradeService = gradeService;
+        this.assessmentFacts = assessmentFacts;
         this.authorizationContext = authorizationContext;
-        this.assessmentComponentService = assessmentComponentService;
     }
 
     public record GradeLine(UUID componentId, BigDecimal rawMarks, String gradeCode, BigDecimal gradePoint) {
@@ -91,11 +87,15 @@ public class AcademicRecordService {
 
     private Transcript buildTranscript(UUID studentId) {
         List<TranscriptLine> lines = new java.util.ArrayList<>();
-        for (RecordDirectory.CourseEnrollment e : recordDirectory.enrollmentsOf(studentId)) {
-            List<Grade> grades = gradeService.findCurrentForEnrollment(e.enrollmentId());
+        List<RecordDirectory.CourseEnrollment> enrollments = recordDirectory.enrollmentsOf(studentId);
+        // the grades and the weight of what each grades, from the owner of grades, in one call; if it cannot answer, no transcript is built from guesses
+        var gradesByEnrollment = assessmentFacts.currentGrades(enrollments.stream().map(RecordDirectory.CourseEnrollment::enrollmentId).toList());
+        for (RecordDirectory.CourseEnrollment e : enrollments) {
+            var grades = gradesByEnrollment.get(e.enrollmentId());
             List<GradeLine> gradeLines = grades.stream()
                 .map(g -> new GradeLine(g.componentId(), g.rawMarks(), g.gradeCode(), g.gradePoint())).toList();
-            var weights = assessmentComponentService.weightsUnchecked(gradeLines.stream().map(GradeLine::componentId).toList());
+            java.util.Map<UUID, BigDecimal> weights = new java.util.HashMap<>();
+            grades.forEach(g -> weights.put(g.componentId(), g.weight()));
             lines.add(new TranscriptLine(e.enrollmentId(), e.courseCode(), e.courseTitle(), e.credits(), e.sectionCode(),
                 e.status(), gradeLines, courseGradePoint(gradeLines, weights), e.finalGrade()));
         }

@@ -275,6 +275,14 @@ public class AssessmentService {
         return all.stream().filter(a -> a.status() != AssessmentStatus.DRAFT && a.status() != AssessmentStatus.SCHEDULED).toList();
     }
 
+    /** The titles of these assessments, with no authorization of its own: for {@link LocalAssessmentFacts}, whose callers have authorized their own operation. */
+    @Transactional(readOnly = true)
+    public java.util.Map<UUID, String> titlesUnchecked(java.util.Collection<UUID> assessmentIds) {
+        java.util.Map<UUID, String> titles = new java.util.HashMap<>();
+        assessmentRepository.findAllById(assessmentIds).forEach(a -> titles.put(a.id(), a.title()));
+        return titles;
+    }
+
     /** Day 14 cross-module port - see class javadoc. Every student-visible (not DRAFT/SCHEDULED) assessment for a section, no authorization of its own. */
     @Transactional(readOnly = true)
     public List<Assessment> listVisibleForSection(UUID sectionId) {

@@ -1,7 +1,6 @@
 package com.setu.risk.application;
 
-import com.setu.assessment.application.GradeService;
-import com.setu.assessment.domain.Grade;
+import com.setu.shared.assessmentfacts.AssessmentFacts;
 import com.setu.shared.attendancefacts.AttendanceCounts;
 import com.setu.enrollment.application.EnrollmentService;
 import com.setu.learning.application.AssignmentSubmissionService;
@@ -51,16 +50,16 @@ class RiskFeatureService {
 
     private final EnrollmentService enrollmentService;
     private final AttendanceCounts attendanceCounts;
-    private final GradeService gradeService;
+    private final AssessmentFacts assessmentFacts;
     private final AssignmentSubmissionService assignmentSubmissionService;
     private final LearningProgressService learningProgressService;
 
     RiskFeatureService(EnrollmentService enrollmentService, AttendanceCounts attendanceCounts,
-                        GradeService gradeService, AssignmentSubmissionService assignmentSubmissionService,
+                        AssessmentFacts assessmentFacts, AssignmentSubmissionService assignmentSubmissionService,
                         LearningProgressService learningProgressService) {
         this.enrollmentService = enrollmentService;
         this.attendanceCounts = attendanceCounts;
-        this.gradeService = gradeService;
+        this.assessmentFacts = assessmentFacts;
         this.assignmentSubmissionService = assignmentSubmissionService;
         this.learningProgressService = learningProgressService;
     }
@@ -95,7 +94,7 @@ class RiskFeatureService {
 
         List<Feature> features = new ArrayList<>();
         features.add(attendanceFeature(enrollmentIds, enrollmentEvidence));
-        List<Grade> grades = gradesFor(enrollmentIds);
+        List<AssessmentFacts.GradeFact> grades = gradesFor(enrollmentIds);
         features.add(assessmentPerformanceFeature(grades, enrollmentEvidence));
         features.add(recentFailuresFeature(grades, enrollmentEvidence));
         features.add(assignmentCompletionFeature(studentId, enrollmentEvidence));
@@ -115,22 +114,21 @@ class RiskFeatureService {
         return new Feature("ATTENDANCE_TREND", percentage, evidence);
     }
 
-    private List<Grade> gradesFor(List<UUID> enrollmentIds) {
-        List<Grade> grades = new ArrayList<>();
-        for (UUID enrollmentId : enrollmentIds) {
-            grades.addAll(gradeService.findCurrentForEnrollment(enrollmentId));
-        }
+    private List<AssessmentFacts.GradeFact> gradesFor(List<UUID> enrollmentIds) {
+        // asked of the assessment owner in one call; if it cannot answer this throws and the recalculation is retried: a score is never computed from guessed grades
+        List<AssessmentFacts.GradeFact> grades = new ArrayList<>();
+        assessmentFacts.currentGrades(enrollmentIds).values().forEach(grades::addAll);
         return grades;
     }
 
-    private Feature assessmentPerformanceFeature(List<Grade> grades, List<EvidenceRef> evidence) {
-        List<BigDecimal> points = grades.stream().map(Grade::gradePoint).filter(Objects::nonNull).toList();
+    private Feature assessmentPerformanceFeature(List<AssessmentFacts.GradeFact> grades, List<EvidenceRef> evidence) {
+        List<BigDecimal> points = grades.stream().map(AssessmentFacts.GradeFact::gradePoint).filter(Objects::nonNull).toList();
         BigDecimal average = points.isEmpty() ? new BigDecimal("4.0") // no grades yet — neutral, not risky
             : points.stream().reduce(BigDecimal.ZERO, BigDecimal::add).divide(BigDecimal.valueOf(points.size()), 3, RoundingMode.HALF_UP);
         return new Feature("ASSESSMENT_PERFORMANCE", average, evidence);
     }
 
-    private Feature recentFailuresFeature(List<Grade> grades, List<EvidenceRef> evidence) {
+    private Feature recentFailuresFeature(List<AssessmentFacts.GradeFact> grades, List<EvidenceRef> evidence) {
         long failures = grades.stream().filter(g -> "F".equalsIgnoreCase(g.gradeCode())).count();
         return new Feature("RECENT_FAILURES", BigDecimal.valueOf(failures), evidence);
     }

@@ -1,10 +1,6 @@
 package com.setu.aifacts.application;
 
-import com.setu.assessment.application.AssessmentComponentService;
-import com.setu.assessment.application.GradeService;
-import com.setu.assessment.application.AssessmentService;
-import com.setu.assessment.domain.Assessment;
-import com.setu.assessment.domain.Grade;
+import com.setu.shared.assessmentfacts.AssessmentFacts;
 import com.setu.shared.attendancefacts.AttendanceCounts;
 import com.setu.career.application.ApplicationService;
 import com.setu.enrollment.application.EnrollmentService;
@@ -58,10 +54,9 @@ public class AiFactsService {
     private final AiAccessSupport accessSupport;
     private final EnrollmentService enrollmentService;
     private final AttendanceCounts attendanceCounts;
-    private final GradeService gradeService;
+    private final AssessmentFacts assessmentFacts;
     private final RiskCalculationService riskCalculationService;
     private final AssignmentService assignmentService;
-    private final AssessmentService assessmentService;
     private final ApplicationService applicationService;
     private final CourseModuleService courseModuleService;
     private final LessonService lessonService;
@@ -69,26 +64,23 @@ public class AiFactsService {
     private final PolicyDocumentService policyDocumentService;
     private final AcademicRecordService academicRecordService;
     private final StudentChargeService studentChargeService;
-    private final AssessmentComponentService assessmentComponentService;
 
     public AiFactsService(AiAccessSupport accessSupport, EnrollmentService enrollmentService,
-                          AttendanceCounts attendanceCounts, GradeService gradeService,
+                          AttendanceCounts attendanceCounts, AssessmentFacts assessmentFacts,
                           RiskCalculationService riskCalculationService, AssignmentService assignmentService,
-                          AssessmentService assessmentService, ApplicationService applicationService,
+                          ApplicationService applicationService,
                           CourseModuleService courseModuleService, LessonService lessonService,
                           LearningProgressService learningProgressService, PolicyDocumentService policyDocumentService,
                           AcademicRecordService academicRecordService,
-                          StudentChargeService studentChargeService, AssessmentComponentService assessmentComponentService) {
-        this.assessmentComponentService = assessmentComponentService;
+                          StudentChargeService studentChargeService) {
         this.academicRecordService = academicRecordService;
         this.studentChargeService = studentChargeService;
         this.accessSupport = accessSupport;
         this.enrollmentService = enrollmentService;
         this.attendanceCounts = attendanceCounts;
-        this.gradeService = gradeService;
+        this.assessmentFacts = assessmentFacts;
         this.riskCalculationService = riskCalculationService;
         this.assignmentService = assignmentService;
-        this.assessmentService = assessmentService;
         this.applicationService = applicationService;
         this.courseModuleService = courseModuleService;
         this.lessonService = lessonService;
@@ -181,16 +173,16 @@ public class AiFactsService {
         BigDecimal average = null;
         try {
             accessSupport.assertView(t.tenantId(), t.studentId(), t.ownerUserId(), "VIEW_ACADEMIC_STATUS");
-            List<Grade> grades = new ArrayList<>();
-            for (var ref : enrollmentService.listEnrolledOrCompletedRefsForStudent(t.studentId())) {
-                grades.addAll(gradeService.findCurrentForEnrollment(ref.enrollmentId()));
-            }
+            List<AssessmentFacts.GradeFact> grades = currentGradesOf(t.studentId());
             componentGrades = grades.stream().map(this::named).toList();
-            List<BigDecimal> points = grades.stream().map(Grade::gradePoint).filter(Objects::nonNull).toList();
+            List<BigDecimal> points = grades.stream().map(AssessmentFacts.GradeFact::gradePoint).filter(Objects::nonNull).toList();
             average = points.isEmpty() ? null
                 : points.stream().reduce(BigDecimal.ZERO, BigDecimal::add).divide(BigDecimal.valueOf(points.size()), 2, RoundingMode.HALF_UP);
         } catch (AccessDeniedException e) {
             canViewGrades = false;
+        } catch (AssessmentFacts.Unavailable e) {
+            // said plainly: the advisor must not present grades, or an average, it could not get
+            return new ToolError("grades are temporarily unavailable, so no academic progress can be given right now");
         }
 
         RiskSummary risk = null;
@@ -228,29 +220,22 @@ public class AiFactsService {
         } catch (AccessDeniedException e) {
             return new ToolError("not authorized to view this student's grades");
         }
-        List<ComponentGrade> results = new ArrayList<>();
-        for (var ref : enrollmentService.listEnrolledOrCompletedRefsForStudent(t.studentId())) {
-            for (Grade g : gradeService.findCurrentForEnrollment(ref.enrollmentId())) {
-                results.add(named(g));
-            }
+        try {
+            return currentGradesOf(t.studentId()).stream().map(this::named).toList();
+        } catch (AssessmentFacts.Unavailable e) {
+            return new ToolError("grades are temporarily unavailable, so no grades can be given right now");
         }
-        return results;
     }
 
-    /** A grade with the name of what it is a grade for, as far as the caller is allowed to read it. */
-    private ComponentGrade named(Grade g) {
-        String title = null;
-        String code = null;
-        try {
-            var label = assessmentComponentService.labelOf(g.componentId());
-            if (label.isPresent()) {
-                code = label.get().componentCode();
-                title = label.get().assessmentTitle();
-            }
-        } catch (AccessDeniedException e) {
-            // not allowed to read the assessment itself: the grade is shown without its name
-        }
-        return new ComponentGrade(g.componentId(), title, code, g.gradeCode(), g.gradePoint());
+    /** The student's current grades across every enrollment they are in or have completed, from the owner of grades. */
+    private List<AssessmentFacts.GradeFact> currentGradesOf(UUID studentId) {
+        var enrollmentIds = enrollmentService.listEnrolledOrCompletedRefsForStudent(studentId).stream().map(ref -> ref.enrollmentId()).toList();
+        return assessmentFacts.currentGrades(enrollmentIds).values().stream().flatMap(List::stream).toList();
+    }
+
+    /** A grade with the name of what it is a grade for: the grades are ones the caller was already authorized to see, and the owner names them. */
+    private ComponentGrade named(AssessmentFacts.GradeFact g) {
+        return new ComponentGrade(g.componentId(), g.assessmentTitle(), g.componentCode(), g.gradeCode(), g.gradePoint());
     }
 
     // ---- 4. getUpcomingDeadlines ------------------------------------------------------------
@@ -274,13 +259,20 @@ public class AiFactsService {
         }
         Instant now = Instant.now();
         List<Deadline> deadlines = new ArrayList<>();
-        for (var ref : enrollmentService.listActiveEnrollmentRefsForStudent(t.studentId())) {
+        var sectionRefs = enrollmentService.listActiveEnrollmentRefsForStudent(t.studentId());
+        Map<UUID, List<AssessmentFacts.VisibleAssessment>> visibleAssessments;
+        try {
+            visibleAssessments = assessmentFacts.visibleAssessments(sectionRefs.stream().map(ref -> ref.sectionId()).toList());
+        } catch (AssessmentFacts.Unavailable e) {
+            return new ToolError("assessments are temporarily unavailable, so no deadlines can be given right now");
+        }
+        for (var ref : sectionRefs) {
             for (Assignment a : assignmentService.listPublishedForSection(ref.sectionId())) {
                 if (a.dueAt() != null && a.dueAt().isAfter(now)) {
                     deadlines.add(new Deadline("ASSIGNMENT", a.id(), a.title(), a.dueAt()));
                 }
             }
-            for (Assessment a : assessmentService.listVisibleForSection(ref.sectionId())) {
+            for (var a : visibleAssessments.get(ref.sectionId())) {
                 if (a.startsAt() != null && a.startsAt().isAfter(now)) {
                     deadlines.add(new Deadline("ASSESSMENT", a.id(), a.title(), a.startsAt()));
                 }

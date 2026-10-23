@@ -225,8 +225,8 @@ public class GlobalExceptionHandler {
     }
 
     /** The owner of some data this answer needs could not be asked: say so (and that trying again may work), never answer with data we do not have. */
-    @ExceptionHandler(com.setu.shared.attendancefacts.AttendanceCounts.Unavailable.class)
-    public ResponseEntity<ErrorResponse> handleDependencyUnavailable(com.setu.shared.attendancefacts.AttendanceCounts.Unavailable ex, HttpServletRequest request) {
+    @ExceptionHandler(com.setu.shared.internalcall.DependencyUnavailableException.class)
+    public ResponseEntity<ErrorResponse> handleDependencyUnavailable(com.setu.shared.internalcall.DependencyUnavailableException ex, HttpServletRequest request) {
         log.warn("{} {}: {}", request.getMethod(), request.getRequestURI(), ex.getMessage());
         return respond(HttpStatus.SERVICE_UNAVAILABLE, "DEPENDENCY_UNAVAILABLE", "a service this needs is not answering; try again in a moment", request);
     }

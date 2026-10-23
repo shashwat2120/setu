@@ -171,6 +171,20 @@ public class AssessmentComponentService {
         return weights;
     }
 
+    /** What a component is called and how much it counts for: the title of its assessment (null if there is none), its own code and its weight. */
+    public record Info(String assessmentTitle, String componentCode, java.math.BigDecimal weight) {
+    }
+
+    /** The {@link Info} of each of these components, with no authorization of its own: for {@link LocalAssessmentFacts}, whose callers have authorized their own operation. */
+    @Transactional(readOnly = true)
+    public java.util.Map<UUID, Info> infoUnchecked(java.util.Collection<UUID> componentIds) {
+        var components = assessmentComponentRepository.findAllById(componentIds);
+        var titles = assessmentService.titlesUnchecked(components.stream().map(AssessmentComponent::assessmentId).distinct().toList());
+        java.util.Map<UUID, Info> info = new java.util.HashMap<>();
+        components.forEach(c -> info.put(c.id(), new Info(titles.get(c.assessmentId()), c.code(), c.weight())));
+        return info;
+    }
+
     Optional<AssessmentComponent> findById(UUID componentId) {
         return assessmentComponentRepository.findById(componentId);
     }

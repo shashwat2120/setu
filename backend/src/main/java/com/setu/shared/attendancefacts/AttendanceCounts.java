@@ -27,7 +27,7 @@ public interface AttendanceCounts {
     Map<UUID, Counts> forEnrollments(Collection<UUID> enrollmentIds);
 
     /** The owner of the data could not give an answer. Callers say so (retry the event, tell the person) and never substitute data. */
-    class Unavailable extends RuntimeException {
+    class Unavailable extends com.setu.shared.internalcall.DependencyUnavailableException {
         public Unavailable(String message, Throwable cause) {
             super(message, cause);
         }

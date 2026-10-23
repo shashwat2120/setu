@@ -170,6 +170,49 @@ services:
     entrypoint: ["bash", "/provision-service-db.sh", "attendance", "attendance"]
     restart: "no"
 
+  # The Assessment service's own database, the same shape as Attendance's and Notification's. The core and the other services no longer read the assessment schema; they ask
+  # the service (/internal/assessment/grades and /visible). docs/contracts/data-ownership.md sections 3a and 4d.
+  postgres-assessment:
+    image: pgvector/pgvector:pg16
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: setu_assessment
+      POSTGRES_USER: ${POSTGRES_USER:-setu}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-setu_dev_password}
+    volumes:
+      - setu_assessment_pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-setu} -d setu_assessment"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # Loads that server from the shared database the first time, checks every row count, baselines its Flyway history and gives the service its login. Run it only while the
+  # Assessment service is stopped (infra/db/README.md): a copy taken while it writes would miss what it writes next.
+  db-assessment-init:
+    image: pgvector/pgvector:pg16
+    depends_on:
+      core:
+        condition: service_healthy
+      postgres-assessment:
+        condition: service_healthy
+    environment:
+      PGPASSWORD: ${POSTGRES_PASSWORD:-setu_dev_password}
+      PG_USER: ${POSTGRES_USER:-setu}
+      SRC_HOST: postgres
+      SRC_DB: ${SETU_DB_NAME:-setu_demo}
+      TGT_HOST: postgres-assessment
+      TGT_DB: setu_assessment
+      SETU_SERVICE_DB_PASSWORD: ${SETU_SERVICE_DB_PASSWORD:-setu_dev_password}
+      MIGRATIONS_DIR: /service-migrations
+      SPLIT_BASELINE: "103"
+    volumes:
+      - ../db/split/provision-service-db.sh:/provision-service-db.sh:ro
+      - ../db/roles/service-roles.sql:/service-roles.sql:ro
+      - ../db/services/assessment:/service-migrations:ro
+    entrypoint: ["bash", "/provision-service-db.sh", "assessment", "assessment"]
+    restart: "no"
+
   # The modules not yet extracted (record, risk, career, finance, onboarding) and the owner of the migrations. Verifies tokens like any other
   # service (remote), and seeds the demo college on an empty database.
   core:
@@ -194,6 +237,9 @@ services:
       # Attendance has a database of its own now: the risk engine, the AI advisor's attendance tool and Career's standing ask the service for attendance counts instead of
       # reading the shared database's old copy of the attendance schema.
       SETU_ATTENDANCE_URL: http://attendance:8086
+      # Assessment has a database of its own too: grades, the names and weights of what they grade, and the visible assessments of a section (risk, the AI advisor, transcripts
+      # and GPA) are asked of the service instead of read from the shared database's old copy of the assessment schema.
+      SETU_ASSESSMENT_URL: http://assessment:8085
       APP_RESUMES_DIR: /data/resumes
       SETU_MAIN: com.setu.BackendApplication
       SERVER_PORT: "8083"
@@ -279,13 +325,20 @@ services:
     <<: *service
     depends_on:
       core: {condition: service_healthy}
-      db-roles: {condition: service_completed_successfully}
+      db-assessment-init: {condition: service_completed_successfully}
     mem_limit: 640m
     ports: ["127.0.0.1:8085:8085"]
     environment:
       <<: *common
+      DB_HOST: postgres-assessment
+      DB_NAME: setu_assessment
       DB_USER: setu_assessment
       DB_PASSWORD: ${SETU_SERVICE_DB_PASSWORD:-setu_dev_password}
+      # migrates its own database at start-up, as Notification and Attendance do: the platform tables' migrations and its own, never the monolith's
+      SPRING_FLYWAY_ENABLED: "true"
+      SPRING_FLYWAY_LOCATIONS: filesystem:../infra/db/platform,filesystem:../infra/db/services/assessment
+      SPRING_FLYWAY_USER: ${POSTGRES_USER:-setu}
+      SPRING_FLYWAY_PASSWORD: ${POSTGRES_PASSWORD:-setu_dev_password}
       SETU_MAIN: com.setu.assessment.AssessmentServiceApplication
       SERVER_PORT: "8085"
       APP_DISCOVERY_ADVERTISE_URL: http://assessment:8085
