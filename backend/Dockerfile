@@ -30,6 +30,9 @@ WORKDIR /app
 COPY --from=build /setu.jar /app/setu.jar
 # application.yml points Flyway at ../infra/db/migrations, which from /app is /infra/db/migrations
 COPY infra/db/migrations /infra/db/migrations
+# the platform tables' migrations and each service's own (infra/db/README.md, "A service's own migrations")
+COPY infra/db/platform /infra/db/platform
+COPY infra/db/services /infra/db/services
 # where uploaded resume files are kept (a volume in the compose file): made here so the volume starts owned by the service's user, not root
 RUN mkdir -p /data/resumes && chown setu /data/resumes
 USER setu

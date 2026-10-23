@@ -365,6 +365,26 @@ migrations automatically** (the core's Flyway only migrates the shared database,
 folder of its own); events that arrive during a database outage longer than the retry window are dead-lettered (no events were sent during the outage test); the failure shows as a
 slow 504; one Docker host and the development password.
 
+## A service's own migrations, run live (2026-10-23)
+
+Notification now migrates its own database. Folders and rules: [contracts/data-ownership.md](contracts/data-ownership.md) section 4b. Run on the containers, with the real first
+migration, `V104__notification_unread_index.sql` (a partial index for the unread count, in `infra/db/services/notification/`):
+
+| Check | Result |
+|---|---|
+| The existing Notification database (loaded before it had migrations of its own) | the provisioning job gave it a Flyway history of one baseline row at 103 |
+| The core, restarted with the service folder in its locations | applied V104 to the shared database's copy (`flyway_schema_history`: 104 present) |
+| The Notification service, started with Flyway on against **its own** database | applied **V104 to its own database** and nothing else: its history is exactly the baseline (103) and 104; the monolith's 103 migrations are not in it |
+| The index | present in both databases |
+| The service's login after the migration | still `setu_notification`; it can use the new index's table, and cannot read the history table |
+| Smoke flow, then an event from the Assessment service | 14 of 14 steps; the notification written to the service's own database as before |
+
+`ServiceMigrationsTests` (4 tests, no database needed) holds the rules: every version appears once across the monolith's folder, `platform/` and every service folder; the new folders
+are above 103; a service's files touch only its own schemas and never create or drop schemas, databases or roles or change grants; platform files touch only platform tables;
+and the image, the core's configuration and the service's compose entry each list every folder they must. **Limits:** only Notification has migrations of its own; no platform
+migration exists yet, so that path (every database applying it) is wired and checked for wiring but has not been run; a service database is still started from a copy, not built
+from its own folder alone; Flyway runs with the database owner's credentials.
+
 ## Not validated
 
 - Kafka consumer lag **under load**. (The dead-letter path **was** run with a real poison event on the real stack, see below.)

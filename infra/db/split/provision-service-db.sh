@@ -9,14 +9,19 @@
 #   - the platform's cross-cutting tables, structure only: the outbox, audit log and idempotency keys (governance), and Spring Modulith's event log (public.event_publication).
 #     These are shared tables in the monolith; a service with a database of its own has its own, empty, which is the point;
 #   - the extensions the schemas use.
-# Then it gives the service its database login (infra/db/roles/service-roles.sql). It does NOT copy Flyway's history: the service never migrates (see the contract's limits).
+#   - when MIGRATIONS_DIR names the service's own migration folder (infra/db/services/<service>): a Flyway history table with ONE baseline row, so that the service's own
+#     Flyway run applies only the migrations that come after what this copy already holds. The baseline is the highest version in that folder that the source has applied
+#     (the core applies the service folders to the shared database too, so the copy holds exactly those), or SPLIT_BASELINE when it has applied none. The monolith's
+#     history is not copied: it is the monolith's.
+# Then it gives the service its database login (infra/db/roles/service-roles.sql). The service's schema changes after this are its own Flyway run against its own database.
 #
 # Safe to run again. The load is ONE transaction and the last thing in it is public.event_publication, so that table existing means the load finished; a failed run leaves
 # nothing that could be mistaken for a finished one. A run that finds the database loaded only re-applies the login's grants. It ends by comparing the row count of every
 # copied table with the source and exits non-zero on any difference.
 #
 # Environment: PGPASSWORD; SRC_HOST (default postgres), SRC_DB (default setu_demo), TGT_HOST, TGT_DB (required), PG_USER (default setu), SETU_SERVICE_DB_PASSWORD (the login's
-# password, default the development one), ROLES_SQL (default /service-roles.sql).
+# password, default the development one), ROLES_SQL (default /service-roles.sql), MIGRATIONS_DIR (the service's migration folder, optional) and SPLIT_BASELINE (the version the
+# service's database stood at when it was first split off; required with MIGRATIONS_DIR).
 set -euo pipefail
 
 service="${1:?usage: provision-service-db.sh <service> <schema[,schema...]>}"
@@ -28,6 +33,11 @@ tgt_db="${TGT_DB:?TGT_DB is required}"
 pg_user="${PG_USER:-setu}"
 role_password="${SETU_SERVICE_DB_PASSWORD:-setu_dev_password}"
 roles_sql="${ROLES_SQL:-/service-roles.sql}"
+migrations_dir="${MIGRATIONS_DIR:-}"
+split_baseline="${SPLIT_BASELINE:-}"
+if [[ -n "$migrations_dir" ]]; then
+  [[ "$split_baseline" =~ ^[0-9]+$ ]] || { echo "SPLIT_BASELINE (a whole version number) is required with MIGRATIONS_DIR" >&2; exit 2; }
+fi
 
 [[ "$tgt_db" =~ ^[a-z][a-z0-9_]*$ ]] || { echo "target database name must be lower-case letters, digits and underscores" >&2; exit 2; }
 IFS=',' read -r -a schemas <<< "$schemas_csv"
@@ -38,6 +48,29 @@ done
 src() { psql -h "$src_host" -U "$pg_user" -d "$src_db" -X -q -t -A -v ON_ERROR_STOP=1 "$@"; }
 tgt() { psql -h "$tgt_host" -U "$pg_user" -d "$tgt_db" -X -q -t -A -v ON_ERROR_STOP=1 "$@"; }
 tgt_server() { psql -h "$tgt_host" -U "$pg_user" -d postgres -X -q -t -A -v ON_ERROR_STOP=1 "$@"; }
+
+dump() { pg_dump -h "$src_host" -U "$pg_user" -d "$src_db" --no-owner --no-privileges "$@"; }
+
+# The version a copy taken now holds, as far as this service's own migrations go: the highest version in its folder that the source has applied, else $1.
+baseline_for_copy_taken_now() {
+  local best="$1" applied v f
+  applied="$(src -c "SELECT version FROM public.flyway_schema_history WHERE success AND version IS NOT NULL")"
+  for f in "$migrations_dir"/V*__*.sql; do
+    [[ -e "$f" ]] || continue
+    v="${f##*/V}"; v="${v%%__*}"
+    if grep -qx "$v" <<< "$applied" && [[ "$(printf '%s\n%s\n' "$best" "$v" | sort -V | tail -1)" == "$v" ]]; then
+      best="$v"
+    fi
+  done
+  echo "$best"
+}
+
+# Flyway's own table, structure copied from the source (so it is exactly what this Flyway makes) with one baseline row at version $1.
+history_sql() {
+  dump -t public.flyway_schema_history --schema-only
+  echo "INSERT INTO public.flyway_schema_history (installed_rank, version, description, type, script, checksum, installed_by, installed_on, execution_time, success)"
+  echo "VALUES (1, '$1', '<< Flyway Baseline >>', 'BASELINE', '<< Flyway Baseline >>', NULL, '$pg_user', now(), 0, true);"
+}
 
 for host in "$src_host" "$tgt_host"; do
   for _ in $(seq 1 60); do pg_isready -h "$host" -U "$pg_user" -q && break; sleep 2; done
@@ -51,7 +84,12 @@ fi
 
 loaded="$(tgt -c "SELECT to_regclass('public.event_publication') IS NOT NULL")"
 if [[ "$loaded" == "t" ]]; then
-  echo "== already loaded: only the login's grants are re-applied"
+  echo "== already loaded"
+  if [[ -n "$migrations_dir" && "$(tgt -c "SELECT to_regclass('public.flyway_schema_history') IS NOT NULL")" == "f" ]]; then
+    # loaded before the service had migrations of its own: that copy holds what stood at the split, nothing later
+    echo "== giving it a Flyway history, baselined at $split_baseline (the version it was split at)"
+    history_sql "$split_baseline" | psql -h "$tgt_host" -U "$pg_user" -d "$tgt_db" -X -q -v ON_ERROR_STOP=1 --single-transaction -f - >/dev/null
+  fi
 else
   # a database that holds part of the load is not one this script made: refuse rather than guess
   stray="$(tgt -c "SELECT count(*) FROM information_schema.schemata WHERE schema_name = ANY (string_to_array('${schemas_csv},governance', ','))")"
@@ -62,13 +100,16 @@ else
   for ext in $(src -c "SELECT extname FROM pg_extension WHERE extname <> 'plpgsql'"); do
     tgt -c "CREATE EXTENSION IF NOT EXISTS $ext" >/dev/null
   done
-  echo "== loading (one transaction)"
+  baseline=""
+  [[ -z "$migrations_dir" ]] || baseline="$(baseline_for_copy_taken_now "$split_baseline")"
+  echo "== loading (one transaction)${baseline:+, with a Flyway history baselined at $baseline}"
   {
     for s in "${schemas[@]}"; do
-      pg_dump -h "$src_host" -U "$pg_user" -d "$src_db" -n "$s" --no-owner --no-privileges
+      dump -n "$s"
     done
-    pg_dump -h "$src_host" -U "$pg_user" -d "$src_db" -n governance --schema-only --no-owner --no-privileges
-    pg_dump -h "$src_host" -U "$pg_user" -d "$src_db" -t public.event_publication --schema-only --no-owner --no-privileges
+    dump -n governance --schema-only
+    [[ -z "$baseline" ]] || history_sql "$baseline"
+    dump -t public.event_publication --schema-only
   } | psql -h "$tgt_host" -U "$pg_user" -d "$tgt_db" -X -q -v ON_ERROR_STOP=1 --single-transaction -f - >/dev/null
 fi
 

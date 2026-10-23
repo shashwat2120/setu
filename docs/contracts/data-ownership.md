@@ -151,13 +151,37 @@ half of all notifications would silently disappear.
 Notification fails (the gateway answers 504 in the standard envelope) while Identity, Academic, Learning and Attendance keep answering, and it recovers by itself when
 the server returns.
 
+## 4b. A service's own migrations
+
+A database of its own is only independent if it can change by itself. The Notification service therefore runs **Flyway against its own database at start-up**, from two folders and
+never from the monolith's (`infra/db/README.md`, "A service's own migrations"):
+
+* `infra/db/platform/`: changes to the tables every database carries a copy of (the outbox, audit log, idempotency keys, Modulith's event log). The core applies it to the shared
+  database and **every** service with a database of its own applies it to its own, so a platform change reaches all of them. None exist yet; the folder is wired in everywhere so
+  the first one needs no further plumbing.
+* `infra/db/services/notification/`: changes to what Notification owns. The service applies it to its own database, and **the core applies the same file to the shared database's
+  copy** (it still contains the module and validates its entities against that copy), so the two stay in step and a version means the same thing in both histories. The first is
+  `V104__notification_unread_index.sql`.
+
+Rules, held by `ServiceMigrationsTests` without a database: one version number across all folders (Flyway also refuses a duplicate at start-up); the new folders start above
+103, the version the shared database stood at when the first service was split off; a service's files touch only that service's schemas and may not create or drop schemas,
+databases or roles or change grants; platform files touch only the platform tables; and the image, the core's configuration and the service's compose entry each list every
+folder they must.
+
+The service's database starts with a Flyway history of **one baseline row**, written by the provisioning job: the highest version in the service's folder that the source had
+applied when the copy was taken, or the split version (103) when none. The monolith's history is never copied. Flyway runs as the database owner of that server (it has to create
+things, which the service's own login cannot); the service itself keeps running as `setu_notification`, and anything a migration creates is covered for that login by the default
+privileges of section 1a.
+
 ## 5. Honest limits
 
 * **Only Notification has a database of its own.** Every other service still shares the one PostgreSQL database as its own login (section 1a).
-* **The service's database does not receive future migrations by itself.** The service never migrates; the core's Flyway applies the `V*` files to the shared database, so the
-  `notification` schema there is now a stale, unused copy (it has to stay: the core still contains the module and validates its entities at start-up), and a migration that changes
-  the notification schema would have to be applied to the service's database as well. That is the next step: a migration folder per service, run by that service against its own
-  database. Until then the provisioning script is how a service's database is made, and a schema change to Notification needs doing twice.
+* **The shared database still holds a copy of the notification schema, now kept in step by the same migration files (section 4b), not left stale.** It is unused (nothing writes
+  it since the core stopped consuming for Notification) and has to stay while the core contains the module and validates its entities at start-up. It goes when the core stops
+  containing the module.
+* **A new service's database still starts from a copy.** A service's migrations begin after the split (above 103); the earlier history of its schema is in the monolith's
+  folder. A database could not yet be built from nothing out of a service's folder alone.
+* **Flyway runs with the database owner's credentials** inside the service's container; a stricter setup gives it a dedicated migration role that owns the database's objects.
 * **A database outage is not free of cost to events.** A failing event is retried three times and then dead-lettered ([kafka-contracts.md](kafka-contracts.md) section 5), so events that
   arrive while the Notification database is down for longer than that window go to `setu.*.DLQ` and need replaying. The outage test above sent no events during the outage.
 * **The failure looks like a slow 504, not an instant refusal:** the service waits out its connection pool timeout before the gateway gives up on it.

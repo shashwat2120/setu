@@ -42,6 +42,24 @@ Each backend module owns its own PostgreSQL schema (`identity`, `institution`, `
 - **Adding a table changes a test.** `MigrationIntegrationTests` asserts the number of domain tables, so a new table needs the
   expected count (and a comment saying why) updated in the same change. Adding a column does not.
 
+## A service's own migrations
+
+`migrations/` is the monolith's: the core's Flyway applies it to the shared database. A service that has been given a **database of its own** (today only Notification,
+`docs/contracts/data-ownership.md` section 4a) migrates that database itself, from two folders:
+
+| Folder | What it holds | Applied by |
+|---|---|---|
+| `platform/` | changes to the tables every database carries a copy of: `governance` (outbox, audit log, idempotency keys) and `public.event_publication` | the core, **and every service with a database of its own** |
+| `services/<service>/` | changes to the schemas that service owns | that service to its own database, **and the core to the shared database's copy** (so the copy the core still validates its entities against stays in step) |
+
+Rules, held by `ServiceMigrationsTests`: a version number appears **once** across `migrations/`, `platform/` and every `services/` folder (so the shared database's history and a
+service's can never disagree about what a version means); versions in the new folders are above 103, the version everything was at when the first service was split off;
+a file in `services/<service>/` touches only that service's schemas and a file in `platform/` only the platform tables; and the image, the core's configuration and the
+service's compose entry each list every folder they need.
+
+A service's database starts with a Flyway history of one baseline row (written by `split/provision-service-db.sh`), so its Flyway applies only what comes after the copy it was
+given. The monolith's own history is never copied. Adding a migration for a split service: put `V<next>__what.sql` in `services/<service>/`; nothing else changes.
+
 ## Running migrations locally
 
 With the Docker Compose stack up (`infra/docker/`), Spring Boot runs these

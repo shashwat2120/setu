@@ -117,9 +117,13 @@ services:
       TGT_HOST: postgres-notification
       TGT_DB: setu_notification
       SETU_SERVICE_DB_PASSWORD: ${SETU_SERVICE_DB_PASSWORD:-setu_dev_password}
+      # the version this database stood at when it was first split off, and the folder of the migrations that are its own from then on
+      MIGRATIONS_DIR: /service-migrations
+      SPLIT_BASELINE: "103"
     volumes:
       - ../db/split/provision-service-db.sh:/provision-service-db.sh:ro
       - ../db/roles/service-roles.sql:/service-roles.sql:ro
+      - ../db/services/notification:/service-migrations:ro
     entrypoint: ["bash", "/provision-service-db.sh", "notification", "notification"]
     restart: "no"
 
@@ -272,6 +276,12 @@ services:
       DB_NAME: setu_notification
       DB_USER: setu_notification
       DB_PASSWORD: ${SETU_SERVICE_DB_PASSWORD:-setu_dev_password}
+      # This service migrates its own database at start-up: the platform tables' migrations and its own, never the monolith's. Flyway uses the database owner's login (it has
+      # to create things; the service's own login cannot), which on this server owns only this one database.
+      SPRING_FLYWAY_ENABLED: "true"
+      SPRING_FLYWAY_LOCATIONS: filesystem:../infra/db/platform,filesystem:../infra/db/services/notification
+      SPRING_FLYWAY_USER: ${POSTGRES_USER:-setu}
+      SPRING_FLYWAY_PASSWORD: ${POSTGRES_PASSWORD:-setu_dev_password}
       SETU_MAIN: com.setu.notification.NotificationServiceApplication
       SERVER_PORT: "8087"
       APP_DISCOVERY_ADVERTISE_URL: http://notification:8087
