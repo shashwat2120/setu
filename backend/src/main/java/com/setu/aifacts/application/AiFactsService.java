@@ -7,15 +7,7 @@ import com.setu.enrollment.application.EnrollmentService;
 import com.setu.finance.application.StudentChargeService;
 import com.setu.record.application.AcademicRecordService;
 import com.setu.institution.application.PolicyDocumentService;
-import com.setu.learning.application.AssignmentService;
-import com.setu.learning.application.CourseModuleService;
-import com.setu.learning.application.LearningProgressService;
-import com.setu.learning.application.LessonService;
-import com.setu.learning.domain.Assignment;
-import com.setu.learning.domain.CourseModule;
-import com.setu.learning.domain.Lesson;
-import com.setu.learning.domain.LearningProgress;
-import com.setu.learning.domain.LearningProgressState;
+import com.setu.shared.learningfacts.LearningFacts;
 import com.setu.risk.application.RiskCalculationService;
 import com.setu.risk.domain.RiskFactor;
 import com.setu.risk.domain.RiskScore;
@@ -56,21 +48,17 @@ public class AiFactsService {
     private final AttendanceCounts attendanceCounts;
     private final AssessmentFacts assessmentFacts;
     private final RiskCalculationService riskCalculationService;
-    private final AssignmentService assignmentService;
+    private final LearningFacts learningFacts;
     private final ApplicationService applicationService;
-    private final CourseModuleService courseModuleService;
-    private final LessonService lessonService;
-    private final LearningProgressService learningProgressService;
     private final PolicyDocumentService policyDocumentService;
     private final AcademicRecordService academicRecordService;
     private final StudentChargeService studentChargeService;
 
     public AiFactsService(AiAccessSupport accessSupport, EnrollmentService enrollmentService,
                           AttendanceCounts attendanceCounts, AssessmentFacts assessmentFacts,
-                          RiskCalculationService riskCalculationService, AssignmentService assignmentService,
+                          RiskCalculationService riskCalculationService, LearningFacts learningFacts,
                           ApplicationService applicationService,
-                          CourseModuleService courseModuleService, LessonService lessonService,
-                          LearningProgressService learningProgressService, PolicyDocumentService policyDocumentService,
+                          PolicyDocumentService policyDocumentService,
                           AcademicRecordService academicRecordService,
                           StudentChargeService studentChargeService) {
         this.academicRecordService = academicRecordService;
@@ -80,11 +68,8 @@ public class AiFactsService {
         this.attendanceCounts = attendanceCounts;
         this.assessmentFacts = assessmentFacts;
         this.riskCalculationService = riskCalculationService;
-        this.assignmentService = assignmentService;
+        this.learningFacts = learningFacts;
         this.applicationService = applicationService;
-        this.courseModuleService = courseModuleService;
-        this.lessonService = lessonService;
-        this.learningProgressService = learningProgressService;
         this.policyDocumentService = policyDocumentService;
     }
 
@@ -266,8 +251,14 @@ public class AiFactsService {
         } catch (AssessmentFacts.Unavailable e) {
             return new ToolError("assessments are temporarily unavailable, so no deadlines can be given right now");
         }
+        Map<UUID, List<LearningFacts.PublishedAssignment>> publishedAssignments;
+        try {
+            publishedAssignments = learningFacts.publishedAssignments(sectionRefs.stream().map(ref -> ref.sectionId()).toList());
+        } catch (LearningFacts.Unavailable e) {
+            return new ToolError("assignments are temporarily unavailable, so no deadlines can be given right now");
+        }
         for (var ref : sectionRefs) {
-            for (Assignment a : assignmentService.listPublishedForSection(ref.sectionId())) {
+            for (var a : publishedAssignments.get(ref.sectionId())) {
                 if (a.dueAt() != null && a.dueAt().isAfter(now)) {
                     deadlines.add(new Deadline("ASSIGNMENT", a.id(), a.title(), a.dueAt()));
                 }
@@ -341,19 +332,22 @@ public class AiFactsService {
         } catch (AccessDeniedException e) {
             return new ToolError("not authorized to view this student's learning data");
         }
-        Set<UUID> completedLessonIds = learningProgressService.listForStudent(t.studentId()).stream()
-            .filter(p -> p.state() == LearningProgressState.COMPLETED)
-            .map(LearningProgress::lessonId)
-            .collect(java.util.stream.Collectors.toSet());
+        var refs = enrollmentService.listActiveEnrollmentRefsForStudent(t.studentId());
+        Set<UUID> completedLessonIds;
+        Map<UUID, List<LearningFacts.LessonRef>> lessonsBySection;
+        try {
+            completedLessonIds = learningFacts.completedLessons(List.of(t.studentId())).get(t.studentId());
+            lessonsBySection = learningFacts.lessonsOfSections(refs.stream().map(ref -> ref.sectionId()).toList());
+        } catch (LearningFacts.Unavailable e) {
+            // said plainly: the advisor must not recommend from a lesson list it could not get
+            return new ToolError("learning data is temporarily unavailable, so no recommendations can be given right now");
+        }
 
         List<LearningResource> recommendations = new ArrayList<>();
-        for (var ref : enrollmentService.listActiveEnrollmentRefsForStudent(t.studentId())) {
-            for (CourseModule module : courseModuleService.listActiveForSection(ref.sectionId())) {
-                for (Lesson lesson : lessonService.listByModuleId(module.id())) {
-                    if (!completedLessonIds.contains(lesson.id())) {
-                        recommendations.add(new LearningResource(lesson.id(), lesson.title(), lesson.type().name(),
-                            module.id(), ref.sectionId()));
-                    }
+        for (var ref : refs) {
+            for (var lesson : lessonsBySection.get(ref.sectionId())) {
+                if (!completedLessonIds.contains(lesson.lessonId())) {
+                    recommendations.add(new LearningResource(lesson.lessonId(), lesson.title(), lesson.type(), lesson.moduleId(), ref.sectionId()));
                 }
             }
         }

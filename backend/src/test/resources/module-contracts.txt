@@ -5,7 +5,6 @@ edge   aifacts -> directory
 edge   aifacts -> enrollment
 edge   aifacts -> finance
 edge   aifacts -> institution
-edge   aifacts -> learning
 edge   aifacts -> record
 edge   aifacts -> risk
 edge   career -> directory
@@ -19,7 +18,6 @@ edge   finance -> institution
 edge   guardianaccess -> directory
 edge   risk -> directory
 edge   risk -> enrollment
-edge   risk -> learning
 edge   shared.admin -> directory
 edge   shared.admin -> identity
 edge   shared.seed -> assessment
@@ -36,21 +34,11 @@ edge   shared.seed -> learning
 edge   shared.seed -> risk
 domain aifacts -> finance :: StudentCharge
 domain aifacts -> finance :: StudentChargeStatus
-domain aifacts -> learning :: Assignment
-domain aifacts -> learning :: CourseModule
-domain aifacts -> learning :: LearningProgress
-domain aifacts -> learning :: LearningProgressState
-domain aifacts -> learning :: Lesson
-domain aifacts -> learning :: LessonType
 domain aifacts -> risk :: RiskBand
 domain aifacts -> risk :: RiskFactor
 domain aifacts -> risk :: RiskScore
 domain enrollment -> catalog :: AcademicPeriod
 domain enrollment -> catalog :: PrerequisiteRuleType
-domain risk -> learning :: AssignmentSubmission
-domain risk -> learning :: AssignmentSubmissionStatus
-domain risk -> learning :: LearningProgress
-domain risk -> learning :: LearningProgressState
 domain shared.admin -> identity :: RoleCode
 domain shared.seed -> assessment :: QuestionType
 domain shared.seed -> attendance :: FacultyAttendanceStatus

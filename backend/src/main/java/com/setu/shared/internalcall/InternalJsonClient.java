@@ -22,8 +22,14 @@ import org.springframework.beans.factory.DisposableBean;
 import java.io.IOException;
 import java.net.URI;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.Collection;
+import java.util.HashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Map;
 import java.util.UUID;
+import java.util.function.BiFunction;
 
 /**
  * One service's questions to another over an {@code /internal/**} endpoint: a blocking client with short timeouts, wrapped in a {@link GuardedCall} (circuit breaker and
@@ -101,6 +107,21 @@ public class InternalJsonClient implements DisposableBean {
         } catch (GuardedCall.Unavailable e) {
             throw new DependencyUnavailableException("the " + peer + " service could not answer " + operation, e);
         }
+    }
+
+    /**
+     * Asks about many ids, {@code perRequest} at a time (each id once, however often it is passed), and reads each answer as {@link KeyedResults} with {@code idField} naming the id of
+     * an entry. The result has one value per distinct id asked about; with no ids nobody is asked.
+     */
+    public <T> Map<UUID, T> getKeyed(String path, String operation, String param, String idField, Collection<UUID> idsAsked, int perRequest,
+                                     BiFunction<UUID, JsonNode, T> rowReader) {
+        List<UUID> ids = new ArrayList<>(new LinkedHashSet<>(idsAsked));
+        Map<UUID, T> all = new HashMap<>();
+        for (int from = 0; from < ids.size(); from += perRequest) {
+            List<UUID> chunk = ids.subList(from, Math.min(ids.size(), from + perRequest));
+            all.putAll(get(path, operation, param, chunk, body -> KeyedResults.parse(body, chunk, idField, rowReader)));
+        }
+        return all;
     }
 
     @Override

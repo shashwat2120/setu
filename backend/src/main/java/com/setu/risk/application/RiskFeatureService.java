@@ -3,12 +3,7 @@ package com.setu.risk.application;
 import com.setu.shared.assessmentfacts.AssessmentFacts;
 import com.setu.shared.attendancefacts.AttendanceCounts;
 import com.setu.enrollment.application.EnrollmentService;
-import com.setu.learning.application.AssignmentSubmissionService;
-import com.setu.learning.application.LearningProgressService;
-import com.setu.learning.domain.AssignmentSubmission;
-import com.setu.learning.domain.AssignmentSubmissionStatus;
-import com.setu.learning.domain.LearningProgress;
-import com.setu.learning.domain.LearningProgressState;
+import com.setu.shared.learningfacts.LearningFacts;
 import org.springframework.stereotype.Component;
 
 import java.math.BigDecimal;
@@ -51,17 +46,14 @@ class RiskFeatureService {
     private final EnrollmentService enrollmentService;
     private final AttendanceCounts attendanceCounts;
     private final AssessmentFacts assessmentFacts;
-    private final AssignmentSubmissionService assignmentSubmissionService;
-    private final LearningProgressService learningProgressService;
+    private final LearningFacts learningFacts;
 
     RiskFeatureService(EnrollmentService enrollmentService, AttendanceCounts attendanceCounts,
-                        AssessmentFacts assessmentFacts, AssignmentSubmissionService assignmentSubmissionService,
-                        LearningProgressService learningProgressService) {
+                        AssessmentFacts assessmentFacts, LearningFacts learningFacts) {
         this.enrollmentService = enrollmentService;
         this.attendanceCounts = attendanceCounts;
         this.assessmentFacts = assessmentFacts;
-        this.assignmentSubmissionService = assignmentSubmissionService;
-        this.learningProgressService = learningProgressService;
+        this.learningFacts = learningFacts;
     }
 
     /**
@@ -97,8 +89,10 @@ class RiskFeatureService {
         List<AssessmentFacts.GradeFact> grades = gradesFor(enrollmentIds);
         features.add(assessmentPerformanceFeature(grades, enrollmentEvidence));
         features.add(recentFailuresFeature(grades, enrollmentEvidence));
-        features.add(assignmentCompletionFeature(studentId, enrollmentEvidence));
-        features.add(learningProgressFeature(studentId, enrollmentEvidence));
+        // asked of the learning owner in one call; if it cannot answer this throws and the recalculation is retried: a score is never computed from guessed learning data
+        LearningFacts.StudentCounts learning = learningFacts.studentCounts(List.of(studentId)).get(studentId);
+        features.add(assignmentCompletionFeature(learning, enrollmentEvidence));
+        features.add(learningProgressFeature(learning, enrollmentEvidence));
         return new FeatureSnapshot(features, enrollmentIds);
     }
 
@@ -133,23 +127,19 @@ class RiskFeatureService {
         return new Feature("RECENT_FAILURES", BigDecimal.valueOf(failures), evidence);
     }
 
-    private Feature assignmentCompletionFeature(UUID studentId, List<EvidenceRef> evidence) {
-        List<AssignmentSubmission> submissions = assignmentSubmissionService.listForStudent(studentId);
-        if (submissions.isEmpty()) {
+    private Feature assignmentCompletionFeature(LearningFacts.StudentCounts learning, List<EvidenceRef> evidence) {
+        if (learning.submissions() == 0) {
             return new Feature("ASSIGNMENT_COMPLETION", BigDecimal.ZERO, evidence); // no submissions yet — neutral
         }
-        long late = submissions.stream().filter(s -> s.status() == AssignmentSubmissionStatus.LATE).count();
-        BigDecimal latenessRate = BigDecimal.valueOf(late).divide(BigDecimal.valueOf(submissions.size()), 3, RoundingMode.HALF_UP);
+        BigDecimal latenessRate = BigDecimal.valueOf(learning.lateSubmissions()).divide(BigDecimal.valueOf(learning.submissions()), 3, RoundingMode.HALF_UP);
         return new Feature("ASSIGNMENT_COMPLETION", latenessRate, evidence);
     }
 
-    private Feature learningProgressFeature(UUID studentId, List<EvidenceRef> evidence) {
-        List<LearningProgress> progress = learningProgressService.listForStudent(studentId);
-        if (progress.isEmpty()) {
+    private Feature learningProgressFeature(LearningFacts.StudentCounts learning, List<EvidenceRef> evidence) {
+        if (learning.progressRecords() == 0) {
             return new Feature("LEARNING_PROGRESS", new BigDecimal("1.0"), evidence); // no lessons started yet — neutral
         }
-        long completed = progress.stream().filter(p -> p.state() == LearningProgressState.COMPLETED).count();
-        BigDecimal completionRate = BigDecimal.valueOf(completed).divide(BigDecimal.valueOf(progress.size()), 3, RoundingMode.HALF_UP);
+        BigDecimal completionRate = BigDecimal.valueOf(learning.completedLessons()).divide(BigDecimal.valueOf(learning.progressRecords()), 3, RoundingMode.HALF_UP);
         return new Feature("LEARNING_PROGRESS", completionRate, evidence);
     }
 }

@@ -213,6 +213,49 @@ services:
     entrypoint: ["bash", "/provision-service-db.sh", "assessment", "assessment"]
     restart: "no"
 
+  # The Learning service's own database, the same shape as Notification's, Attendance's and Assessment's. The core and the other services no longer read the learning schema; they
+  # ask the service (/internal/learning/...). docs/contracts/data-ownership.md sections 3a and 4e.
+  postgres-learning:
+    image: pgvector/pgvector:pg16
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: setu_learning
+      POSTGRES_USER: ${POSTGRES_USER:-setu}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-setu_dev_password}
+    volumes:
+      - setu_learning_pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-setu} -d setu_learning"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # Loads that server from the shared database the first time, checks every row count, baselines its Flyway history and gives the service its login. Run it only while the
+  # Learning service is stopped (infra/db/README.md): a copy taken while it writes would miss what it writes next.
+  db-learning-init:
+    image: pgvector/pgvector:pg16
+    depends_on:
+      core:
+        condition: service_healthy
+      postgres-learning:
+        condition: service_healthy
+    environment:
+      PGPASSWORD: ${POSTGRES_PASSWORD:-setu_dev_password}
+      PG_USER: ${POSTGRES_USER:-setu}
+      SRC_HOST: postgres
+      SRC_DB: ${SETU_DB_NAME:-setu_demo}
+      TGT_HOST: postgres-learning
+      TGT_DB: setu_learning
+      SETU_SERVICE_DB_PASSWORD: ${SETU_SERVICE_DB_PASSWORD:-setu_dev_password}
+      MIGRATIONS_DIR: /service-migrations
+      SPLIT_BASELINE: "103"
+    volumes:
+      - ../db/split/provision-service-db.sh:/provision-service-db.sh:ro
+      - ../db/roles/service-roles.sql:/service-roles.sql:ro
+      - ../db/services/learning:/service-migrations:ro
+    entrypoint: ["bash", "/provision-service-db.sh", "learning", "learning"]
+    restart: "no"
+
   # The modules not yet extracted (record, risk, career, finance, onboarding) and the owner of the migrations. Verifies tokens like any other
   # service (remote), and seeds the demo college on an empty database.
   core:
@@ -240,6 +283,9 @@ services:
       # Assessment has a database of its own too: grades, the names and weights of what they grade, and the visible assessments of a section (risk, the AI advisor, transcripts
       # and GPA) are asked of the service instead of read from the shared database's old copy of the assessment schema.
       SETU_ASSESSMENT_URL: http://assessment:8085
+      # Learning has a database of its own too: a student's submission and lesson counts (risk), the published assignments and lessons of a section and the lessons a student has
+      # completed (the AI advisor) are asked of the service instead of read from the shared database's old copy of the learning schema.
+      SETU_LEARNING_URL: http://learning:8084
       APP_RESUMES_DIR: /data/resumes
       SETU_MAIN: com.setu.BackendApplication
       SERVER_PORT: "8083"
@@ -309,13 +355,20 @@ services:
     <<: *service
     depends_on:
       core: {condition: service_healthy}
-      db-roles: {condition: service_completed_successfully}
+      db-learning-init: {condition: service_completed_successfully}
     mem_limit: 640m
     ports: ["127.0.0.1:8084:8084"]
     environment:
       <<: *common
+      DB_HOST: postgres-learning
+      DB_NAME: setu_learning
       DB_USER: setu_learning
       DB_PASSWORD: ${SETU_SERVICE_DB_PASSWORD:-setu_dev_password}
+      # migrates its own database at start-up, as Notification, Attendance and Assessment do: the platform tables' migrations and its own, never the monolith's
+      SPRING_FLYWAY_ENABLED: "true"
+      SPRING_FLYWAY_LOCATIONS: filesystem:../infra/db/platform,filesystem:../infra/db/services/learning
+      SPRING_FLYWAY_USER: ${POSTGRES_USER:-setu}
+      SPRING_FLYWAY_PASSWORD: ${POSTGRES_PASSWORD:-setu_dev_password}
       SETU_MAIN: com.setu.learning.LearningServiceApplication
       SERVER_PORT: "8084"
       APP_DISCOVERY_ADVERTISE_URL: http://learning:8084

@@ -12,15 +12,11 @@ import java.io.IOException;
 import java.math.BigDecimal;
 import java.time.Duration;
 import java.time.Instant;
-import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.Collection;
-import java.util.HashMap;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-import java.util.function.BiFunction;
 
 /**
  * Asks the Assessment service, over its internal endpoints, for grades and for student-visible assessments, through the shared {@link InternalJsonClient}. Every answer must
@@ -41,58 +37,22 @@ public class RemoteAssessmentFacts implements AssessmentFacts, DisposableBean {
 
     @Override
     public Map<UUID, List<GradeFact>> currentGrades(Collection<UUID> enrollmentIds) {
-        return ask("/internal/assessment/grades", "assessment-grades", "enrollmentIds", "enrollmentId", enrollmentIds,
-            (id, row) -> gradesOf(id, row.path("grades")));
+        try {
+            return client.getKeyed("/internal/assessment/grades", "assessment-grades", "enrollmentIds", "enrollmentId", enrollmentIds, PER_REQUEST,
+                (id, row) -> gradesOf(id, row.path("grades")));
+        } catch (DependencyUnavailableException e) {
+            throw new Unavailable(e.getMessage(), e);
+        }
     }
 
     @Override
     public Map<UUID, List<VisibleAssessment>> visibleAssessments(Collection<UUID> sectionIds) {
-        return ask("/internal/assessment/visible", "assessment-visible", "sectionIds", "sectionId", sectionIds,
-            (id, row) -> visibleOf(row.path("assessments")));
-    }
-
-    private <T> Map<UUID, List<T>> ask(String path, String operation, String param, String idField, Collection<UUID> idsAsked,
-                                       BiFunction<UUID, JsonNode, List<T>> rowReader) {
-        List<UUID> ids = new ArrayList<>(new LinkedHashSet<>(idsAsked));
-        Map<UUID, List<T>> all = new HashMap<>();
-        for (int from = 0; from < ids.size(); from += PER_REQUEST) {
-            List<UUID> chunk = ids.subList(from, Math.min(ids.size(), from + PER_REQUEST));
-            try {
-                all.putAll(client.get(path, operation, param, chunk, body -> parse(body, chunk, idField, rowReader)));
-            } catch (DependencyUnavailableException e) {
-                throw new Unavailable(e.getMessage(), e);
-            }
+        try {
+            return client.getKeyed("/internal/assessment/visible", "assessment-visible", "sectionIds", "sectionId", sectionIds, PER_REQUEST,
+                (id, row) -> visibleOf(row.path("assessments")));
+        } catch (DependencyUnavailableException e) {
+            throw new Unavailable(e.getMessage(), e);
         }
-        return all;
-    }
-
-    /** One entry per id asked about, each id once, nothing else: anything different is not an answer. */
-    static <T> Map<UUID, List<T>> parse(JsonNode body, List<UUID> asked, String idField, BiFunction<UUID, JsonNode, List<T>> rowReader) throws IOException {
-        if (body == null || !body.has("results") || !body.get("results").isArray()) {
-            throw new IOException("malformed answer");
-        }
-        Map<UUID, List<T>> answer = new HashMap<>();
-        for (JsonNode row : body.get("results")) {
-            UUID id;
-            try {
-                id = UUID.fromString(row.path(idField).asText());
-            } catch (IllegalArgumentException e) {
-                throw new IOException("malformed answer", e);
-            }
-            List<T> read;
-            try {
-                read = rowReader.apply(id, row);
-            } catch (IllegalArgumentException | DateTimeParseException | ArithmeticException e) {
-                throw new IOException("malformed answer", e);
-            }
-            if (!asked.contains(id) || answer.put(id, read) != null) {
-                throw new IOException("answer names an id that was not asked about, or twice");
-            }
-        }
-        if (answer.size() != asked.size()) {
-            throw new IOException("answer is incomplete");
-        }
-        return answer;
     }
 
     private static List<GradeFact> gradesOf(UUID enrollmentId, JsonNode grades) {
