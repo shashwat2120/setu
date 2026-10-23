@@ -9,8 +9,35 @@ the moment it matters. This document is what is enforced, what is deliberately l
 * `backend/src/test/resources/table-owners.txt` lists every table with its owner (the table's schema is its owner). `TableOwnershipTests`
   fails when a table is missing from it, when a JPA entity maps a table outside its own module's schema, and when a foreign key crosses a
   service boundary that is not on the frozen list.
+* **The database enforces it too (section 1a).** Each service logs in as its own database role, able to use only its own schemas.
 * No cross-service joins: a service queries its own schema only. The read-model tables (`rm_*`) are in the schema of the service that uses
   them and are owned by it, though the facts in them belong to someone else; they change only by applying that owner's events.
+
+## 1a. One database login per service
+
+The tests above keep ownership by convention. `infra/db/roles/service-roles.sql` makes the database itself refuse: it creates one login per service
+(`setu_identity`, `setu_academic`, `setu_learning`, `setu_assessment`, `setu_attendance`, `setu_notification`; the gateway and the AI service have no database)
+and grants each one only the schemas that service owns. The core keeps the owner login, because it runs the migrations and still holds Record, Risk, Career and Finance.
+
+| A service login can | It cannot |
+|---|---|
+| read and write the tables of the schemas it owns, including tables later migrations add (default privileges) | read or write another service's tables, or the core's (`finance`, `career`, `risk`, `record`): PostgreSQL answers "permission denied" (42501) |
+| read the outbox, mark events published, add and read audit records, use idempotency keys (`governance`) | delete an outbox event, or change or remove an audit record (the audit log is append-only to every service) |
+| read and write Spring Modulith's event log (`public.event_publication`) | read the migration history, create or alter or drop or truncate anything, create a schema, or become a superuser |
+
+How it is applied: the compose file runs `db-roles` once, after the core has migrated and before the services start (`docker-compose.services.yml`); each service's
+`DB_USER` is its own role. The script converges: run again it takes back any grant that is no longer in it. **Held by tests:** `ServiceSqlStaysInItsSchemasTests` fails if any service's hand-written SQL names a schema it does not own, and `ServiceDatabaseRolesTests` connects as each
+role and tries each of the refusals above (including every service against every other service's schema), and checks the script and `table-owners.txt` agree
+about who holds what.
+
+Found by switching the services over, and fixed: the first run failed the attendance scan with a 500, because Spring Modulith keeps its own log of published application
+events in `public.event_publication` and every process writes it; it is now granted. Nothing else a service did reached outside its own schemas: the
+other five ran the whole smoke flow and the Learning and Notification calls with no refusal.
+
+**What this is not.** It is still one PostgreSQL database, one server, one set of backups, and the same password for every role in development
+(`SETU_SERVICE_DB_PASSWORD`; a real deployment sets it per environment, ideally a different one per service). The outbox, audit log and idempotency tables are
+shared by design until each service has its own database, and Modulith's event log is shared in the same way. Separate databases are section 4 and are not done
+for any service yet.
 
 ## 2. Foreign keys
 
@@ -103,6 +130,10 @@ the missing `directory` schema) unless `SETU_SPLIT_EXCLUDE=record` leaves Record
 current by replay: the consumer's group starts from the earliest offset, and the processed-event table makes the overlap harmless.
 
 ## 5. Honest limits
+
+* Every service runs as its own database login (section 1a), but they still share one PostgreSQL database, so the platform tables (outbox, audit log, idempotency keys)
+  and Modulith's event log are shared. A process publishes any `NEW` outbox row, whichever service wrote it; that works because every consumer is idempotent, and ends when
+  each service has its own database and so its own outbox.
 
 * The AI service has no database at all (not even a replicated audit table): its only write is an audit record sent to the data service ([ai-service.md](ai-service.md) section 3).
 

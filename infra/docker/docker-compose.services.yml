@@ -64,6 +64,25 @@ services:
         || psql -h postgres -U ${POSTGRES_USER:-setu} -d postgres -c "CREATE DATABASE ${SETU_DB_NAME:-setu_demo}"
     restart: "no"
 
+  # Gives each service its own database login, able to use only the schemas that service owns (infra/db/roles/service-roles.sql). It has to wait for the core,
+  # which creates the tables, and the services wait for it. Safe to run again: it converges. The password is one development value for every role here; the point
+  # of the roles is what each may touch, not the secret (a real deployment sets SETU_SERVICE_DB_PASSWORD per environment).
+  db-roles:
+    image: pgvector/pgvector:pg16
+    depends_on:
+      core:
+        condition: service_healthy
+    environment:
+      PGPASSWORD: ${POSTGRES_PASSWORD:-setu_dev_password}
+    volumes:
+      - ../db/roles/service-roles.sql:/service-roles.sql:ro
+    entrypoint: ["sh", "-c"]
+    command:
+      - >
+        psql -v ON_ERROR_STOP=1 -h postgres -U ${POSTGRES_USER:-setu} -d ${SETU_DB_NAME:-setu_demo}
+        -c "SET setu.role_password = '${SETU_SERVICE_DB_PASSWORD:-setu_dev_password}'" -f /service-roles.sql
+    restart: "no"
+
   # The modules not yet extracted (record, risk, career, finance, onboarding) and the owner of the migrations. Verifies tokens like any other
   # service (remote), and seeds the demo college on an empty database.
   core:
@@ -117,10 +136,13 @@ services:
     <<: *service
     depends_on:
       core: {condition: service_healthy}
+      db-roles: {condition: service_completed_successfully}
     mem_limit: 768m
     ports: ["127.0.0.1:8081:8081"]
     environment:
       <<: *common
+      DB_USER: setu_identity
+      DB_PASSWORD: ${SETU_SERVICE_DB_PASSWORD:-setu_dev_password}
       SETU_MAIN: com.setu.identity.IdentityServiceApplication
       SERVER_PORT: "8081"
       APP_DISCOVERY_ADVERTISE_URL: http://identity:8081
@@ -132,10 +154,13 @@ services:
     <<: *service
     depends_on:
       core: {condition: service_healthy}
+      db-roles: {condition: service_completed_successfully}
     mem_limit: 640m
     ports: ["127.0.0.1:8082:8082"]
     environment:
       <<: *common
+      DB_USER: setu_academic
+      DB_PASSWORD: ${SETU_SERVICE_DB_PASSWORD:-setu_dev_password}
       SETU_MAIN: com.setu.academic.AcademicServiceApplication
       SERVER_PORT: "8082"
       APP_DISCOVERY_ADVERTISE_URL: http://academic:8082
@@ -145,10 +170,13 @@ services:
     <<: *service
     depends_on:
       core: {condition: service_healthy}
+      db-roles: {condition: service_completed_successfully}
     mem_limit: 640m
     ports: ["127.0.0.1:8084:8084"]
     environment:
       <<: *common
+      DB_USER: setu_learning
+      DB_PASSWORD: ${SETU_SERVICE_DB_PASSWORD:-setu_dev_password}
       SETU_MAIN: com.setu.learning.LearningServiceApplication
       SERVER_PORT: "8084"
       APP_DISCOVERY_ADVERTISE_URL: http://learning:8084
@@ -158,10 +186,13 @@ services:
     <<: *service
     depends_on:
       core: {condition: service_healthy}
+      db-roles: {condition: service_completed_successfully}
     mem_limit: 640m
     ports: ["127.0.0.1:8085:8085"]
     environment:
       <<: *common
+      DB_USER: setu_assessment
+      DB_PASSWORD: ${SETU_SERVICE_DB_PASSWORD:-setu_dev_password}
       SETU_MAIN: com.setu.assessment.AssessmentServiceApplication
       SERVER_PORT: "8085"
       APP_DISCOVERY_ADVERTISE_URL: http://assessment:8085
@@ -171,12 +202,15 @@ services:
     <<: *service
     depends_on:
       core: {condition: service_healthy}
+      db-roles: {condition: service_completed_successfully}
     mem_limit: 640m
     # the live attendance board is served here; clients reach it through the gateway (route attendance-live, /ws). The port stays published to
     # tell a gateway problem from a service problem (LIVE=ws://localhost:8086/ws node infra/scripts/smoke-websocket.js)
     ports: ["127.0.0.1:8086:8086"]
     environment:
       <<: *common
+      DB_USER: setu_attendance
+      DB_PASSWORD: ${SETU_SERVICE_DB_PASSWORD:-setu_dev_password}
       SETU_MAIN: com.setu.attendance.AttendanceServiceApplication
       SERVER_PORT: "8086"
       APP_DISCOVERY_ADVERTISE_URL: http://attendance:8086
@@ -186,10 +220,13 @@ services:
     <<: *service
     depends_on:
       core: {condition: service_healthy}
+      db-roles: {condition: service_completed_successfully}
     mem_limit: 640m
     ports: ["127.0.0.1:8087:8087"]
     environment:
       <<: *common
+      DB_USER: setu_notification
+      DB_PASSWORD: ${SETU_SERVICE_DB_PASSWORD:-setu_dev_password}
       SETU_MAIN: com.setu.notification.NotificationServiceApplication
       SERVER_PORT: "8087"
       APP_DISCOVERY_ADVERTISE_URL: http://notification:8087

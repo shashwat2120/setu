@@ -319,6 +319,29 @@ A student can upload a PDF of up to 2 MB as their resume file, beside the resume
 
 An officer can reach a file only through an application; the download is written to the audit log (`RESUME_FILE_DOWNLOADED`), as are an upload and a removal. The file is only ever handed over as a download, never shown inside the application. A PDF alone counts as a resume for a job that needs one. Tests cover each rule of the PDF check (including the hex-escaped name, a stream that is never closed, and a hostile file with 100,000 stream markers checked in one pass), the cleaned display name never being a path, the store refusing anything that is not a hash and another college's directory, and the access, freezing and audit rules above. **Limits:** the PDF check is a screen, not a guarantee (a name hidden inside a compressed part of the file cannot be seen without opening it), which is why the file is never displayed in the application and is served as an attachment; no virus scan; no preview of the PDF's text; a student has one current file; files of removed or replaced uploads stay on the volume because applications may still point at them, and nothing removes the unreferenced ones yet; the volume needs the same backup as the database.
 
+## One database login per service, run live (2026-10-23)
+
+Until now every service connected to the shared database as the same user, so "each table has one owner" was kept by convention and by tests. Each service now logs in as
+its own role (`setu_identity`, `setu_academic`, `setu_learning`, `setu_assessment`, `setu_attendance`, `setu_notification`) that can use only the schemas it owns,
+applied by a one-shot `db-roles` job after the core has migrated ([contracts/data-ownership.md](contracts/data-ownership.md) section 1a). Run on the containers:
+
+| Check | Result |
+|---|---|
+| The roles applied to the running database | `SET`, `DO`, exit 0; the connections to the database were then 6 as the owner (the core) and 4 each as the six service roles |
+| As `setu_learning`: read its own lessons | 5 rows |
+| As `setu_learning`: read `identity.users`; as `setu_notification`: read `finance.payments`; as `setu_learning`: create a table | each "permission denied" |
+| As any service: update the audit log | "permission denied for table audit_logs" (append-only to every service) |
+| All six services restarted under their own logins | all healthy |
+| The first smoke flow | failed at the attendance scan with a 500: **a real dependency the ownership lists did not show**, Spring Modulith's `public.event_publication`, which every process writes; granted, with a test |
+| The smoke flow again | **16 of 16** steps through the real services: sign-in, profiles, attendance session and scan, assessment, final grade, enrollment completes through Kafka, risk recalculated, the student notified, the transcript |
+| Learning (not in the smoke flow): a faculty member lists and creates a module; a student reads it; Notification: a student reads their own | 200, 201, 200, 200 |
+| Permission-denied errors in any service's log after the fix | none |
+
+`ServiceDatabaseRolesTests` (10 tests) connects as each role and tries every refusal: every service against every other service's schema and the core's, writes to
+another service's tables, deleting outbox events, changing or removing audit records, creating or altering or dropping or truncating anything, the migration history, a table
+added by a later migration, a stray grant being taken back when the script runs again, and the script agreeing with `table-owners.txt`. **Limits:** one PostgreSQL
+database and server still; the same development password for every role; the outbox, audit log, idempotency keys and Modulith's event log are shared tables; the suites run as the owner, so they cannot show a service asking for something its login would refuse. Two things cover that: `ServiceSqlStaysInItsSchemasTests` reads the hand-written SQL of every package a service scans (its modules and the shared kernel) and fails if it names another service's schema (none does; JPA mappings are held to their own schema by `TableOwnershipTests`), and the live run exercised the 16-step flow, Learning and Notification. What neither proves is a path that builds its SQL from pieces at run time; it would fail at that moment with "permission denied".
+
 ## Not validated
 
 - Kafka consumer lag **under load**. (The dead-letter path **was** run with a real poison event on the real stack, see below.)
