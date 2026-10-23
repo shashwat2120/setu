@@ -2,7 +2,7 @@ package com.setu.risk.application;
 
 import com.setu.assessment.application.GradeService;
 import com.setu.assessment.domain.Grade;
-import com.setu.attendance.application.AttendanceRecordService;
+import com.setu.shared.attendancefacts.AttendanceCounts;
 import com.setu.enrollment.application.EnrollmentService;
 import com.setu.learning.application.AssignmentSubmissionService;
 import com.setu.learning.application.LearningProgressService;
@@ -50,16 +50,16 @@ import java.util.UUID;
 class RiskFeatureService {
 
     private final EnrollmentService enrollmentService;
-    private final AttendanceRecordService attendanceRecordService;
+    private final AttendanceCounts attendanceCounts;
     private final GradeService gradeService;
     private final AssignmentSubmissionService assignmentSubmissionService;
     private final LearningProgressService learningProgressService;
 
-    RiskFeatureService(EnrollmentService enrollmentService, AttendanceRecordService attendanceRecordService,
+    RiskFeatureService(EnrollmentService enrollmentService, AttendanceCounts attendanceCounts,
                         GradeService gradeService, AssignmentSubmissionService assignmentSubmissionService,
                         LearningProgressService learningProgressService) {
         this.enrollmentService = enrollmentService;
-        this.attendanceRecordService = attendanceRecordService;
+        this.attendanceCounts = attendanceCounts;
         this.gradeService = gradeService;
         this.assignmentSubmissionService = assignmentSubmissionService;
         this.learningProgressService = learningProgressService;
@@ -106,10 +106,10 @@ class RiskFeatureService {
     private Feature attendanceFeature(List<UUID> enrollmentIds, List<EvidenceRef> evidence) {
         long presentOrLate = 0;
         long total = 0;
-        for (UUID enrollmentId : enrollmentIds) {
-            var pct = attendanceRecordService.percentageForEnrollmentUnchecked(enrollmentId);
-            presentOrLate += pct.presentOrLate();
-            total += pct.total();
+        // asked of the attendance owner in one call; if it cannot answer, this throws and the recalculation is retried: a score is never computed from guessed attendance
+        for (var counts : attendanceCounts.forEnrollments(enrollmentIds).values()) {
+            presentOrLate += counts.presentOrLate();
+            total += counts.total();
         }
         BigDecimal percentage = total == 0 ? new BigDecimal("100") : new BigDecimal(presentOrLate * 100.0 / total).setScale(2, RoundingMode.HALF_UP);
         return new Feature("ATTENDANCE_TREND", percentage, evidence);

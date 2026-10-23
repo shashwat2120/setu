@@ -43,7 +43,7 @@ spring:
     # The monolith's migrations, then the platform tables' (every database carries a copy of those) and the folder of each service that has a database of its own. The core
     # applies all of them to the shared database, so it stays complete (and its entities validate); a service with a database of its own applies only the platform folder and
     # its own, by setting SPRING_FLYWAY_LOCATIONS (docker-compose.services.yml). A version may appear only once across all of these folders (ServiceMigrationsTests).
-    locations: filesystem:../infra/db/migrations,filesystem:../infra/db/platform,filesystem:../infra/db/services/notification
+    locations: filesystem:../infra/db/migrations,filesystem:../infra/db/platform,filesystem:../infra/db/services/notification,filesystem:../infra/db/services/attendance
 
   jpa:
     # Flyway is the *only* source of schema truth. Hibernate must never

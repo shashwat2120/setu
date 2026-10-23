@@ -127,6 +127,49 @@ services:
     entrypoint: ["bash", "/provision-service-db.sh", "notification", "notification"]
     restart: "no"
 
+  # The Attendance service's own database, the same shape as Notification's: a server of its own holding the attendance schema and the platform tables the service needs.
+  # The core and the other services no longer read these tables; they ask the service (/internal/attendance/counts). docs/contracts/data-ownership.md section 4a.
+  postgres-attendance:
+    image: pgvector/pgvector:pg16
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: setu_attendance
+      POSTGRES_USER: ${POSTGRES_USER:-setu}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-setu_dev_password}
+    volumes:
+      - setu_attendance_pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-setu} -d setu_attendance"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # Loads that server from the shared database the first time, checks every row count, baselines its Flyway history and gives the service its login. Run it only while the
+  # Attendance service is stopped (infra/db/README.md): a copy taken while it writes would miss what it writes next.
+  db-attendance-init:
+    image: pgvector/pgvector:pg16
+    depends_on:
+      core:
+        condition: service_healthy
+      postgres-attendance:
+        condition: service_healthy
+    environment:
+      PGPASSWORD: ${POSTGRES_PASSWORD:-setu_dev_password}
+      PG_USER: ${POSTGRES_USER:-setu}
+      SRC_HOST: postgres
+      SRC_DB: ${SETU_DB_NAME:-setu_demo}
+      TGT_HOST: postgres-attendance
+      TGT_DB: setu_attendance
+      SETU_SERVICE_DB_PASSWORD: ${SETU_SERVICE_DB_PASSWORD:-setu_dev_password}
+      MIGRATIONS_DIR: /service-migrations
+      SPLIT_BASELINE: "103"
+    volumes:
+      - ../db/split/provision-service-db.sh:/provision-service-db.sh:ro
+      - ../db/roles/service-roles.sql:/service-roles.sql:ro
+      - ../db/services/attendance:/service-migrations:ro
+    entrypoint: ["bash", "/provision-service-db.sh", "attendance", "attendance"]
+    restart: "no"
+
   # The modules not yet extracted (record, risk, career, finance, onboarding) and the owner of the migrations. Verifies tokens like any other
   # service (remote), and seeds the demo college on an empty database.
   core:
@@ -148,6 +191,9 @@ services:
       # Notification has a database of its own now. The core still contains the notification module and would join the same Kafka group, and an event it handled would be
       # written to the shared database's old copy, where nobody reads it: so the core does not consume for Notification any more.
       APP_NOTIFICATION_CONSUMER_ENABLED: "false"
+      # Attendance has a database of its own now: the risk engine, the AI advisor's attendance tool and Career's standing ask the service for attendance counts instead of
+      # reading the shared database's old copy of the attendance schema.
+      SETU_ATTENDANCE_URL: http://attendance:8086
       APP_RESUMES_DIR: /data/resumes
       SETU_MAIN: com.setu.BackendApplication
       SERVER_PORT: "8083"
@@ -249,15 +295,22 @@ services:
     <<: *service
     depends_on:
       core: {condition: service_healthy}
-      db-roles: {condition: service_completed_successfully}
+      db-attendance-init: {condition: service_completed_successfully}
     mem_limit: 640m
     # the live attendance board is served here; clients reach it through the gateway (route attendance-live, /ws). The port stays published to
     # tell a gateway problem from a service problem (LIVE=ws://localhost:8086/ws node infra/scripts/smoke-websocket.js)
     ports: ["127.0.0.1:8086:8086"]
     environment:
       <<: *common
+      DB_HOST: postgres-attendance
+      DB_NAME: setu_attendance
       DB_USER: setu_attendance
       DB_PASSWORD: ${SETU_SERVICE_DB_PASSWORD:-setu_dev_password}
+      # migrates its own database at start-up, as Notification does: the platform tables' migrations and its own, never the monolith's
+      SPRING_FLYWAY_ENABLED: "true"
+      SPRING_FLYWAY_LOCATIONS: filesystem:../infra/db/platform,filesystem:../infra/db/services/attendance
+      SPRING_FLYWAY_USER: ${POSTGRES_USER:-setu}
+      SPRING_FLYWAY_PASSWORD: ${POSTGRES_PASSWORD:-setu_dev_password}
       SETU_MAIN: com.setu.attendance.AttendanceServiceApplication
       SERVER_PORT: "8086"
       APP_DISCOVERY_ADVERTISE_URL: http://attendance:8086

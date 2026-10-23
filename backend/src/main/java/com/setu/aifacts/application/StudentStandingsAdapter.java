@@ -1,6 +1,6 @@
 package com.setu.aifacts.application;
 
-import com.setu.attendance.application.AttendanceRecordService;
+import com.setu.shared.attendancefacts.AttendanceCounts;
 import com.setu.enrollment.application.EnrollmentService;
 import com.setu.enrollment.application.StudentProgramService;
 import com.setu.record.application.AcademicRecordService;
@@ -21,14 +21,14 @@ class StudentStandingsAdapter implements StudentStandings {
 
     private final AcademicRecordService recordService;
     private final EnrollmentService enrollmentService;
-    private final AttendanceRecordService attendanceRecordService;
+    private final AttendanceCounts attendanceCounts;
     private final StudentProgramService studentProgramService;
 
-    StudentStandingsAdapter(AcademicRecordService recordService, EnrollmentService enrollmentService, AttendanceRecordService attendanceRecordService,
+    StudentStandingsAdapter(AcademicRecordService recordService, EnrollmentService enrollmentService, AttendanceCounts attendanceCounts,
                             StudentProgramService studentProgramService) {
         this.recordService = recordService;
         this.enrollmentService = enrollmentService;
-        this.attendanceRecordService = attendanceRecordService;
+        this.attendanceCounts = attendanceCounts;
         this.studentProgramService = studentProgramService;
     }
 
@@ -37,10 +37,10 @@ class StudentStandingsAdapter implements StudentStandings {
     public Optional<Standing> of(UUID studentId) {
         long presentOrLate = 0;
         long total = 0;
-        for (var ref : enrollmentService.listActiveEnrollmentRefsForStudent(studentId)) {
-            var pct = attendanceRecordService.percentageForEnrollmentUnchecked(ref.enrollmentId());
-            presentOrLate += pct.presentOrLate();
-            total += pct.total();
+        var enrollmentIds = enrollmentService.listActiveEnrollmentRefsForStudent(studentId).stream().map(ref -> ref.enrollmentId()).toList();
+        for (var counts : attendanceCounts.forEnrollments(enrollmentIds).values()) {
+            presentOrLate += counts.presentOrLate();
+            total += counts.total();
         }
         Double attendance = total == 0 ? null : Math.round((presentOrLate * 10000.0) / total) / 100.0;
         return Optional.of(new Standing(recordService.gpaUnchecked(studentId), attendance, studentProgramService.activeProgramIdUnchecked(studentId).orElse(null),

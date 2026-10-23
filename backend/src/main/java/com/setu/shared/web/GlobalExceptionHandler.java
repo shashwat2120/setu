@@ -224,6 +224,13 @@ public class GlobalExceptionHandler {
         return respond(HttpStatus.UNSUPPORTED_MEDIA_TYPE, "UNSUPPORTED_MEDIA_TYPE", "the request content type is not supported", request);
     }
 
+    /** The owner of some data this answer needs could not be asked: say so (and that trying again may work), never answer with data we do not have. */
+    @ExceptionHandler(com.setu.shared.attendancefacts.AttendanceCounts.Unavailable.class)
+    public ResponseEntity<ErrorResponse> handleDependencyUnavailable(com.setu.shared.attendancefacts.AttendanceCounts.Unavailable ex, HttpServletRequest request) {
+        log.warn("{} {}: {}", request.getMethod(), request.getRequestURI(), ex.getMessage());
+        return respond(HttpStatus.SERVICE_UNAVAILABLE, "DEPENDENCY_UNAVAILABLE", "a service this needs is not answering; try again in a moment", request);
+    }
+
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ErrorResponse> handleUnexpected(Exception ex, HttpServletRequest request) {
         String requestId = currentCorrelationId();

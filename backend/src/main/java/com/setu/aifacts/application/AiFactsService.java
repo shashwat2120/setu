@@ -5,7 +5,7 @@ import com.setu.assessment.application.GradeService;
 import com.setu.assessment.application.AssessmentService;
 import com.setu.assessment.domain.Assessment;
 import com.setu.assessment.domain.Grade;
-import com.setu.attendance.application.AttendanceRecordService;
+import com.setu.shared.attendancefacts.AttendanceCounts;
 import com.setu.career.application.ApplicationService;
 import com.setu.enrollment.application.EnrollmentService;
 import com.setu.finance.application.StudentChargeService;
@@ -32,6 +32,7 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
@@ -56,7 +57,7 @@ public class AiFactsService {
 
     private final AiAccessSupport accessSupport;
     private final EnrollmentService enrollmentService;
-    private final AttendanceRecordService attendanceRecordService;
+    private final AttendanceCounts attendanceCounts;
     private final GradeService gradeService;
     private final RiskCalculationService riskCalculationService;
     private final AssignmentService assignmentService;
@@ -71,7 +72,7 @@ public class AiFactsService {
     private final AssessmentComponentService assessmentComponentService;
 
     public AiFactsService(AiAccessSupport accessSupport, EnrollmentService enrollmentService,
-                          AttendanceRecordService attendanceRecordService, GradeService gradeService,
+                          AttendanceCounts attendanceCounts, GradeService gradeService,
                           RiskCalculationService riskCalculationService, AssignmentService assignmentService,
                           AssessmentService assessmentService, ApplicationService applicationService,
                           CourseModuleService courseModuleService, LessonService lessonService,
@@ -83,7 +84,7 @@ public class AiFactsService {
         this.studentChargeService = studentChargeService;
         this.accessSupport = accessSupport;
         this.enrollmentService = enrollmentService;
-        this.attendanceRecordService = attendanceRecordService;
+        this.attendanceCounts = attendanceCounts;
         this.gradeService = gradeService;
         this.riskCalculationService = riskCalculationService;
         this.assignmentService = assignmentService;
@@ -126,8 +127,16 @@ public class AiFactsService {
         long presentOrLate = 0;
         long total = 0;
         List<CourseAttendance> courses = new ArrayList<>();
-        for (var ref : enrollmentService.listActiveEnrollmentRefsForStudent(t.studentId())) {
-            var pct = attendanceRecordService.percentageForEnrollmentUnchecked(ref.enrollmentId());
+        var refs = enrollmentService.listActiveEnrollmentRefsForStudent(t.studentId());
+        Map<UUID, AttendanceCounts.Counts> counts;
+        try {
+            counts = attendanceCounts.forEnrollments(refs.stream().map(ref -> ref.enrollmentId()).toList());
+        } catch (AttendanceCounts.Unavailable e) {
+            // said plainly: the advisor must not present a number it could not get
+            return new ToolError("attendance is temporarily unavailable, so no attendance figure can be given right now");
+        }
+        for (var ref : refs) {
+            var pct = counts.get(ref.enrollmentId());
             presentOrLate += pct.presentOrLate();
             total += pct.total();
             var label = enrollmentService.labelOfSection(ref.sectionId());
