@@ -96,6 +96,13 @@ records it for **the token's** user and college (never from the body), only for 
   otherwise the built-in local embedder (not Ollama); Ollama's embedder only when asked for (`app.ai.embedding.provider=ollama`). Chunking is plain
   code, no model. Stored vectors carry their embedder's model id and a query only uses vectors of the same model, so passages indexed under another
   embedder are not matched by the vector half of the hybrid search until they are re-indexed (the full-text half still finds them).
+* **A search question's vector is cached in Redis, and a failing provider is left alone for a moment** (`CachingTextEmbedder`, around the Gemini and Ollama embedders only; the instant
+  built-in one is not wrapped). A question's vector is a pure function of the model and the text, so it is kept for 24 hours under `setu:ai:embed:<model>:<sha-256 of the question
+  with its whitespace tidied>`: the question itself is never stored, no college or person is in the key, and the model id is, so a model change never serves a vector from the
+  old space. After a failure the provider is not asked again for 30 seconds (`app.ai.embedding.cooldown-seconds`) and search answers from full-text at once, instead of every
+  question waiting out its own 8-second timeout in turn; a cached question is still answered meanwhile. A failure is never cached, Redis down only means every question goes to the
+  provider, and indexing (`embed`, as opposed to `embedQuery`) always goes straight to the provider. `app.ai.embedding.cache-hours=0` turns the cache off. The result is counted
+  in `setu.ai.embedding.query{result=hit|miss|skipped|failed}`.
 * **Tests that call the real local model are tagged `live-ollama`** and skipped by a plain `mvn test` (`AiChatFallbackTests` real-model cases,
   `AiChatGeminiMissingApiKeyTests`); the fallback logic itself is covered by scripted models. Run them when touching the fallback path:
   `./mvnw test -DexcludedGroups=none -Dtest=AiChatFallbackTests,AiChatGeminiMissingApiKeyTests`. `AiChatGeminiTests` runs with the rest (skipped

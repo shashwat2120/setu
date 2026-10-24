@@ -494,6 +494,26 @@ Run on the containers, as the demo student:
 process and sits in a Redis that has no password in this development setup; a conversation is bounded by 6 exchanges of at most 4,000 characters each, but there is no cap on how many
 conversations Redis holds (they expire after 30 idle minutes); the AI chat tests that share the development Redis leave a few short-lived keys of their own.
 
+## Policy-search question embeddings cached in Redis, run live (2026-10-24)
+
+Contract: [contracts/ai-service.md](contracts/ai-service.md). Policy search embeds each question through Gemini with an 8-second timeout, and while Gemini was struggling the logs showed
+every question waiting out its own timeout, one after another. A wrapper (`CachingTextEmbedder`) now caches the vector of a repeated question in Redis and leaves a provider that just
+failed alone for 30 seconds. Twelve new tests against the real Redis (a hit even after a restart, tidied whitespace, the model in the key, only a hash stored, a failure not cached and
+retried after the rest, the cool-down skipping the provider, a cached question answered during the cool-down, indexing untouched, a damaged entry replaced, Redis down, the counters);
+the existing embedder, policy-search, modularity and AI-service wiring tests pass.
+
+Run on the containers, as the demo student, through the gateway (`GET /ai-facts/policy-search`):
+
+| Call | Time | What happened |
+|---|---|---|
+| 1 | **1,044 ms** | Gemini embedded the question; one key appeared in Redis (a 4 KB vector, expiring in 24 hours) |
+| 2 | **66 ms** | answered from Redis, same passage |
+| 3 | **85 ms** | answered from Redis, same passage |
+
+**Limits:** the cool-down is covered by tests with a failing provider, not provoked live (Gemini was answering); it is per process, so each service keeps its own; only the hash of a question
+is stored, but the vector itself still says something about the text, in a Redis with no password in this development setup; the cache is not capped (a day of distinct questions is a few
+megabytes at 4 KB each, and every entry expires on its own).
+
 ## Not validated
 
 - Kafka consumer lag **under load**. (The dead-letter path **was** run with a real poison event on the real stack, see below.)
