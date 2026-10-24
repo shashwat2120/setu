@@ -44,7 +44,9 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
  * blocking stub standing in for every service behind it. Tokens are signed by a test key whose JWKS the gateway is given, as it would
  * fetch Identity's.
  */
-@SpringBootTest(classes = GatewayApplication.class, properties = {"setu.service=gateway", "setu.auth.mode=remote"})
+// A Redis database of its own: the gateway also reads the running services' registrations (setu:services:*) from Redis, and with the containers up on the same Redis it would
+// find the real identity and learning services (hostnames that mean nothing to this process) among the stubs it was given.
+@SpringBootTest(classes = GatewayApplication.class, properties = {"setu.service=gateway", "setu.auth.mode=remote", "spring.data.redis.database=14"})
 @AutoConfigureMockMvc
 @Import(GatewayWiringTests.IdentityKeys.class)
 class GatewayWiringTests {
@@ -69,6 +71,9 @@ class GatewayWiringTests {
         registry.add("app.gateway.services.identity.instances", () -> url);
         registry.add("app.gateway.services.academic.instances", () -> url);
         registry.add("app.gateway.services.core.instances", () -> "http://127.0.0.1:1");   // nothing listens: a refused connection
+        // /learning/** goes to the Learning service, whose built-in address is a port the running containers publish: on a machine with the stack up the request would reach the
+        // real service (and be refused for its token) instead of finding nothing listening, so this test names an address that is dead everywhere
+        registry.add("app.gateway.services.learning.instances", () -> "http://127.0.0.1:1");
     }
 
     @AfterAll

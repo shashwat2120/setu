@@ -53,7 +53,8 @@ class EndpointSecurityAuditTests {
         "/swagger-ui", "endpoint shapes only, no data",
         "/ws", "WebSocket handshake; STOMP CONNECT authenticates (AttendanceStompAuthorizationTests)",
         "/error", "container error page",
-        "/.well-known/jwks.json", "the public half of the token-signing keys; services verify tokens against it (JwksEndpointTests)");
+        "/.well-known/jwks.json", "the public half of the token-signing keys; services verify tokens against it (JwksEndpointTests)",
+        "/finance/provider-webhooks/", "the payment provider cannot send a user token; the call is authenticated by its HMAC signature instead (checked below, and by ProviderWebhookTests)");
 
     @Autowired
     MockMvc mockMvc;
@@ -121,6 +122,17 @@ class EndpointSecurityAuditTests {
 
         assertThat(checked).as("the sweep must actually cover the application's endpoints").isGreaterThan(150);
         assertThat(notRefused).as("endpoints that did not answer an anonymous caller with 401").isEmpty();
+    }
+
+    @Test
+    void theProviderWebhookIsOpenToAnAnonymousCallerOnlyInTheSenseThatItNeedsNoTokenAndNeverAcceptsAnUnsignedCall() throws Exception {
+        List<Endpoint> webhooks = endpoints().stream().filter(e -> e.pattern.startsWith("/finance/provider-webhooks/")).toList();
+        assertThat(webhooks).as("the webhook endpoints this sweep exempts").isNotEmpty();
+        for (Endpoint e : webhooks) {
+            int status = mockMvc.perform(request(e, concretePath(e.pattern))).andReturn().getResponse().getStatus();
+            // refused for its missing or invalid signature (401), or because no signing secret is configured (503): never accepted
+            assertThat(status).as(e.describe() + " answered an unsigned call").isIn(401, 503);
+        }
     }
 
     @Test
