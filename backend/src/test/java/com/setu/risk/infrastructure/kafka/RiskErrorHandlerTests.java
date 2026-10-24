@@ -93,6 +93,48 @@ class RiskErrorHandlerTests {
     }
 
     @Test
+    void aServiceThatIsNotAnsweringIsWaitedForNotDeadLettered() {
+        var record = record(20);
+        var outage = new com.setu.shared.attendancefacts.AttendanceCounts.Unavailable("the attendance service could not answer", new RuntimeException("connection refused"));
+
+        // far more tries than the 3 a transient failure gets: the event is not at fault, the service is away
+        for (int attempt = 1; attempt <= 12; attempt++) {
+            assertThat(handler.handleOne(outage, record, consumer, container)).as("try " + attempt + ": keep waiting").isFalse();
+        }
+
+        assertThat(dlqProducer.history()).as("never dead-lettered while the service is away").isEmpty();
+        // counted once per event that began waiting (Spring chooses the back-off once per record), not once per try
+        assertThat(meters.counter("setu.risk.events.waiting_on_dependency", "topic", TOPIC).count()).isEqualTo(1.0);
+        assertThat(meters.find("setu.risk.events.dead_lettered").counter()).isNull();
+    }
+
+    @Test
+    void anOutageWrappedInsideAnotherExceptionIsStillAnOutage() {
+        var wrapped = new org.springframework.kafka.listener.ListenerExecutionFailedException("listener failed",
+            new IllegalStateException("could not recalculate", new com.setu.shared.assessmentfacts.AssessmentFacts.Unavailable("assessment", null)));
+
+        for (int attempt = 1; attempt <= 6; attempt++) {
+            assertThat(handler.handleOne(wrapped, record(21), consumer, container)).isFalse();
+        }
+        assertThat(dlqProducer.history()).isEmpty();
+        assertThat(RiskKafkaConfig.isDependencyOutage(wrapped)).isTrue();
+        assertThat(RiskKafkaConfig.isDependencyOutage(new IllegalStateException("database unavailable"))).isFalse();
+    }
+
+    @Test
+    void afterTheServiceIsBackTheSameRecordStillGetsItsOrdinaryBudgetForAnOrdinaryFailure() {
+        var record = record(22);
+        var outage = new com.setu.shared.learningfacts.LearningFacts.Unavailable("learning", null);
+        for (int attempt = 1; attempt <= 5; attempt++) {
+            handler.handleOne(outage, record, consumer, container);
+        }
+
+        // a different failure on the next delivery is judged by the ordinary policy, and its own count starts fresh
+        assertThat(handler.handleOne(new IllegalStateException("database unavailable"), record, consumer, container)).isFalse();
+        assertThat(dlqProducer.history()).isEmpty();
+    }
+
+    @Test
     void aPoisonMessageIsDeadLetteredImmediatelyWithoutRetries() {
         assertThat(handler.handleOne(new PoisonEventException("cannot ever succeed"), record(1), consumer, container)).isTrue();
 
