@@ -306,6 +306,9 @@ services:
       # How long the primary Gemini model may take before the next model is tried (default 40) and the second Gemini model (set it empty to skip that step, so a slow Gemini
       # hands over to the hosted fallback sooner). Both live in the git-ignored infra/docker/.env.
       AI_PRIMARY_TIMEOUT_SECONDS: ${AI_PRIMARY_TIMEOUT_SECONDS:-40}
+      AI_TOTAL_TIMEOUT_SECONDS: ${AI_TOTAL_TIMEOUT_SECONDS:-50}
+      AI_HEDGE_AFTER_SECONDS: ${AI_HEDGE_AFTER_SECONDS:-12}
+      AI_PRIMARY_COOLDOWN_SECONDS: ${AI_PRIMARY_COOLDOWN_SECONDS:-60}
       GEMINI_FALLBACK_MODEL: ${GEMINI_FALLBACK_MODEL-gemini-3.5-flash}
       NVIDIA_MODEL: ${NVIDIA_MODEL:-nvidia/nemotron-3.5-lightning-30b-a3b}
       # Online fee payment (Razorpay). Empty means off: checkout answers 503 and the rest of Finance works as before. Set them in the git-ignored
@@ -479,6 +482,9 @@ services:
       # How long the primary Gemini model may take before the next model is tried (default 40) and the second Gemini model (set it empty to skip that step, so a slow Gemini
       # hands over to the hosted fallback sooner). Both live in the git-ignored infra/docker/.env.
       AI_PRIMARY_TIMEOUT_SECONDS: ${AI_PRIMARY_TIMEOUT_SECONDS:-40}
+      AI_TOTAL_TIMEOUT_SECONDS: ${AI_TOTAL_TIMEOUT_SECONDS:-50}
+      AI_HEDGE_AFTER_SECONDS: ${AI_HEDGE_AFTER_SECONDS:-12}
+      AI_PRIMARY_COOLDOWN_SECONDS: ${AI_PRIMARY_COOLDOWN_SECONDS:-60}
       GEMINI_FALLBACK_MODEL: ${GEMINI_FALLBACK_MODEL-gemini-3.5-flash}
       NVIDIA_MODEL: ${NVIDIA_MODEL:-nvidia/nemotron-3.5-lightning-30b-a3b}
     healthcheck: *health

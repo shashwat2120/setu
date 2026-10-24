@@ -115,7 +115,7 @@ spring:
               dimensions: 768
         chat:
           options:
-            model: ${GEMINI_MODEL:gemini-3.8-flash}
+            model: ${GEMINI_MODEL:gemini-3.5-flash-lite}
     ollama:
       base-url: ${OLLAMA_BASE_URL:http://localhost:11434}
       init:
@@ -298,6 +298,14 @@ app:
     gemini-fallback-model: ${GEMINI_FALLBACK_MODEL:gemini-3.5-flash}
     # After the primary model fails, questions go straight to the next model for this many seconds instead of each waiting out the primary again (0 disables).
     primary-cooldown-seconds: ${AI_PRIMARY_COOLDOWN_SECONDS:60}
+    # The most one answer may take in all, across every model tried (the primary, a second Gemini model, the hosted model, the local one). Without it each stage got a fresh
+    # budget of its own and a bad day cost over two minutes, longer than the gateway waits for /ai/** (120 s), before a student was told anything. Each stage gets the
+    # smaller of its own budget and what is left, and none is started with under 3 s left. 0 disables it.
+    total-timeout-seconds: ${AI_TOTAL_TIMEOUT_SECONDS:50}
+    # If the primary model has neither answered nor begun to write after this many seconds, the next model is asked as well and whichever answers first is the answer (the other is
+    # cancelled): a stalled Gemini no longer costs its whole budget before the next model even starts. Chosen just past Gemini's normal range (answers measured 4.5 to 13.4 s), so it
+    # fires when Gemini is stalling, not on every slow-ish answer: each race sends the question and what the tools returned to a second provider. 0 disables it.
+    hedge-after-seconds: ${AI_HEDGE_AFTER_SECONDS:12}
     # A hosted model on NVIDIA's OpenAI-compatible endpoint, tried after the second Gemini model and before the local one. Off without a key; the key is
     # never committed (git-ignored backend/.env.local and infra/docker/.env). Use a model that supports tool calling.
     nvidia:

@@ -87,6 +87,20 @@ records it for **the token's** user and college (never from the body), only for 
   per-user authorization), and only then the local Ollama model. Each answer names the model that gave it. A hosted model answers in seconds where the local one
   takes minutes, so it is tried first; an answer that has already started streaming is never continued by another model. `AiChatNvidiaFallbackTests` covers the order
   with scripted models; `AiChatNvidiaConfigTests` and `AiChatNvidiaConfigOffTests` cover that nothing exists without a key.
+* **The whole answer has one overall time limit** (`app.ai.total-timeout-seconds`, `AI_TOTAL_TIMEOUT_SECONDS`, default 50), counted from the moment the question arrives and across every
+  model tried. Each stage gets the smaller of its own budget (the primary's `app.ai.primary-timeout-seconds`, 20 on the containers; the hosted and local models' `request-timeout-seconds`, 60) and
+  what is left, and a stage with under 3 seconds left is not started: it logs "not tried" and the student gets the honest 503. Before, each stage had a fresh budget, so the worst case was
+  about 140 seconds (20 + 60 + 60), longer than the 120 seconds the gateway waits for `/ai/**`. A stage that runs out of time is cancelled, not left running in the background. 0 disables the
+  limit. The trade-off is stated: at 50, a first question after the primary fails gives the hosted model about 30 seconds, and its slower answers (measured 5 to 39 s) are refused instead of
+  arriving near a minute. `AiChatTotalDeadlineTests` holds it with models that really take time.
+* **A stalled primary is raced, not waited out** (`app.ai.hedge-after-seconds`, `AI_HEDGE_AFTER_SECONDS`, default 12; 0 turns it off). If the primary has neither answered nor begun to write after
+  that many seconds, the next model (the second Gemini model, else the hosted one) is asked as well and the first to answer is the answer; the other is cancelled. Only the winner is delivered
+  to the student and recorded (the old `attempt` is split into asking a model, `modelCall`, and delivering and recording, `conclude`), and a gate (`HedgeGate`) makes sure an answer already
+  begun on the student's screen is never continued or replaced by another model's: the primary's first word commits it, and once the fallback has won the primary is silent. A primary that
+  fails before the delay takes the ordinary path, and a stage that was raced is not tried again by the chain. 12 s is just past Gemini's normal range (answers measured 4.5 to 13.4 s), so
+  it fires on a real stall, not on every slow-ish answer. **Each race sends the question and what the tools returned to a second provider while the first is still working**; that is the cost,
+  and the reason the delay is not shorter. The primary cool-down (60 s) already sends the questions after a failed one straight to the fallback, so the race mainly helps the first question of a bad
+  spell. `AiChatHedgeTests` holds it with models that really take time, including streaming ones.
 * **No key, no failure.** A run without `GEMINI_API_KEY` starts with Ollama as primary and says so in the log (`AiProviderSafetyPostProcessor`);
   a present-but-wrong key starts normally and falls back at request time. `AI_PROVIDER=ollama` forces the local model.
 * **Retries are capped** (`spring.ai.retry`: 2 attempts, quick backoff, none for client errors such as a bad key or an exhausted quota; the hand-built

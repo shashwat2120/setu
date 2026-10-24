@@ -26,6 +26,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
@@ -82,6 +83,22 @@ public class AiChatService {
      */
     private volatile long primaryCooldownSeconds = 0;
     private volatile Instant primarySkippedUntil = Instant.EPOCH;
+    /**
+     * The most time a whole answer may take, counted from the moment the question arrives and across every model tried. Each stage used to get a fresh budget of its own
+     * (Gemini 20 s, then the hosted model up to 60 s, then the local model another 60 s), so a bad day cost a student more than two minutes, longer than the gateway waits
+     * for this route, before they were told anything. Now each stage gets the smaller of its own budget and what is left, and a stage with less than {@link #MIN_STAGE_SECONDS}
+     * left is not started. 0 (the default for a hand-built service) means no overall limit; Spring sets {@code app.ai.total-timeout-seconds}.
+     */
+    private volatile long totalTimeoutSeconds = 0;
+    /** Below this many seconds left no model is started: none answers a tool-calling question that fast, and starting one only delays the honest "unavailable". */
+    static final long MIN_STAGE_SECONDS = 3;
+    /**
+     * If the primary has not answered, or begun to, after this many seconds, the next model is asked as well and whichever answers first is the answer; the other is
+     * cancelled. Without it a stalled primary costs its whole budget (20 s) before the next model is even started. 0 (the default for a hand-built service) disables it;
+     * Spring sets {@code app.ai.hedge-after-seconds}. Not used when the primary is the local model, when it was skipped by its cool-down, or once the primary has begun writing
+     * to the student (an answer already started is never continued by another model).
+     */
+    private volatile long hedgeAfterSeconds = 0;
     /** A hosted NVIDIA model tried after the second Gemini model and before Ollama; null when no NVIDIA key is configured. */
     private ChatClient nvidiaChatClient;
     private String nvidiaModelName;
@@ -171,6 +188,181 @@ public class AiChatService {
         return this;
     }
 
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    void totalTimeout(@Value("${app.ai.total-timeout-seconds:0}") long seconds) {
+        this.totalTimeoutSeconds = Math.max(0, seconds);
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    void hedgeAfter(@Value("${app.ai.hedge-after-seconds:0}") long seconds) {
+        this.hedgeAfterSeconds = Math.max(0, seconds);
+    }
+
+    /** For tests and hand-built services: ask the next model as well when the primary has not answered after this many seconds (0: never). */
+    public AiChatService withHedgeAfter(long seconds) {
+        this.hedgeAfterSeconds = Math.max(0, seconds);
+        return this;
+    }
+
+    /** For tests and hand-built services: the most a whole answer may take, across every model tried (0: no overall limit). */
+    public AiChatService withTotalTimeout(long seconds) {
+        this.totalTimeoutSeconds = Math.max(0, seconds);
+        return this;
+    }
+
+    /** Who may speak to the student while two models race: nobody yet, the primary once it has written its first word (final), or the fallback once it has won (final). */
+    static final class HedgeGate {
+        private static final int OPEN = 0;
+        private static final int PRIMARY = 1;
+        private static final int HEDGE = 2;
+        private final java.util.concurrent.atomic.AtomicInteger state = new java.util.concurrent.atomic.AtomicInteger(OPEN);
+
+        boolean isOpen() {
+            return state.get() == OPEN;
+        }
+
+        /** The fallback has an answer: it may speak only if the primary has not already begun to. */
+        boolean winHedge() {
+            return state.compareAndSet(OPEN, HEDGE);
+        }
+
+        /** The primary is about to write: it may, unless the fallback has already won. */
+        boolean commitPrimary() {
+            return state.compareAndSet(OPEN, PRIMARY) || state.get() == PRIMARY;
+        }
+
+        /** The primary's view of the student's stream: its first word commits it, and once the fallback has won it is silent. */
+        StreamListener guard(StreamListener target) {
+            return new StreamListener() {
+                @Override
+                public void onTool(String toolName) {
+                    if (state.get() != HEDGE) {
+                        target.onTool(toolName);   // only an activity line ("checking your attendance"), not part of the answer
+                    }
+                }
+
+                @Override
+                public void onToken(String text) {
+                    if (commitPrimary()) {
+                        target.onToken(text);
+                    }
+                }
+            };
+        }
+    }
+
+    private record Hedged(ChatResult result, boolean hedgeWon) {
+    }
+
+    private static Exception asException(Throwable t) {
+        return t instanceof Exception e ? e : new IllegalStateException(t);
+    }
+
+    /**
+     * The primary attempt, with the next model asked as well if the primary is slow. The primary starts alone; if it has neither answered nor begun to write after
+     * {@link #hedgeAfterSeconds}, the next model (the second Gemini model, else the hosted one) is started beside it and the first to answer is the answer. Only the
+     * winner is delivered to the student and recorded, and the loser is cancelled. A primary that fails before the delay takes the ordinary path (nothing is hedged).
+     * Throws like {@link #attempt} when nothing answered; {@code hedgeTried} then names the stage already tried, so the chain does not try it again.
+     */
+    private Hedged primaryWithHedge(String message, long primaryBudget, StreamListener tracked, List<Message> history, Optional<UUID> tenantId, UUID userId,
+                                     UUID correlationId, Instant deadline, String[] hedgeTried) throws Exception {
+        boolean stream = primaryCanStream && tracked != null;
+        boolean secondaryTarget = secondaryChatClient != null;
+        ChatClient hedgeClient = secondaryTarget ? secondaryChatClient : nvidiaChatClient;
+        String hedgeModel = secondaryTarget ? secondaryModelName : nvidiaModelName;
+        long hedgeStageBudget = secondaryTarget ? primaryTimeoutSeconds : this.timeoutSeconds;
+        if (hedgeAfterSeconds <= 0 || fallbackIsRedundant || hedgeClient == null || hedgeAfterSeconds >= primaryBudget) {
+            return new Hedged(attempt(chatClient, message, modelName, stream, primaryBudget, tracked, history, tenantId, userId, correlationId), false);
+        }
+
+        SecurityContext callerContext = SecurityContextHolder.getContext();
+        HedgeGate gate = new HedgeGate();
+        StreamListener primaryListener = tracked == null ? null : gate.guard(tracked);
+        Future<Raw> primary = executor.submit(() -> modelCall(chatClient, message, stream, primaryBudget, primaryListener, history, callerContext));
+        try {
+            return new Hedged(conclude(primary.get(hedgeAfterSeconds, TimeUnit.SECONDS), message, modelName, tracked, history, correlationId), false);
+        } catch (TimeoutException slow) {
+            // not yet: the race begins below
+        } catch (ExecutionException failed) {
+            throw asException(failed.getCause());   // failed before the delay: the ordinary failure path, nothing was hedged
+        } catch (InterruptedException e) {
+            primary.cancel(true);
+            throw e;
+        }
+
+        long hedgeBudget = gate.isOpen() ? budget(hedgeStageBudget, deadline, "hedge") : 0;
+        Future<Raw> hedge = null;
+        if (hedgeBudget > 0) {
+            hedgeTried[0] = secondaryTarget ? "secondary" : "nvidia";
+            log.info("AI chat primary provider has not answered in {}s: also asking {} and taking whichever answers first", hedgeAfterSeconds, hedgeModel);
+            hedge = executor.submit(() -> modelCall(hedgeClient, message, false, hedgeBudget, null, history, callerContext));
+        }
+        Throwable primaryError = null;
+        boolean primaryDone = false;
+        boolean hedgeDone = hedge == null;
+        try {
+            while (true) {
+                if (!primaryDone && primary.isDone()) {
+                    try {
+                        Raw raw = primary.get();
+                        if (hedge != null) {
+                            hedge.cancel(true);
+                        }
+                        return new Hedged(conclude(raw, message, modelName, tracked, history, correlationId), false);
+                    } catch (ExecutionException failed) {
+                        primaryError = failed.getCause();
+                        primaryDone = true;
+                    }
+                }
+                if (hedge != null && !hedgeDone && hedge.isDone()) {
+                    try {
+                        Raw raw = hedge.get();
+                        if (gate.winHedge()) {
+                            primary.cancel(true);
+                            ChatResult result = conclude(raw, message, hedgeModel, tracked, history, correlationId);
+                            audit("AI_CHAT_FALLBACK_USED", correlationId, Map.of("fallbackModel", hedgeModel, "raced", true));
+                            return new Hedged(result, true);
+                        }
+                        hedgeDone = true;   // the primary had already begun to write to the student: it stays, and this answer is not used
+                    } catch (ExecutionException failed) {
+                        logProviderFailure(asException(failed.getCause()), tenantId, userId, correlationId, "hedge");
+                        hedgeDone = true;
+                    }
+                }
+                if (primaryDone && hedgeDone) {
+                    throw asException(primaryError);
+                }
+                if (hedge != null && !hedgeDone && !gate.isOpen()) {
+                    hedge.cancel(true);   // the primary has begun to write: it is the answer, and asking the other model any longer only costs
+                    hedgeDone = true;
+                }
+                Thread.sleep(20);
+            }
+        } catch (InterruptedException e) {
+            primary.cancel(true);
+            if (hedge != null) {
+                hedge.cancel(true);
+            }
+            throw e;
+        }
+    }
+
+    /**
+     * What a stage may spend: its own budget, but never more than what is left of the whole answer's. 0 when too little is left for a model to answer, in which case the
+     * stage is skipped. With no overall limit it is the stage's own budget, as it always was.
+     */
+    private long budget(long stageSeconds, Instant deadline, String which) {
+        if (deadline == null) {
+            return stageSeconds;
+        }
+        long left = Duration.between(Instant.now(), deadline).toSeconds();
+        if (left < MIN_STAGE_SECONDS) {
+            log.warn("AI chat {} provider not tried: {}s of the {}s allowed for the whole answer are left", which, Math.max(left, 0), totalTimeoutSeconds);
+            return 0;
+        }
+        return Math.min(stageSeconds, left);
+    }
+
     /** Marks a primary attempt that was not made because the primary failed moments ago: not a failure, so nothing is logged for it. */
     private static final class PrimarySkipped extends RuntimeException {
         PrimarySkipped() {
@@ -237,6 +429,7 @@ public class AiChatService {
     }
 
     public ChatResult chat(String message, StreamListener listener) {
+        Instant deadline = totalTimeoutSeconds > 0 ? Instant.now().plusSeconds(totalTimeoutSeconds) : null;
         Optional<String> invalid = validate(message);
         if (invalid.isPresent()) {
             return new ChatResult.InvalidRequest(invalid.get());
@@ -278,13 +471,18 @@ public class AiChatService {
 
         invocationRecorder.drain(); // clear any stale state left on this (pooled) thread by an earlier call
         ChatResult result;
+        String[] hedgeTried = {null};   // the stage that was already asked beside the primary, so the chain below does not ask it again
         try {
             if (primaryCooldownSeconds > 0 && !fallbackIsRedundant && Instant.now().isBefore(primarySkippedUntil)) {
                 throw new PrimarySkipped();
             }
-            result = attempt(chatClient, message, modelName, primaryCanStream && tracked != null, primaryTimeoutSeconds, tracked, history,
-                tenantId, userId, correlationId);
-            primarySkippedUntil = Instant.EPOCH;   // it answered: it is healthy again
+            Hedged hedged = primaryWithHedge(message,
+                deadline == null ? primaryTimeoutSeconds : Math.max(1, Math.min(primaryTimeoutSeconds, Duration.between(Instant.now(), deadline).toSeconds())),
+                tracked, history, tenantId, userId, correlationId, deadline, hedgeTried);
+            result = hedged.result();
+            if (!hedged.hedgeWon()) {
+                primarySkippedUntil = Instant.EPOCH;   // it answered: it is healthy again (when the fallback won the race, the primary is neither healthy nor failed: unknown)
+            }
         } catch (AuditUnavailableException auditFailure) {
             log.warn("AI answer withheld: it could not be recorded ({})", auditFailure.getMessage());
             return new ChatResult.ProviderUnavailable();
@@ -300,10 +498,11 @@ public class AiChatService {
             }
             // First fallback: another Gemini model (the local model is minutes slower than any hosted one).
             ChatResult recovered = null;
-            if (secondaryChatClient != null) {
+            long secondaryBudget = secondaryChatClient == null || "secondary".equals(hedgeTried[0]) ? 0 : budget(primaryTimeoutSeconds, deadline, "secondary");
+            if (secondaryBudget > 0) {
                 invocationRecorder.drain();
                 try {
-                    recovered = attempt(secondaryChatClient, message, secondaryModelName, false, primaryTimeoutSeconds, tracked, history,
+                    recovered = attempt(secondaryChatClient, message, secondaryModelName, false, secondaryBudget, tracked, history,
                         tenantId, userId, correlationId);
                     audit("AI_CHAT_FALLBACK_USED", correlationId, Map.of("fallbackModel", secondaryModelName));
                 } catch (AuditUnavailableException auditFailure) {
@@ -314,11 +513,12 @@ public class AiChatService {
                 }
             }
             // Second fallback: a hosted NVIDIA model, when a key is configured (still minutes quicker than the local model).
-            if (recovered == null && nvidiaChatClient != null) {
+            long nvidiaBudget = recovered != null || nvidiaChatClient == null || "nvidia".equals(hedgeTried[0]) ? 0 : budget(this.timeoutSeconds, deadline, "nvidia");
+            if (nvidiaBudget > 0) {
                 invocationRecorder.drain();
                 try {
-                    // the hosted fallback gets the full budget, not the primary's short one: a tool-calling answer is two model calls
-                    recovered = attempt(nvidiaChatClient, message, nvidiaModelName, false, this.timeoutSeconds, tracked, history,
+                    // the hosted fallback gets the full budget, not the primary's short one (a tool-calling answer is two model calls), but never more than what is left
+                    recovered = attempt(nvidiaChatClient, message, nvidiaModelName, false, nvidiaBudget, tracked, history,
                         tenantId, userId, correlationId);
                     audit("AI_CHAT_FALLBACK_USED", correlationId, Map.of("fallbackModel", nvidiaModelName));
                 } catch (AuditUnavailableException auditFailure) {
@@ -334,9 +534,13 @@ public class AiChatService {
                 if (fallbackIsRedundant) {
                     return new ChatResult.ProviderUnavailable();
                 }
+                long fallbackBudget = budget(this.timeoutSeconds, deadline, "fallback");
+                if (fallbackBudget == 0) {
+                    return new ChatResult.ProviderUnavailable();
+                }
                 invocationRecorder.drain();
                 try {
-                    result = attempt(fallbackChatClient, message, fallbackModelName, false, this.timeoutSeconds, tracked, history,
+                    result = attempt(fallbackChatClient, message, fallbackModelName, false, fallbackBudget, tracked, history,
                         tenantId, userId, correlationId);
                     audit("AI_CHAT_FALLBACK_USED", correlationId, Map.of("fallbackModel", fallbackModelName));
                 } catch (AuditUnavailableException auditFailure) {
@@ -398,11 +602,26 @@ public class AiChatService {
      */
     // ChatClient.toolCallbacks(ToolCallback...) is flagged deprecated by Spring AI's current release, but its replacement path is
     // not the same API and this is the call that carries the per-request, security-context-aware tool wrappers.
-    @SuppressWarnings("removal")
+    /** What a model answered, before anything is delivered or recorded: the text, the tools it used, and whether it was streamed to the listener as it was written. */
+    private record Raw(String answer, List<String> sources, boolean streamed) {
+    }
+
     private ChatResult attempt(ChatClient client, String message, String modelForResult, boolean stream,
                                 long timeoutSeconds, StreamListener listener, List<Message> history,
                                 Optional<UUID> tenantId, UUID userId, UUID correlationId) throws Exception {
-        SecurityContext callerContext = SecurityContextHolder.getContext();
+        Raw raw = modelCall(client, message, stream, timeoutSeconds, listener, history, SecurityContextHolder.getContext());
+        return conclude(raw, message, modelForResult, listener, history, correlationId);
+    }
+
+    /**
+     * Asks one model and waits for its answer, and nothing else: it delivers nothing to the student and records nothing, so that two models can be asked at once and only the
+     * one that wins is delivered and recorded ({@link #conclude}). The caller's security context is passed in, not read here, because this may run on a worker thread.
+     */
+    // ChatClient.toolCallbacks(ToolCallback...) is flagged deprecated by Spring AI's current release, but its replacement path is
+    // not the same API and this is the call that carries the per-request, security-context-aware tool wrappers.
+    @SuppressWarnings("removal")
+    private Raw modelCall(ChatClient client, String message, boolean stream, long timeoutSeconds, StreamListener listener, List<Message> history,
+                          SecurityContext callerContext) throws Exception {
         String answer;
         List<String> sources;
         if (stream) {
@@ -430,7 +649,7 @@ public class AiChatService {
             });
             try {
                 answer = running.get(timeoutSeconds + 1, TimeUnit.SECONDS);
-            } catch (TimeoutException e) {
+            } catch (TimeoutException | InterruptedException e) {
                 running.cancel(true);
                 throw e;
             }
@@ -440,7 +659,7 @@ public class AiChatService {
             // drained HERE — draining on the calling thread afterwards always came back empty and the answer lost its sources.
             record Outcome(String answer, List<String> tools) {
             }
-            Outcome outcome = executor.submit(() -> {
+            Future<Outcome> running = executor.submit(() -> {
                     SecurityContextHolder.setContext(callerContext);
                     try {
                         String content = client.prompt()
@@ -453,29 +672,38 @@ public class AiChatService {
                     } finally {
                         SecurityContextHolder.clearContext();
                     }
-                })
-                .get(timeoutSeconds, TimeUnit.SECONDS);
+                });
+            Outcome outcome;
+            try {
+                outcome = running.get(timeoutSeconds, TimeUnit.SECONDS);
+            } catch (TimeoutException | InterruptedException e) {
+                running.cancel(true);   // a stage that ran out of time, or lost a race, stops instead of carrying on in the background and calling the model for an answer nobody will read
+                throw e;
+            }
             answer = outcome.answer();
             sources = outcome.tools();
-            if (listener != null) {
-                sources.forEach(listener::onTool);
-            }
         }
         if (answer == null || answer.isBlank()) {
             throw new IllegalStateException("model returned an empty answer");
         }
-        if (listener != null && !stream) {
-            listener.onToken(answer);
+        return new Raw(answer, sources, stream);
+    }
+
+    /** Delivers an answer that was not streamed (the tools it used, then the text) and records it: the record is part of answering, so if it cannot be written the answer is not given. */
+    private ChatResult conclude(Raw raw, String message, String modelForResult, StreamListener listener, List<Message> history, UUID correlationId) {
+        if (listener != null && !raw.streamed()) {
+            raw.sources().forEach(listener::onTool);
+            listener.onToken(raw.answer());
         }
         // The record of what was answered is part of answering: if it cannot be written the answer is not given (fail closed).
         try {
             facts.audit("AI_CHAT_COMPLETED", correlationId,
-                Map.of("toolsInvoked", sources, "messageLength", message.length(), "model", modelForResult,
-                    "streamed", stream, "priorExchanges", history.size() / 2));
+                Map.of("toolsInvoked", raw.sources(), "messageLength", message.length(), "model", modelForResult,
+                    "streamed", raw.streamed(), "priorExchanges", history.size() / 2));
         } catch (AiFacts.Unavailable e) {
             throw new AuditUnavailableException(e);
         }
-        return new ChatResult.Success(answer, sources, Instant.now(), modelForResult, correlationId);
+        return new ChatResult.Success(raw.answer(), raw.sources(), Instant.now(), modelForResult, correlationId);
     }
 
     private ToolCallback[] wrapTools(SecurityContext callerContext, List<String> toolNames, StreamListener listener) {

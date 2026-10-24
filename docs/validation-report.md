@@ -583,6 +583,64 @@ A refused call is the gateway's standard envelope (`429`, `code: RATE_LIMITED`, 
 chosen from what the pages do, not measured under load; a real payment was not run through the new routes (a payment of the demo charge would leave a payment behind), so what the Finance page does for one
 payment is held by the route test's arithmetic and not by a live run; the limiter fails open, so a Redis outage removes the protection until it returns.
 
+## The advisor's overall time limit, run live (2026-10-25)
+
+Contract: [contracts/ai-service.md](contracts/ai-service.md) section 6. Each model in the chain used to get a fresh budget of its own, with nothing bounding the whole: the worst case was about 140 s
+(Gemini 20, the hosted model 60, the local model 60), longer than the 120 s the gateway waits for `/ai/**`, and a failure of both hosted models cost 65 s or more in the benchmark before the student was
+told anything. There is now one deadline from the moment the question arrives; each stage gets the smaller of its own budget and what is left, a stage with under 3 s left is not started, and a stage
+that ran out of time is cancelled. The repo's yml default Gemini model, `gemini-3.8-flash` (503 and 40 s timeouts on this key), is now `gemini-3.5-flash-lite`, the one that works and the compose default.
+
+Six new tests with models that really take time (the whole chain stays within the total when every model hangs; a stage with too little left is not started; a later stage gets what is left and can still
+answer in it; a stage that ran out of time is cancelled; no limit is the old behaviour; a prompt answer is unaffected); the cooldown, hosted-fallback, second-Gemini, sources and service-wiring tests pass.
+
+Run on the containers (the AI service temporarily set to a total of 8 s and a primary budget of 2 s, so that the real Gemini and NVIDIA are too slow for it), three questions as the demo student:
+
+| Question | Time | Result |
+|---|---|---|
+| attendance | **7.7 s** | 503 `AI service is currently unavailable`: the primary timed out at 2 s, the hosted model at the total, the local model "not tried" (under 3 s left) |
+| academic progress | **7.1 s** | 503 (the primary skipped by its cooldown, the hosted model stopped at the total) |
+| deadlines | **7.1 s** | 503, the same |
+
+Then restored to the normal settings (total 50 s, primary 20 s) and asked again: one answer from Gemini in 15.5 s, and one that fell back to the hosted model and still answered in 27.5 s, inside the 50.
+
+**Limits:** the failure was provoked by shrinking the budgets, since the providers cannot be made to fail slowly on demand; the 50 s default is a judgement (the hosted model's own answers measured 5 to 39 s), not a measured
+optimum, and is one setting to change; the local Ollama model, unreachable from the containers by design, is skipped by the limit when nothing is left, but a run with Ollama reachable and 3 s or more left would
+still try it for the time that remains.
+
+## A stalled primary is raced by the next model, run live (2026-10-25)
+
+Contract: [contracts/ai-service.md](contracts/ai-service.md) section 6. With a stalled primary the sequential chain cost the primary's whole budget (20 s) before the next model even started. If the primary has not
+answered or begun to write after 12 s, the next model is now asked as well and the first answer wins; the loser is cancelled, and only the winner is delivered and recorded.
+
+Ten new tests with models that really take time, including streaming ones: a stalled primary is replaced and cancelled; a slow primary that does answer still wins and the raced fallback is cancelled; a prompt
+primary never starts the fallback; a primary that fails at once takes the ordinary path with the fallback asked once; a failing raced fallback leaves the primary's answer; when both fail the chain does not ask the
+raced stage again and the last resort answers; with the race off it is the old sequential behaviour; **a primary that has begun to write is never continued or replaced** (the hosted model, which would have answered
+later, is cancelled and the student sees only the primary's words); **a stalled streaming primary is replaced and the student sees the winner's answer once and none of the primary's words**; and the gate lets
+exactly one model speak. The deadline, cool-down, hosted-fallback, second-Gemini, sources, provider-unavailable and service-wiring tests pass alongside.
+
+Compared on the containers, with the real providers and `gemini-3.8-flash` as the primary (it timed out in the direct tests, so it behaves like a permanently stalled one), the primary cool-down off, the total at 70 s,
+three questions each way as the demo student:
+
+| Question | Race off (old) | Race on (12 s) |
+|---|---|---|
+| attendance | 41.0 s (hosted model) | **503 after 60.4 s** |
+| academic progress | 57.3 s (hosted model) | 32.0 s (hosted model) |
+| deadlines | 44.3 s (hosted model) | 38.2 s (hosted model) |
+
+**Read this carefully:** three samples each prove nothing. The hosted model's own latency varies by tens of seconds (5 to 39 s measured elsewhere), and it dominates both columns; the one 503 was the hosted model not answering in
+the time that remained, not the race logic (the same question took 41 s that way a minute earlier). What the data does support is the arithmetic: the race starts the fallback at 12 s instead of 20 s, so a stalled
+primary should cost about 8 s less, and the two answers that did arrive were 25 s and 6 s faster. After the run the AI service was put back to its normal settings (Gemini 3.5 flash-lite, hedge 12 s, cool-down 60 s, total
+50 s) and answered in 5.6 s.
+
+**Limits:** the 8 s is a ceiling set by the budgets, not a measured average; the race does not make the hosted model faster, so a bad moment still costs 30 s or more; a race that fires sends the question and the
+tools' results to a second provider (the free hosted endpoint records inputs: example data only); and the failure was provoked with a model that stalls on this key, since Gemini cannot be made to stall on demand.
+
+## Policy search when the embedder is out of quota, run live (2026-10-25)
+
+Found by a student on the advisor page: "What does the college policy say about attendance?" answered that the policy was unavailable. Cause: the Gemini embedding quota was exhausted (HTTP 429), so the four seeded passages (embedded earlier by the built-in `local-hash-v1-768` model) could not be re-embedded and the vector half of the search matched nothing; the full-text half needs every word of the question in one passage, and "college", "policy" and "say" are in none. When the vector search and the strict full-text search both find nothing, the search now falls back to passages that share any content word, best match first (`PolicyChunkStore.looseTextSearch`; document-ACL and tenant filtering are unchanged and still happen in the SQL). One new test (embedder down: the natural question finds the Attendance Policy, an unrelated one finds nothing); the retrieval, embedder-down and tool tests pass. Live on the containers: the same question now returns the policy, with its source, in 6.7 s; an unrelated question still returns nothing.
+
+**Limits:** this is a fallback, not a cure: with the quota gone the passages stay on the old embedding model until it returns (the background indexer re-embeds them then), and the loose match can return a passage that merely shares a word, which the model is left to judge.
+
 ## Not validated
 
 - Kafka consumer lag **under load**. (The dead-letter path **was** run with a real poison event on the real stack, see below.)
