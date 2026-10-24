@@ -59,7 +59,10 @@ services:
       PGPASSWORD: ${POSTGRES_PASSWORD:-setu_dev_password}
     entrypoint: ["sh", "-c"]
     command:
+      # on an empty volume the server first runs a temporary one that only listens on a local socket, then restarts for real: wait until it accepts network connections
+      # (the healthcheck now checks that too, this is the second line of defence), or the first connect is refused and the whole stack never starts
       - >
+        until pg_isready -h postgres -U ${POSTGRES_USER:-setu} -q; do sleep 2; done;
         psql -h postgres -U ${POSTGRES_USER:-setu} -d postgres -tc "SELECT 1 FROM pg_database WHERE datname = '${SETU_DB_NAME:-setu_demo}'" | grep -q 1
         || psql -h postgres -U ${POSTGRES_USER:-setu} -d postgres -c "CREATE DATABASE ${SETU_DB_NAME:-setu_demo}"
     restart: "no"
@@ -95,7 +98,7 @@ services:
     volumes:
       - setu_notification_pg:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-setu} -d setu_notification"]
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U ${POSTGRES_USER:-setu} -d setu_notification"]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -139,7 +142,7 @@ services:
     volumes:
       - setu_attendance_pg:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-setu} -d setu_attendance"]
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U ${POSTGRES_USER:-setu} -d setu_attendance"]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -182,7 +185,7 @@ services:
     volumes:
       - setu_assessment_pg:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-setu} -d setu_assessment"]
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U ${POSTGRES_USER:-setu} -d setu_assessment"]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -225,7 +228,7 @@ services:
     volumes:
       - setu_learning_pg:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-setu} -d setu_learning"]
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U ${POSTGRES_USER:-setu} -d setu_learning"]
       interval: 5s
       timeout: 5s
       retries: 10
