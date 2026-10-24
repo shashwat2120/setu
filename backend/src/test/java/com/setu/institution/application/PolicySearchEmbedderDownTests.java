@@ -69,6 +69,25 @@ class PolicySearchEmbedderDownTests {
         assertThat(vectorCount(docId)).as("the vector arrives on a later pass").isEqualTo(1);
     }
 
+    @Test
+    void aNaturalQuestionStillFindsThePassageWhileTheEmbedderIsDownAndAnUnrelatedOneFindsNothing() {
+        when(embedder.modelId()).thenReturn("test-model");
+        when(embedder.minSimilarity()).thenReturn(0.1);
+        when(embedder.embed(anyString())).thenReturn(Optional.empty());
+        when(embedder.embedQuery(anyString())).thenReturn(Optional.empty());
+        var tenant = fixtures.provisionTenant("RAGQ");
+        day14Fixtures.provisionPolicyDocument(tenant, "Attendance Policy",
+            "Students must maintain at least 75% attendance in every enrolled section to remain eligible to sit an assessment.", null);
+        TestAuthentication.authenticateAs(tenant.adminUserId());
+
+        // 'college', 'policy' and 'say' are in no passage, so a search that needs every word finds nothing.
+        var question = policyDocumentService.search("What does the college policy say about attendance?");
+        var unrelated = policyDocumentService.search("parking permits for bicycles near the library");
+
+        assertThat(question).as("a passage with the question's content words is found without any vector").extracting(r -> r.title()).containsExactly("Attendance Policy");
+        assertThat(unrelated).as("no shared word, no answer").isEmpty();
+    }
+
     private int vectorCount(UUID docId) {
         return jdbc.sql("SELECT count(*) FROM institution.policy_chunks WHERE document_id = :d AND embedding IS NOT NULL AND embedding_model = 'test-model'")
             .param("d", docId).query(Integer.class).single();

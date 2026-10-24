@@ -116,6 +116,11 @@ public class PolicyDocumentService {
                 .filter(h -> h.score() >= embedder.minSimilarity()).toList())
             .orElse(List.of());
         List<PolicyChunkStore.ChunkHit> textHits = chunkStore.textSearch(tenantId.get(), allowed, query, CANDIDATES);
+        if (vectorHits.isEmpty() && textHits.isEmpty()) {
+            // No vector answer (the embedder is down or out of quota, or the passages are not yet embedded by the current model) and no passage has
+            // every word of a natural question: fall back to passages that share any of its content words, best match first.
+            textHits = chunkStore.looseTextSearch(tenantId.get(), allowed, query, CANDIDATES);
+        }
 
         return fuse(vectorHits, textHits).stream()
             .limit(MAX_RESULTS)

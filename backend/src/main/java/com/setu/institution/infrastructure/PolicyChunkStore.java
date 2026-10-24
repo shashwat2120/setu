@@ -86,15 +86,28 @@ public class PolicyChunkStore {
             .params(aclParams(allowedCodes)).query(this::hit).list();
     }
 
-    /** Full-text matches (stemmed, ranked by {@code ts_rank}); works even for chunks that have no vector yet. */
+    /** Full-text matches (stemmed, ranked by {@code ts_rank}); works even for chunks that have no vector yet. Every word of the query must appear. */
     public List<ChunkHit> textSearch(UUID tenantId, List<String> allowedCodes, String query, int limit) {
-        return jdbc.sql("""
-                SELECT c.id, c.document_id, d.title, c.content, ts_rank(c.search_vector, plainto_tsquery('english', :q)) AS score
+        return textSearch(tenantId, allowedCodes, query, limit, false);
+    }
+
+    /**
+     * The same, but a passage that has ANY of the query's words qualifies and the ranking puts those with most of them first. Used only when the
+     * strict search and the vector search both found nothing (a natural question has words such as "college" or "say" that no passage contains).
+     */
+    public List<ChunkHit> looseTextSearch(UUID tenantId, List<String> allowedCodes, String query, int limit) {
+        return textSearch(tenantId, allowedCodes, query, limit, true);
+    }
+
+    private List<ChunkHit> textSearch(UUID tenantId, List<String> allowedCodes, String query, int limit, boolean any) {
+        String tsquery = any ? "replace(plainto_tsquery('english', :q)::text, '&', '|')::tsquery" : "plainto_tsquery('english', :q)";
+        return jdbc.sql(("""
+                SELECT c.id, c.document_id, d.title, c.content, ts_rank(c.search_vector, TSQUERY) AS score
                 FROM institution.policy_chunks c JOIN institution.policy_documents d ON d.id = c.document_id
-                WHERE c.tenant_id = :tenant AND c.search_vector @@ plainto_tsquery('english', :q)
+                WHERE c.tenant_id = :tenant AND c.search_vector @@ TSQUERY
                 """ + aclClause(allowedCodes) + """
                 ORDER BY score DESC LIMIT :limit
-                """)
+                """).replace("TSQUERY", tsquery))
             .param("q", query).param("tenant", tenantId).param("limit", limit)
             .params(aclParams(allowedCodes)).query(this::hit).list();
     }
