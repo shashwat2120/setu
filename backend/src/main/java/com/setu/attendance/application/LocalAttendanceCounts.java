@@ -1,7 +1,6 @@
 package com.setu.attendance.application;
 
 import com.setu.shared.attendancefacts.AttendanceCounts;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -12,10 +11,10 @@ import java.util.UUID;
 
 /**
  * The attendance counts, answered from this module's own records. Used wherever the attendance module itself runs (the monolith, and the Attendance service, which answers
- * its internal endpoint with it). Off when {@code setu.attendance.url} is set: that process asks the Attendance service instead ({@code RemoteAttendanceCounts}).
+ * its internal endpoint with it). Always present; {@code AttendanceCountsRouter} sends a question to it unless this process is set up to ask the Attendance service
+ * ({@code setu.attendance.url}, {@code RemoteAttendanceCounts}), and even then while a first-start seeding is running ({@code LocalReads}).
  */
 @Component
-@ConditionalOnExpression("'${setu.attendance.url:}' == ''")
 public class LocalAttendanceCounts implements AttendanceCounts {
 
     private final AttendanceRecordService attendanceRecordService;

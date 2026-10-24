@@ -346,7 +346,9 @@ public class DemoDataSeeder implements ApplicationRunner {
             return;
         }
         log.info("=== Setu demo data seeding: starting ===");
-        try {
+        // The services that normally answer attendance, grade and learning questions cannot start until this process is healthy, which is after this finishes: while
+        // seeding, those questions are answered from the data this very run is writing (see LocalReads).
+        try (com.setu.shared.internalcall.LocalReads.Scope ignoredScope = com.setu.shared.internalcall.LocalReads.enter()) {
             List<String> credentials = new ArrayList<>();
             Account superAdmin = seedSuperAdmin(credentials);
             seedTenantA(superAdmin, credentials);

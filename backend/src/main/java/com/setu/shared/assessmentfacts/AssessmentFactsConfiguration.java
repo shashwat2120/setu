@@ -20,7 +20,7 @@ class AssessmentFactsConfiguration {
 
     @Bean
     @ConditionalOnProperty(name = "setu.assessment.url")
-    AssessmentFacts remoteAssessmentFacts(@Value("${setu.assessment.url}") String url,
+    RemoteAssessmentFacts remoteAssessmentFacts(@Value("${setu.assessment.url}") String url,
                                           @Value("${setu.internal.token:}") String token,
                                           @Value("${setu.assessment.connect-timeout-ms:500}") long connectMs,
                                           @Value("${setu.assessment.response-timeout-ms:2000}") long responseMs,

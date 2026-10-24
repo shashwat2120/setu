@@ -4,7 +4,6 @@ import com.setu.learning.domain.AssignmentSubmissionStatus;
 import com.setu.learning.domain.LearningProgress;
 import com.setu.learning.domain.LearningProgressState;
 import com.setu.shared.learningfacts.LearningFacts;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -20,10 +19,10 @@ import java.util.stream.Collectors;
 
 /**
  * Learning facts, answered from this module's own data. Used wherever the learning module itself runs (the monolith, and the Learning service, which answers its internal
- * endpoints with it). Off when {@code setu.learning.url} is set: that process asks the Learning service instead ({@code RemoteLearningFacts}).
+ * endpoints with it). Always present; {@code LearningFactsRouter} sends a question to it unless this process is set up to ask the Learning service
+ * ({@code setu.learning.url}, {@code RemoteLearningFacts}), and even then while a first-start seeding is running ({@code LocalReads}).
  */
 @Component
-@ConditionalOnExpression("'${setu.learning.url:}' == ''")
 public class LocalLearningFacts implements LearningFacts {
 
     private final AssignmentSubmissionService submissionService;

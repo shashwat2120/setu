@@ -20,7 +20,7 @@ class LearningFactsConfiguration {
 
     @Bean
     @ConditionalOnProperty(name = "setu.learning.url")
-    LearningFacts remoteLearningFacts(@Value("${setu.learning.url}") String url,
+    RemoteLearningFacts remoteLearningFacts(@Value("${setu.learning.url}") String url,
                                       @Value("${setu.internal.token:}") String token,
                                       @Value("${setu.learning.connect-timeout-ms:500}") long connectMs,
                                       @Value("${setu.learning.response-timeout-ms:2000}") long responseMs,

@@ -1,7 +1,6 @@
 package com.setu.assessment.application;
 
 import com.setu.shared.assessmentfacts.AssessmentFacts;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -15,10 +14,10 @@ import java.util.UUID;
 
 /**
  * Grades and student-visible assessments, answered from this module's own data. Used wherever the assessment module itself runs (the monolith, and the Assessment service,
- * which answers its internal endpoints with it). Off when {@code setu.assessment.url} is set: that process asks the Assessment service instead ({@code RemoteAssessmentFacts}).
+ * which answers its internal endpoints with it). Always present; {@code AssessmentFactsRouter} sends a question to it unless this process is set up to ask the Assessment
+ * service ({@code setu.assessment.url}, {@code RemoteAssessmentFacts}), and even then while a first-start seeding is running ({@code LocalReads}).
  */
 @Component
-@ConditionalOnExpression("'${setu.assessment.url:}' == ''")
 public class LocalAssessmentFacts implements AssessmentFacts {
 
     private final GradeService gradeService;

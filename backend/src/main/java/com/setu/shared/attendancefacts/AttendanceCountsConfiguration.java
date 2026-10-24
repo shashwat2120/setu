@@ -20,7 +20,7 @@ class AttendanceCountsConfiguration {
 
     @Bean
     @ConditionalOnProperty(name = "setu.attendance.url")
-    AttendanceCounts remoteAttendanceCounts(@Value("${setu.attendance.url}") String url,
+    RemoteAttendanceCounts remoteAttendanceCounts(@Value("${setu.attendance.url}") String url,
                                             @Value("${setu.internal.token:}") String token,
                                             @Value("${setu.attendance.connect-timeout-ms:500}") long connectMs,
                                             @Value("${setu.attendance.response-timeout-ms:2000}") long responseMs,
