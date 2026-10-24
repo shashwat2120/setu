@@ -52,6 +52,10 @@ In order; the first rule that applies decides.
    unchanged: every service verifies for itself, so the gateway is an optimisation and a front door, not a boundary a service may trust.
 5. **Rate limit,** per route: per signed-in user, otherwise per client address, one-minute fixed window in Redis (defaults 600 and 120; a
    route may override). Over the limit is 429 `RATE_LIMITED` with `Retry-After`. Redis down means the limiter fails open.
+   The endpoints that cost something outside the platform, or take a large body, have a route of their own (the most specific path wins, all go to the core), so they are
+   counted separately from the caller's general traffic: `payment-create` (`/finance/payments`) 30 a minute, `payment-checkout` (`/finance/payments/*/checkout`, each call opens an
+   order with the payment provider) 10, `payment-reconcile` (`/finance/payments/*/reconcile`, the Finance page confirms a payment up to five times, two seconds apart) 30, and
+   `resume-file` (`/career/resumes/file`, an upload is a body of up to 2 MB) 20. The provider's webhook has no limit of its own and is still open at the gateway.
 6. **Forward** to the first reachable instance (section 4). Method, path, raw query string and body are preserved; request bodies are
    streamed, not buffered. An answer whose `Content-Type` is `text/event-stream` (the advisor's `/ai/chat/stream`) is **flushed to the client after every
    chunk**, so its events arrive as the service produces them instead of all at once when it finishes.

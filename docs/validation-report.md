@@ -561,6 +561,28 @@ holding the whole suite runs out of native memory on this 15 GB machine), agains
 development database, Redis and Kafka with the running stack, so a few AI chat tests leave short-lived keys behind that expire on their own; tests added after this run (the three data-port routers, the risk consumer's outage handling, the
 advisor's Redis memory, the embedding cache) were run on their own and are not in the 1,610.
 
+## Rate limits on payment checkout and resume upload, run live (2026-10-24)
+
+Contract: [contracts/gateway.md](contracts/gateway.md), the rate-limit step of the request path. Neither had a limit of its own: a signed-in caller could make 600 requests a minute to the endpoints that open an order with the
+payment provider or take a 2 MB upload. Four routes now carry a stricter per-user ceiling each, as configuration only (the gateway already counts per route and per signed-in user in Redis and fails
+open). A new route test (`GatewayRouteCoverageTests`) holds the paths, the numbers, that each goes to the core and needs a signed-in caller, that the reconcile limit covers what the Finance page does
+for one payment, that the neighbouring paths keep the general route, and that the provider's webhook is untouched; the other gateway tests (route table, filter, wiring) pass.
+
+Run on the containers, as the demo student, with a payment id that does not exist (so every request is an ordinary 404 from the core and no order is ever opened) and the resume file:
+
+| Endpoint | Limit | Result |
+|---|---|---|
+| `POST /finance/payments/<id>/checkout` | 10 a minute | 12 requests: the 11th is the first **429**, `Retry-After: 59` |
+| `POST /finance/payments/<id>/reconcile` | 30 a minute | 32 requests: the 31st is the first **429** |
+| `GET /career/resumes/file` | 20 a minute | 22 requests: the 21st is the first **429**; the Redis counter `setu:gw:rl:resume-file:user:<id>` reads 22 and expires in about a minute |
+| `GET /finance/payments/<id>` (general route) | 600 a minute | 40 requests, no 429 |
+
+A refused call is the gateway's standard envelope (`429`, `code: RATE_LIMITED`, `Retry-After`, the correlation id). The smoke flow passes 14 of 14 on the gateway with the new routes, and the limits were still enforced after Docker Desktop was restarted.
+
+**Limits:** the limits are counted per route, so `/finance/payments` (create and list share it) and `/career/resumes/file` (upload, download and delete share it) count every method; the numbers are
+chosen from what the pages do, not measured under load; a real payment was not run through the new routes (a payment of the demo charge would leave a payment behind), so what the Finance page does for one
+payment is held by the route test's arithmetic and not by a live run; the limiter fails open, so a Redis outage removes the protection until it returns.
+
 ## Not validated
 
 - Kafka consumer lag **under load**. (The dead-letter path **was** run with a real poison event on the real stack, see below.)
