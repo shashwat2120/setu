@@ -452,6 +452,28 @@ A first attempt to write progress was refused (409 and 404) because the test sen
 module; the outage test stopped the whole service, not only its database; the advisor's "learning data / assignments are temporarily unavailable" answers are implemented but have no test
 of their own and were not tried live; the live write test left one lesson of the demo student `student.strong` marked in progress.
 
+## A from-scratch bring-up, run live (2026-10-24)
+
+Every cut-over so far was done on a stack that already held data. This is the same stack brought up on **empty volumes**, as a new machine would, under a throwaway project name
+(`docker compose -p setufresh ...`, so its volumes are `setufresh_*` and cannot touch the real ones). A side-by-side run is not possible on this machine (1.8 GB of 15.4 free with the
+real stack up; the services publish fixed ports), so the real stack was stopped (`stop`, never `down`) for each run and restored afterwards.
+
+| Run | What happened |
+|---|---|
+| 1 | `db-init` exited 2: **a startup race**. On an empty volume the Postgres image first runs a temporary server that listens only on a local socket; a socket-only `pg_isready` healthcheck reports healthy during that window, `db-init` then connects over the network, is refused and gives up, and nothing after it starts. Fixed: the healthchecks test over the network (`-h 127.0.0.1`) and `db-init` waits for the server |
+| 2 | `db-init` passed; **the core crash-looped** (11 restarts): the demo seeding recalculates risk, risk now asks the Attendance service (`SETU_ATTENDANCE_URL`), and that service cannot start until the core is healthy (`UnknownHostException: attendance`); the retry then stopped on "demo account already exists". The same trap was waiting for the Assessment and Learning splits. Fixed: the seeding scope and the routers (contract section 3a). A second flaw found while reading the consumer: a dependency outage burned the risk consumer's three tries in about 1.5 s and dead-lettered the event, so a brief service restart could permanently lose a recalculation. Fixed: it is waited for, not dead-lettered (3 tests) |
+| 3 | **Passed.** All six one-shot jobs exited 0, 16 services healthy in about 5 minutes, core restarts 0, seeding finished in 27 s, one risk event logged "waiting for a service it depends on" during first boot and nothing was dead-lettered |
+
+On the fresh stack: smoke flow **16 of 16** (the full path including a student's scan, which the reused stack skips), the six advisor facts (learning resources, deadlines, assessment results,
+academic progress, attendance, transcript) all 200 with real data from the three split services, and each service database populated by its provisioning job.
+
+Your own stack was compared before and after each run (users, students, enrollments, risk scores, charges, payments, applications, outbox rows, and each service database's rows, outbox and Flyway
+version): **identical**, all 12 volumes present, 0 throwaway volumes left.
+
+**Limits:** the first run left the real stack down about 45 minutes (longer than agreed); it was restored without recreating anything. The seeding scope is thread-bound by design, so work that
+moves to another thread while seeding goes to the services. Only the demo seeder opens it. The other containers (not the core) are still on the build before these fixes; their behaviour
+is unchanged by them.
+
 ## Not validated
 
 - Kafka consumer lag **under load**. (The dead-letter path **was** run with a real poison event on the real stack, see below.)

@@ -122,7 +122,8 @@ three other services is the wrong cost for one count.
 * The caller's side is the port `AttendanceCounts`: in the monolith the attendance module answers in-process (`LocalAttendanceCounts`); with `setu.attendance.url` set the answer is
   `RemoteAttendanceCounts`, behind a circuit breaker and bulkhead, with short timeouts.
 * **No answer is never zeros.** A malformed, incomplete, impossible (more present than recorded) or missing answer, a timeout, a 5xx and an open circuit are all
-  `AttendanceCounts.Unavailable`: the risk event is retried (and dead-lettered after three tries) rather than scored on guessed attendance, the advisor tells the person that
+  `AttendanceCounts.Unavailable` (all three ports throw a subclass of `DependencyUnavailableException`): the risk event is **waited for, not dead-lettered** (the risk consumer retries a
+  dependency outage with a growing delay of 2 s up to 30 s, without limit, and keeps its three-tries-then-DLQ policy for every other failure), rather than scored on guessed attendance, the advisor tells the person that
   attendance is unavailable instead of giving a figure, and an HTTP caller gets `503 DEPENDENCY_UNAVAILABLE` in the standard envelope.
 
 The same port pattern serves Assessment (section 4d): `AssessmentFacts` gives the risk engine, the AI advisor and the academic record (transcripts, GPA) a student's current grades,
@@ -136,6 +137,15 @@ Learning (section 4e) is the same again through `LearningFacts`: a student's sub
 advisor the published assignments of a section (`/published-assignments`), the lessons of a section's active modules (`/lessons`) and the lessons a student has completed
 (`/completed-lessons`). The keyed-answer rule (one entry per id asked, each once, nothing else) and the chunked asking now live in the shared client for all three ports
 (`InternalJsonClient.getKeyed`, `KeyedResults`); counts must be whole, non-negative and plausible (late no more than submitted, completed no more than started).
+
+### Seeding on a first start
+
+The three readers above cannot ask a service that does not exist yet, and on a first start it does not: the core seeds the demo college (and recalculates risk for it) before it is
+healthy, and the Attendance, Assessment and Learning services wait for it to be healthy because their databases are copied from what it seeded. So each port is given to its callers
+through a router (`AttendanceCountsRouter`, `AssessmentFactsRouter`, `LearningFactsRouter`) that sends a question to the service when the process is set up to ask one, to the
+module's own data when it is not, and to the module's own data inside a `LocalReads` scope, which only the demo seeder opens, on its own thread. Inside the scope the data asked about
+is exactly what the seeder has just written to the core's own database, so reading it locally is correct; nothing else opens it. With neither a service nor a module to read, a router says
+so (`Unavailable`) instead of answering. Without this, a fresh install never started: the core failed seeding with `UnknownHostException: attendance` and crash-looped.
 
 ## 4. Taking a service's tables out of the shared database
 
