@@ -10,7 +10,8 @@
 param(
     [Parameter(Position = 0)][ValidateSet('status', 'tail', 'follow')][string]$Command = 'status',
     [Parameter(Position = 1)][string]$Topic = 'grades',
-    [int]$Count = 5
+    [int]$Count = 5,
+    [string]$Database = 'setu_demo'
 )
 
 $kafka = 'setu-kafka-1'
@@ -26,7 +27,7 @@ function Invoke-Kafka([string[]]$ToolArgs) {
 switch ($Command) {
     'status' {
         Write-Host "`n== Outbox (rows written in the same DB transaction as the business change) ==" -ForegroundColor Cyan
-        docker exec $pg psql -U setu -d setu -c "select status, count(*) from governance.outbox_events group by status order by status"
+        docker exec $pg psql -U setu -d $Database -c "select status, count(*) from governance.outbox_events group by status order by status"
         Write-Host "== Kafka: messages per topic ==" -ForegroundColor Cyan
         Invoke-Kafka @("$bin/kafka-get-offsets.sh", '--bootstrap-server', $bootstrap, '--time', '-1') |
             Where-Object { $_ -like 'setu.*' } |
