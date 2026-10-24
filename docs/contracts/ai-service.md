@@ -67,8 +67,11 @@ records it for **the token's** user and college (never from the body), only for 
 
 ## 5. What stays where
 
-* Conversation memory is in the AI service's process, keyed by (user, college), last six exchanges, 30 minutes idle: unchanged, and it never
-  holds tool arguments or results. Rate limiting is Redis-backed per (college, user): unchanged.
+* Conversation memory is kept **in Redis**, one list per conversation (`setu:ai:memory:<college>:<user>`, keyed only by the caller's own ids), last six exchanges, 30 minutes idle
+  (the key expires and is refreshed on each answer), so it survives a restart of the AI service and is the same on every instance; it never holds tool arguments or results. Redis is
+  not the source of truth: if it cannot be reached the service falls back to its own in-process memory for that call (logged once a minute) and the advisor keeps working, and
+  `app.ai.memory.store=local` keeps it in-process only. What sits in Redis is the plain question and answer text the model was already shown, so the shared Redis should be
+  protected (a password, a private network) wherever this runs for real. "New conversation" deletes the key. Rate limiting is Redis-backed per (college, user): unchanged.
 * The AI service reaches the data service through the gateway (`GATEWAY_URL`), so discovery and health-aware routing apply; `/ai-facts/**` falls
   to the core route. The gateway relays WebSocket upgrades only on its live route (`/ws`, the live attendance board), and answers an upgrade anywhere else with 501,
   so clients subscribe to job status on the AI service directly; it would need a path and a route of its own to go through the gateway.

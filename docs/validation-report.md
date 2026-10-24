@@ -474,6 +474,26 @@ version): **identical**, all 12 volumes present, 0 throwaway volumes left.
 moves to another thread while seeding goes to the services. Only the demo seeder opens it. The other containers (not the core) are still on the build before these fixes; their behaviour
 is unchanged by them.
 
+## The advisor's conversation memory in Redis, run live (2026-10-24)
+
+Contract: [contracts/ai-service.md](contracts/ai-service.md). The advisor's short-term memory was a map inside the AI service (lost on every restart, not shared between instances); it is now a
+Redis list per conversation with the same bounds. Eight new tests run against the real Redis (a restart and a second instance, isolation per user and college, trim and expiry, "New
+conversation", the text cap, a corrupt element skipped, Redis down) plus the eight existing memory tests, the chat service tests and the AI service wiring test.
+
+Run on the containers, as the demo student:
+
+| Step | Result |
+|---|---|
+| Ask "How is my attendance across my courses?" | answered from the attendance tool; Redis holds a list under `setu:ai:memory:<college>:<user>` with 1 exchange and a 30-minute expiry |
+| `docker restart` the AI service | the process (and anything it held in its own memory) is gone |
+| Ask "Without looking anything up, what was the very first question I asked you?" | answered correctly with **no tool used** (`sources: []`), so it can only have come from the memory that outlived the restart; the list now has 2 exchanges |
+| "New conversation" (`DELETE /ai/chat/history`) | 204, and the key no longer exists in Redis |
+| The same question again | the advisor says it has no record of the earlier conversation |
+
+**Limits:** the Redis-down fallback is covered by a test (a template that throws), not by stopping the live Redis, which every service shares; the conversation text now leaves the AI
+process and sits in a Redis that has no password in this development setup; a conversation is bounded by 6 exchanges of at most 4,000 characters each, but there is no cap on how many
+conversations Redis holds (they expire after 30 idle minutes); the AI chat tests that share the development Redis leave a few short-lived keys of their own.
+
 ## Not validated
 
 - Kafka consumer lag **under load**. (The dead-letter path **was** run with a real poison event on the real stack, see below.)

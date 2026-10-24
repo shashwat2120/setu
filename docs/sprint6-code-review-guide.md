@@ -192,7 +192,7 @@ logged; retrieved text is data, never instructions.
 
 1. The browser calls `POST /ai/chat` (or the streaming variant) **through the gateway**, with the user's token.
 2. **AI service** ([`AiChatService`](../backend/src/main/java/com/setu/aiexplain/application/AiChatService.java)): checks the **rate limit** in Redis (per user and college), loads the
-   user's **conversation memory** (the last six exchanges, plain text only, 30 minutes idle, kept in this process, never tool arguments or results), and calls the model.
+   user's **conversation memory** (the last six exchanges, plain text only, 30 minutes idle, kept in Redis so it survives a restart and is shared by every instance (an in-process fallback if Redis is down), never tool arguments or results), and calls the model.
 3. The model is offered **nine tools**: attendance, academic progress, assessment results, upcoming deadlines, skill gap, **policy search**, learning recommendations,
    transcript, fee status. **No tool takes a tenant, a user, a token or a role**: only "which student" or nothing (meaning the caller).
 4. When the model calls a tool, `AiToolService` asks the **secure tool boundary**, the `AiFacts` interface. In the AI service the implementation is `RemoteAiFacts`:
