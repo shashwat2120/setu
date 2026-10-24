@@ -514,6 +514,53 @@ Run on the containers, as the demo student, through the gateway (`GET /ai-facts/
 is stored, but the vector itself still says something about the text, in a Redis with no password in this development setup; the cache is not capped (a day of distinct questions is a few
 megabytes at 4 KB each, and every entry expires on its own).
 
+## The full regression suite, run in chunks (2026-10-24)
+
+After the four database splits, the shared-client refactor and the advisor changes, the whole backend suite was run once, in 25 chunks, each its own Maven run with a 1 GB heap (one JVM
+holding the whole suite runs out of native memory on this 15 GB machine), against a clean copy of the sources and the shared development database, Redis and Kafka.
+
+| Chunk | Tests | Result |
+|---|---|---|
+| Application context, migration integration, modularity | 11 | pass |
+| Academic | 19 | pass |
+| AI explain and AI facts (not the real-model chat tests) | 84 | pass |
+| Assessment | 77 | pass |
+| Attendance | 166 | pass |
+| Audit (security audit, ownership, roles, migrations, frozen contracts, schema) | 57 | pass after one fix (below) |
+| Career and placement | 120 | pass |
+| Catalog | 66 | pass |
+| Config server | 39 | pass |
+| Directory | 34 | pass |
+| Enrollment | 115 | pass |
+| Finance (including the Razorpay payment and webhook tests) | 97 | pass |
+| Gateway | 82 | pass after two fixes (below) |
+| Guardian access | 7 | pass |
+| Identity | 180 | pass (1 skipped) |
+| Institution | 35 | pass |
+| Learning | 99 | pass |
+| Notification | 39 | pass |
+| Record | 20 | pass |
+| Risk | 65 | pass |
+| Shared kernel (three groups: admin, AI embedder, the three data ports, authorization, config; events, governance, observability, resilience; read model, security, web) | 57 + 34 + 68 | pass |
+| Real-model AI chat | 39 | 34 pass, **5 fail** (below) |
+| Performance | 0 | opt-in, excluded by default |
+| **Total** | **1,610** | **1,605 pass, 5 fail, 1 skipped** |
+
+**What failed, and why**
+| Failure | Cause | Resolution |
+|---|---|---|
+| `EndpointSecurityAuditTests` (1) | the audit's list of intentionally public paths never named `POST /finance/provider-webhooks/razorpay`, which is open on purpose (the provider sends no user token; the call is authenticated by its HMAC signature) and answered 503 with no signing secret configured | the path is listed with its reason, and a new test holds that an unsigned call to it is always refused (401, or 503), never accepted. A test-list gap, not a product bug; it had failed since the webhook was added |
+| `GatewayWiringTests` (2) | the test gateway read the running services' registrations from the shared Redis (`setu:services:*`, hostnames that mean nothing to the test process), and `/learning/**` went to the Learning service, whose built-in address is a port the running stack publishes | the test uses a Redis database of its own and names a dead address for the Learning route. Passes (7 of 7) |
+| Learning chunk (75 errors) | **Docker Desktop had stopped mid-run**, so the database refused every connection (`Connection to localhost:5433 refused`) | Docker restarted, the chunk re-run: 99 of 99 pass |
+| `AiChatIntegrationTests` (5 of 6) | each logs "AI chat primary provider timed out (primary budget 60s)": in the test setup the primary is the local Ollama model (`llama3.2:3b`), which cannot answer within 60 s on this machine | **not fixed**: environment, not code. The other 34 AI chat tests (fallback chain, Gemini and NVIDIA wiring, cool-down, sources) pass |
+
+**Not run:** the performance tests (tagged `performance`, opt-in with `-DexcludedGroups=live-ollama`); the demo-data seeder tests (they are meant for an empty database) were left out of the chunks, and `DemoDataSeederVerificationTests` (8 tests) passed when run on its own; `NotificationKafkaConsumerTests`
+(skips itself on this machine's NIO defect; the retry and dead-letter policy is covered without a broker).
+
+**Limits:** the run was restarted twice (a session restart killed the runner after chunk 16, and Docker stopped during chunk 17), so the numbers above are the latest result per chunk, not one uninterrupted pass; the suite shares the
+development database, Redis and Kafka with the running stack, so a few AI chat tests leave short-lived keys behind that expire on their own; tests added after this run (the three data-port routers, the risk consumer's outage handling, the
+advisor's Redis memory, the embedding cache) were run on their own and are not in the 1,610.
+
 ## Not validated
 
 - Kafka consumer lag **under load**. (The dead-letter path **was** run with a real poison event on the real stack, see below.)

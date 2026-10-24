@@ -94,5 +94,6 @@ are in [docs/contracts/containers.md](../../docs/contracts/containers.md).
 4. Check it: `node infra/scripts/smoke-flow.js` and `node infra/scripts/smoke-websocket.js`.
 5. Start over: `pwsh infra/scripts/reset-demo.ps1`. Dropping only the database is not enough: the broker keeps the old events.
 
-The gateway is `http://localhost:8080`. The stack wants about 8 GB for Docker. The test suite and a running stack share this machine's Redis, so do not
-run `GatewayWiringTests` while the stack is up; the tests publish to Kafka under their own prefix (`setu-test.`), so they cannot disturb it otherwise.
+The gateway is `http://localhost:8080`. The stack wants about 8 GB for Docker. The test suite and a running stack share this machine's database, Redis and Kafka. The tests publish to Kafka under their own prefix (`setu-test.`), and the gateway wiring
+test uses a Redis database of its own and stubs for every service, so the suite can run while the stack is up; a few AI chat tests leave short-lived Redis keys that expire on their
+own. Run the suite in chunks (one JVM for all of it runs out of memory), and expect the real-model AI chat integration tests to time out on a slow local model.
