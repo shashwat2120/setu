@@ -2,11 +2,13 @@ package com.setu.shared.ai;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import io.micrometer.core.instrument.MeterRegistry;
 import org.springframework.ai.embedding.EmbeddingModel;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.data.redis.core.StringRedisTemplate;
 
 import java.util.List;
 
@@ -29,14 +31,22 @@ class EmbeddingConfig {
                                @Value("${spring.ai.google.genai.embedding.text.options.model:gemini-embedding-001}") String geminiModel,
                                @Value("${spring.ai.ollama.embedding.options.model:nomic-embed-text}") String ollamaModel,
                                @Value("${app.ai.embedding.timeout-seconds:8}") long timeoutSeconds,
-                               ObjectProvider<EmbeddingModel> embeddingModelProvider) {
+                               @Value("${app.ai.embedding.cache-hours:24}") long cacheHours,
+                               @Value("${app.ai.embedding.cooldown-seconds:30}") long cooldownSeconds,
+                               ObjectProvider<EmbeddingModel> embeddingModelProvider,
+                               ObjectProvider<StringRedisTemplate> redisProvider, ObjectProvider<MeterRegistry> meterProvider) {
+        // A provider-backed embedder is wrapped so a repeated question is answered from Redis and a failing provider is left alone for a moment; the built-in local one is
+        // instant and deterministic and is not.
+        java.util.function.UnaryOperator<TextEmbedder> remembered = embedder -> cacheHours <= 0 && cooldownSeconds <= 0 ? embedder
+            : new CachingTextEmbedder(embedder, cacheHours > 0 ? redisProvider.getIfAvailable() : null, java.time.Duration.ofHours(Math.max(cacheHours, 1)),
+                java.time.Duration.ofSeconds(Math.max(cooldownSeconds, 0)), meterProvider.getIfAvailable());
         List<EmbeddingModel> embeddingModels = embeddingModelProvider.orderedStream().toList();
         switch (provider) {
             case "gemini" -> {
                 EmbeddingModel model = find(embeddingModels, "GoogleGenAi");
                 if (model != null) {
                     log.info("policy search embeddings: gemini:{} (full-text search if Gemini is unavailable)", geminiModel);
-                    return new SpringAiTextEmbedder(model, "gemini:" + geminiModel, GEMINI_MIN_SIMILARITY, java.time.Duration.ofSeconds(timeoutSeconds));
+                    return remembered.apply(new SpringAiTextEmbedder(model, "gemini:" + geminiModel, GEMINI_MIN_SIMILARITY, java.time.Duration.ofSeconds(timeoutSeconds)));
                 }
                 log.warn("Gemini embeddings were selected but no Gemini embedding model was created; using the built-in local embedder");
             }
@@ -44,7 +54,7 @@ class EmbeddingConfig {
                 EmbeddingModel model = find(embeddingModels, "Ollama");
                 if (model != null) {
                     log.info("policy search embeddings: ollama:{}", ollamaModel);
-                    return new SpringAiTextEmbedder(model, "ollama:" + ollamaModel, 0.45, java.time.Duration.ofSeconds(timeoutSeconds));
+                    return remembered.apply(new SpringAiTextEmbedder(model, "ollama:" + ollamaModel, 0.45, java.time.Duration.ofSeconds(timeoutSeconds)));
                 }
                 log.warn("Ollama embeddings were selected but no Ollama embedding model was created; using the built-in local embedder");
             }

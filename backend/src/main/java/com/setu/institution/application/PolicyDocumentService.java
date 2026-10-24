@@ -111,7 +111,7 @@ public class PolicyDocumentService {
         }
         List<String> allowed = codesCallerHolds(tenantId.get());
 
-        List<PolicyChunkStore.ChunkHit> vectorHits = embedder.embed(query)
+        List<PolicyChunkStore.ChunkHit> vectorHits = embedder.embedQuery(query)
             .map(v -> chunkStore.vectorSearch(tenantId.get(), allowed, embedder.modelId(), PolicyChunkStore.literal(v), CANDIDATES).stream()
                 .filter(h -> h.score() >= embedder.minSimilarity()).toList())
             .orElse(List.of());

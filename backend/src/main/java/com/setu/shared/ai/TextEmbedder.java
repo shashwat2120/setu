@@ -21,4 +21,12 @@ public interface TextEmbedder {
 
     /** A unit-length vector of {@link #DIMENSIONS} values, or empty. */
     Optional<float[]> embed(String text);
+
+    /**
+     * The same, for a search question that a person is waiting on, as opposed to a passage being indexed. The default is {@link #embed}; an implementation may remember
+     * answers or stop asking a failing provider for a while ({@link CachingTextEmbedder}). Like {@link #embed} it never throws.
+     */
+    default Optional<float[]> embedQuery(String text) {
+        return embed(text);
+    }
 }
