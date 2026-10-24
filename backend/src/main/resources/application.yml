@@ -377,6 +377,27 @@ app:
         paths: ["/**"]
         # The payment provider's webhook carries no user token; the endpoint verifies the provider's signature itself.
         public-paths: ["/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html", "/finance/provider-webhooks/**"]
+      # Endpoints that cost something outside the platform, or take a large body, get a route of their own (so a counter of their own, per signed-in user) with a
+      # ceiling well under the general one (user-per-minute below) and well over what a student does: the most specific path wins, and all of these go to the core.
+      - id: payment-create
+        service: core
+        paths: ["/finance/payments"]
+        rate-per-minute: 30
+      # each call opens an order with the payment provider
+      - id: payment-checkout
+        service: core
+        paths: ["/finance/payments/*/checkout"]
+        rate-per-minute: 10
+      # the Finance page asks the server to confirm a payment up to five times, two seconds apart, once the checkout window says it was paid
+      - id: payment-reconcile
+        service: core
+        paths: ["/finance/payments/*/reconcile"]
+        rate-per-minute: 30
+      # a resume upload is a multipart body of up to 2 MB
+      - id: resume-file
+        service: core
+        paths: ["/career/resumes/file"]
+        rate-per-minute: 20
     cors:
       allowed-origins: ${GATEWAY_ALLOWED_ORIGINS:http://localhost:5173,http://localhost:3000,http://localhost:5180}
     upstream:

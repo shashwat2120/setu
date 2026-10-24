@@ -50,6 +50,34 @@ class GatewayRouteCoverageTests {
     }
 
     @Test
+    void theEndpointsThatCostSomethingOutsideThePlatformOrTakeALargeBodyHaveACounterOfTheirOwn() {
+        RouteTable routes = routes();
+        var expected = Map.of(
+            "/finance/payments", Map.entry("payment-create", 30),
+            "/finance/payments/0b5ae0a1-5b40-4ec7-a2ef-8d7c0f0d1111/checkout", Map.entry("payment-checkout", 10),
+            "/finance/payments/0b5ae0a1-5b40-4ec7-a2ef-8d7c0f0d1111/reconcile", Map.entry("payment-reconcile", 30),
+            "/career/resumes/file", Map.entry("resume-file", 20));
+        expected.forEach((path, route) -> {
+            var match = routes.match(path).orElseThrow();
+            assertThat(match.route().id()).as(path).isEqualTo(route.getKey());
+            assertThat(match.route().ratePerMinute()).as(path + " limit").isEqualTo(route.getValue());
+            assertThat(match.route().service()).as(path + " service").isEqualTo("core");
+            assertThat(match.isPublic()).as(path + " needs a signed-in caller").isFalse();
+        });
+        // what the Finance page does for one payment must fit: one create, one checkout, and up to five confirmations
+        assertThat(routes.match("/finance/payments/0b5ae0a1-5b40-4ec7-a2ef-8d7c0f0d1111/reconcile").orElseThrow().route().ratePerMinute()).isGreaterThanOrEqualTo(5 * 3);
+        // everything around them keeps the general route and its general limit
+        for (String path : new String[] {"/finance/payments/0b5ae0a1-5b40-4ec7-a2ef-8d7c0f0d1111", "/finance/payments/0b5ae0a1-5b40-4ec7-a2ef-8d7c0f0d1111/refund",
+            "/career/resumes", "/career/resumes/file/extra", "/finance/charges"}) {
+            assertThat(routes.match(path).orElseThrow().route().id()).as(path).isEqualTo("core");
+        }
+        // the provider's webhook is untouched: no limit of its own, and still open at the gateway
+        var webhook = routes.match("/finance/provider-webhooks/razorpay").orElseThrow();
+        assertThat(webhook.route().id()).isEqualTo("core");
+        assertThat(webhook.isPublic()).isTrue();
+    }
+
+    @Test
     void everyEndpointOfEveryModuleReachesTheServiceThatOwnsThatModule() {
         RouteTable routes = routes();
         Set<String> wrong = new TreeSet<>();
