@@ -1,0 +1,21 @@
+# Optional: a web screen for the Redis server, for demos and reviews (keys, values, time left before each key erases itself).
+# Not part of the normal stack. Start it next to the stack:
+#   docker compose -f infra/docker/docker-compose.yml -f infra/docker/docker-compose.redis-ui.yml up -d --no-deps redis-ui
+# Open http://localhost:5540   Stop it: docker compose -f infra/docker/docker-compose.yml -f infra/docker/docker-compose.redis-ui.yml rm -sf redis-ui
+# It reaches Redis by the name other containers use (redis:6379) and is bound to 127.0.0.1 only. Its first screen asks to accept RedisInsight's own
+# terms: that is for the person at the keyboard to accept, nothing here accepts it. Use it to LOOK: it can also change and delete keys, so do not edit
+# during a demo (the keys are discovery, rate-limit and revocation state that the services rewrite).
+services:
+  redis-ui:
+    image: redis/redisinsight:latest
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:5540:5540"
+    volumes:
+      - setu_redisinsight:/data
+    depends_on:
+      redis:
+        condition: service_healthy
+
+volumes:
+  setu_redisinsight:

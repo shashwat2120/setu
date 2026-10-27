@@ -1,0 +1,20 @@
+# Optional: a web screen for the Kafka broker, for demos and reviews (topics, messages with headers, consumer groups and their lag).
+# Not part of the normal stack. Start it next to the stack:
+#   docker compose -f infra/docker/docker-compose.yml -f infra/docker/docker-compose.kafka-ui.yml up -d --no-deps kafka-ui
+# Open http://localhost:8089   Stop it: docker compose -f infra/docker/docker-compose.yml -f infra/docker/docker-compose.kafka-ui.yml rm -sf kafka-ui
+# It reads Kafka by the INTERNAL address other containers use (kafka:29092); it needs no login on this machine because it is bound to
+# 127.0.0.1 only, and it is read-only (it cannot create, change or delete topics).
+services:
+  kafka-ui:
+    image: provectuslabs/kafka-ui:v0.7.2
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8089:8080"
+    environment:
+      KAFKA_CLUSTERS_0_NAME: setu
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:29092
+      KAFKA_CLUSTERS_0_READONLY: "true"
+      DYNAMIC_CONFIG_ENABLED: "false"
+    depends_on:
+      kafka:
+        condition: service_healthy

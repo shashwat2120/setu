@@ -91,6 +91,8 @@ services:
   postgres-notification:
     image: pgvector/pgvector:pg16
     restart: unless-stopped
+    ports:
+      - "127.0.0.1:5434:5432"   # so a database tool on this machine (DBeaver) can open it; bound to this machine only
     environment:
       POSTGRES_DB: setu_notification
       POSTGRES_USER: ${POSTGRES_USER:-setu}
@@ -135,6 +137,8 @@ services:
   postgres-attendance:
     image: pgvector/pgvector:pg16
     restart: unless-stopped
+    ports:
+      - "127.0.0.1:5435:5432"   # so a database tool on this machine (DBeaver) can open it; bound to this machine only
     environment:
       POSTGRES_DB: setu_attendance
       POSTGRES_USER: ${POSTGRES_USER:-setu}
@@ -178,6 +182,8 @@ services:
   postgres-assessment:
     image: pgvector/pgvector:pg16
     restart: unless-stopped
+    ports:
+      - "127.0.0.1:5436:5432"   # so a database tool on this machine (DBeaver) can open it; bound to this machine only
     environment:
       POSTGRES_DB: setu_assessment
       POSTGRES_USER: ${POSTGRES_USER:-setu}
@@ -221,6 +227,8 @@ services:
   postgres-learning:
     image: pgvector/pgvector:pg16
     restart: unless-stopped
+    ports:
+      - "127.0.0.1:5437:5432"   # so a database tool on this machine (DBeaver) can open it; bound to this machine only
     environment:
       POSTGRES_DB: setu_learning
       POSTGRES_USER: ${POSTGRES_USER:-setu}
@@ -280,6 +288,9 @@ services:
       # Notification has a database of its own now. The core still contains the notification module and would join the same Kafka group, and an event it handled would be
       # written to the shared database's old copy, where nobody reads it: so the core does not consume for Notification any more.
       APP_NOTIFICATION_CONSUMER_ENABLED: "false"
+      # How long policy search waits for Gemini to embed a question before it answers from full-text. It must stay well under the 8 s the AI service gives
+      # the data service (setu.ai-facts.response-timeout-ms): at the old 8 s a question asked while Gemini was over its quota used up the whole wait and the advisor said "unavailable".
+      APP_AI_EMBEDDING_TIMEOUT_SECONDS: ${EMBEDDING_TIMEOUT_SECONDS:-3}
       # Attendance has a database of its own now: the risk engine, the AI advisor's attendance tool and Career's standing ask the service for attendance counts instead of
       # reading the shared database's old copy of the attendance schema.
       SETU_ATTENDANCE_URL: http://attendance:8086
