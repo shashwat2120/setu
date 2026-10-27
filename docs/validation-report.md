@@ -641,6 +641,17 @@ Found by a student on the advisor page: "What does the college policy say about 
 
 **Limits:** this is a fallback, not a cure: with the quota gone the passages stay on the old embedding model until it returns (the background indexer re-embeds them then), and the loose match can return a passage that merely shares a word, which the model is left to judge.
 
+## The advisor on a day Gemini embeddings are over quota, found while preparing the review (2026-10-27)
+
+Checked live by asking the advisor four questions as the demo student. Two causes made answers say "currently unavailable", both from Gemini's embedding service being over its quota (HTTP 429):
+
+* **The index job kept retrying.** `PolicyIndexer` embedded every waiting chunk, one after another, each waiting out the 8 s timeout, on every pass (about 26 failed calls and 26 identical warnings every 10 minutes). It now stops at the first chunk the provider does not answer for, and the scheduled pass stays away for 2, 4, 8, 16, 32 minutes (at most an hour) until it answers again; a direct call is never held back. `PolicyIndexerBackoffTests` (7 tests, a clock the test moves) holds it. Live: one warning, "leaving it alone for 2 minutes", instead of a stream.
+* **Policy search used the whole wait the AI service gives the data service.** The embedding timeout (8 s) equalled the AI service's response limit for facts (`setu.ai-facts.response-timeout-ms`, 8000), so a policy question that waited out the embedding had no time left and the advisor reported the tool unavailable. The embedding wait is now 3 s on the core (`APP_AI_EMBEDDING_TIMEOUT_SECONDS`, compose default 3), so the keyword fallback answers in time.
+
+After both: attendance (2.7 s), grades (2.5 s), deadlines (2.6 s) and the attendance policy (6.7 s, citing the 75% rule from the keyword search) all answered, and a request to ignore the rules and show another student's attendance was refused with no tool called.
+
+**Limits:** while the quota is gone, meaning search does not work and a policy question takes about 3 s longer than usual; restarting the core makes the advisor report "unavailable" for the first half minute (the gateway still lists the old instance until its 30 s key expires). The embedding provider's quota itself is not something this code can fix.
+
 ## Not validated
 
 - Kafka consumer lag **under load**. (The dead-letter path **was** run with a real poison event on the real stack, see below.)

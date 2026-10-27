@@ -16,7 +16,7 @@ docker ps --filter name=kafka
 docker exec setu-kafka-1 /opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:29092 --list
 ```
 
-Live: 24 `setu.*` topics (`setu.grades`, `setu.attendance_records`, `setu.enrollments`, `setu.risk_scores`, `setu.payments`, ...) plus `setu.grades.DLQ`.
+Live: 24 `setu.*` topics (messages older than 7 days are deleted, so topics seeded on 19 October, such as `setu.persons` and `setu.user_roles`, are now empty although their offsets remain) (`setu.grades`, `setu.attendance_records`, `setu.enrollments`, `setu.risk_scores`, `setu.payments`, ...) plus `setu.grades.DLQ`.
 
 ## 2. Outbox and messages per topic
 
@@ -71,7 +71,16 @@ Dead letters:
 docker exec setu-kafka-1 /opt/kafka/bin/kafka-console-consumer.sh --bootstrap-server localhost:29092 --topic setu.grades.DLQ --from-beginning --max-messages 2 --timeout-ms 8000 --property print.headers=true
 ```
 
-Live: 2 messages, the text `this is not json` sent to `setu.grades` on purpose by an earlier failure test, one dead-lettered by `setu-risk` and one by `setu-notification`, each with `kafka_dlt-exception-message: event payload is not valid JSON`, original topic and consumer group. Say that this was a test message, not a production failure. (The stack trace in the header is long; use `cut -c1-600` or `Select-Object -First` to keep the screen readable.)
+**Retention matters here.** Kafka keeps messages for 7 days (`retention.ms=604800000`, set per topic), then deletes them. The two test messages that were in `setu.grades.DLQ` (the text `this is not json`, dead-lettered by `setu-risk` and `setu-notification`, each with `kafka_dlt-exception-message: event payload is not valid JSON`) were created on 19 October and had expired by 26 October, so on the live stack the DLQ is empty at the moment: the UI shows "No messages found" and both its earliest and latest offsets are 2. To show the DLQ in a review, send one fresh bad message first (it is dead-lettered within seconds, with its reason in the headers), and say it is a test message, not a production failure. Use `cut -c1-600` to keep the long stack trace in the header readable.
+
+To send the test message (Git Bash; it is a text line with a tab between the headers and the body, sent into the real `setu.grades` topic):
+
+```bash
+MSYS_NO_PATHCONV=1; ID=$(node -e "console.log(require('crypto').randomUUID())")
+printf 'event_type:GradePublished,event_id:%s,tenant_id:00000000-0000-4000-8000-000000000000\tthis is not json\n' "$ID" | docker exec -i setu-kafka-1 /opt/kafka/bin/kafka-console-producer.sh --bootstrap-server localhost:29092 --topic setu.grades --property parse.headers=true
+```
+
+Checked on 26 October: within about 7 seconds `setu.grades.DLQ` held the message, rejected by `setu-risk` (`JsonParseException`). Unlike the first test, `setu-notification` read it without dead-lettering it, so expect one message in the DLQ, not two.
 
 ## Be honest about
 
